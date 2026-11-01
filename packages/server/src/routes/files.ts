@@ -1,44 +1,52 @@
 import fastifyMultipart from "@fastify/multipart";
 import {
-  errorResponse,
   type FileInfo,
   type FileList,
-  FORCE_DOWNLOAD_QUERY,
+  FilePatchSchema,
+  type FileVersions,
   type PurgeResult,
+  splitFilePath,
   UPLOAD_FILE_FIELD,
+  UPLOAD_FOLDER_ID_FIELD,
+  UPLOAD_FOLDER_PATH_FIELD,
   UPLOAD_METADATA_FIELD,
+  UPLOAD_PARENT_ID_FIELD,
 } from "@vola/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
-import type { FileRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
-import {
-  contentRange,
-  parseByteRange,
-  RangeNotSatisfiableError,
-  rangeLength,
-} from "../files/byte-range.js";
-import { contentDisposition, dispositionFor } from "../files/content-disposition.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
 import {
   type FilesDeps,
   finalizeUpload,
   findFile,
   findFileBySlug,
+  findFileInFolder,
+  findReadableFile,
   listFiles,
-  openFile,
+  listVersions,
   parseInstance,
   parseMetadata,
   parseSlug,
+  patchFile,
   purgeFile,
   type StagedUpload,
   serializeFile,
   softDeleteFile,
   stageUpload,
-  touchLastAccessed,
 } from "../services/files.js";
+import {
+  type FoldersDeps,
+  findFolder,
+  findFolderById,
+  parsePath,
+  resolveFolderId,
+} from "../services/folders.js";
 import type { StorageBackend } from "../storage/index.js";
+import { type DownloadQuery, flag, sendFile } from "./send-file.js";
+
+export { ifNoneMatchMatches } from "./send-file.js";
 
 export interface FileRoutesDeps {
   db: Database;
@@ -53,9 +61,6 @@ export interface FileRoutesDeps {
 const READ = { scope: "files:read" } as const;
 const WRITE = { scope: "files:write" } as const;
 
-/** Multipart fields of a later ticket (folders, versions — 2.2): refused for now, not ignored. */
-const NOT_YET_SUPPORTED = ["folder_path", "parent_id"];
-
 interface InstanceParams {
   type: string;
   id: string;
@@ -66,8 +71,8 @@ interface FileParams extends InstanceParams {
 interface SlugParams extends InstanceParams {
   slug: string;
 }
-interface DownloadQuery {
-  [FORCE_DOWNLOAD_QUERY]?: string;
+interface PathParams extends InstanceParams {
+  "*": string;
 }
 interface ListQuery {
   cursor?: string;
@@ -78,27 +83,19 @@ interface InfoQuery {
   include_deleted?: string;
 }
 
-const flag = (value: string | undefined): boolean => value === "1" || value === "true";
-
-/** `If-None-Match` matches `etag` (strong or weak form of it, or `*`). */
-export function ifNoneMatchMatches(header: string | string[] | undefined, etag: string): boolean {
-  const value = Array.isArray(header) ? header.join(",") : header;
-  if (!value) return false;
-  return value.split(",").some((tag) => {
-    const trimmed = tag.trim().replace(/^W\//, "");
-    return trimmed === "*" || trimmed === etag;
-  });
-}
-
 /**
  * Files of an instance (`/files/:type/:id…`). Everything is tenant-scoped through
- * `requireTenant()`: another tenant's file is `404 file_not_found`, never 403.
+ * `requireTenant()`: another tenant's file is `404 file_not_found`, never 403 — except a
+ * file its owner marked `is_public`, which any authenticated tenant may download by id.
  *
- * - `POST /files/:type/:id` (multipart, streamed into storage) and
- *   `PUT /files/:type/:id/slug/:slug` (upsert of a named file) — `files:write`;
- * - `GET|HEAD …/:fileId`, `…/slug/:slug` — `files:read`: `Range`/`206`, `ETag`/`304`,
- *   `Content-Disposition` (inline for media and PDF), `X-Content-Type-Options: nosniff`;
- * - `GET …/:fileId/info`, `GET /files/:type/:id` (cursor list) — `files:read`;
+ * - `POST /files/:type/:id` (multipart, streamed into storage; `folder_path` or `folder_id`
+ *   places it, `parent_id` makes it a new version) and `PUT /files/:type/:id/slug/:slug`
+ *   (upsert of a named file) — `files:write`;
+ * - `GET|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` — `files:read`: `Range`/`206`,
+ *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`;
+ * - `GET …/:fileId/info`, `…/:fileId/versions`, `GET /files/:type/:id` (cursor list) —
+ *   `files:read`;
+ * - `PATCH …/:fileId` (move, rename, visibility) — `files:write`;
  * - `DELETE …/:fileId` (soft), `DELETE …/:fileId/purge` — `files:write`.
  */
 export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) => {
@@ -109,6 +106,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     logger: deps.logger ?? app.log,
     now: deps.now,
   };
+  const folderService: FoldersDeps = { db: deps.db, logger: service.logger, now: deps.now };
 
   await app.register(fastifyMultipart, {
     // At the limit busboy truncates the part (and flags it) instead of throwing: the handler
@@ -168,15 +166,33 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
       }
       if (!upload)
         throw new VolaError("file_required", 400, `a "${UPLOAD_FILE_FIELD}" part is required`);
-      const unsupported = NOT_YET_SUPPORTED.filter((name) => fields[name] !== undefined);
-      if (unsupported.length > 0) {
+      const metadata = parseMetadata(fields[UPLOAD_METADATA_FIELD]);
+      const parentId = fields[UPLOAD_PARENT_ID_FIELD];
+      const parent = parentId ? await findFile(service, scope, parentId) : null;
+      const folderPath = fields[UPLOAD_FOLDER_PATH_FIELD];
+      const folderIdField = fields[UPLOAD_FOLDER_ID_FIELD];
+      if (folderPath !== undefined && folderIdField !== undefined) {
         throw new VolaError(
-          "not_supported",
-          400,
-          `${unsupported.join(", ")}: not supported yet (folders and versions arrive with 2.2)`,
+          "validation_error",
+          422,
+          `${UPLOAD_FOLDER_PATH_FIELD} and ${UPLOAD_FOLDER_ID_FIELD} exclude each other`,
         );
       }
-      const metadata = parseMetadata(fields[UPLOAD_METADATA_FIELD]);
+      // undefined: the parent's folder for a version, the root otherwise.
+      let folderId: string | null | undefined;
+      if (folderPath !== undefined) {
+        folderId = await resolveFolderId(
+          folderService,
+          scope,
+          parsePath(folderPath, UPLOAD_FOLDER_PATH_FIELD),
+          tenant.userId,
+        );
+      } else if (folderIdField !== undefined) {
+        folderId =
+          folderIdField === ""
+            ? null
+            : (await findFolderById(folderService, scope, folderIdField)).id;
+      }
       const info = await finalizeUpload(service, {
         scope,
         upload,
@@ -184,6 +200,8 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
         declaredMime,
         metadata,
         slug,
+        folderId,
+        parent,
         userId: tenant.userId,
       });
       upload = undefined; // finalizeUpload owns the staged blob from here (committed or discarded)
@@ -193,6 +211,8 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
           hash: info.hash,
           size: info.size,
           slug: info.slug,
+          folder: info.folder_id,
+          parent: info.parent_id,
           instance: `${scope.instanceType}/${scope.instanceId}`,
         },
         "file uploaded",
@@ -215,68 +235,15 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     (request, reply) => handleUpload(request, reply, parseSlug(request.params.slug)),
   );
 
-  /** The body (or, for HEAD, only the headers) of `row`, honouring Range and If-None-Match. */
-  async function sendFile(
-    request: FastifyRequest<{ Querystring: DownloadQuery }>,
-    reply: FastifyReply,
-    row: FileRow,
-  ): Promise<FastifyReply> {
-    const isHead = request.method === "HEAD";
-    const size = Number(row.size);
-    const etag = `"${row.hash}"`;
-    reply
-      .header("etag", etag)
-      .header("accept-ranges", "bytes")
-      .header("x-content-type-options", "nosniff")
-      .header("cache-control", "private, no-cache")
-      .header("last-modified", row.createdAt.toUTCString())
-      .header(
-        "content-disposition",
-        contentDisposition(
-          row.filename,
-          dispositionFor(row.mimeType, flag(request.query[FORCE_DOWNLOAD_QUERY])),
-        ),
-      );
-    if (ifNoneMatchMatches(request.headers["if-none-match"], etag)) {
-      return reply.status(304).send();
-    }
-
-    let range: ReturnType<typeof parseByteRange>;
-    try {
-      range = parseByteRange(request.headers.range, size);
-    } catch (error) {
-      if (!(error instanceof RangeNotSatisfiableError)) throw error;
-      reply.status(416).header("content-range", `bytes */${size}`);
-      if (isHead) return reply.send();
-      return reply.send(
-        errorResponse(
-          "range_not_satisfiable",
-          `the requested range is outside the file of ${size} bytes`,
-        ),
-      );
-    }
-
-    if (!isHead) touchLastAccessed(service, row.id, requireTenant().userId);
-    reply.type(row.mimeType);
-    if (range) {
-      reply
-        .status(206)
-        .header("content-range", contentRange(range, size))
-        .header("content-length", String(rangeLength(range)));
-    } else {
-      reply.header("content-length", String(size));
-    }
-    if (isHead) return reply.send();
-    return reply.send(await openFile(service, row, range ?? undefined));
-  }
+  const download = { userId: () => requireTenant().userId };
 
   app.route<{ Params: FileParams; Querystring: DownloadQuery }>({
     method: ["GET", "HEAD"],
     url: "/files/:type/:id/:fileId",
     config: READ,
     handler: async (request, reply) => {
-      const row = await findFile(service, scopeOf(request), request.params.fileId);
-      return sendFile(request, reply, row);
+      const row = await findReadableFile(service, scopeOf(request), request.params.fileId);
+      return sendFile(service, request, reply, row, { userId: download.userId() });
     },
   });
 
@@ -286,7 +253,22 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     config: READ,
     handler: async (request, reply) => {
       const row = await findFileBySlug(service, scopeOf(request), parseSlug(request.params.slug));
-      return sendFile(request, reply, row);
+      return sendFile(service, request, reply, row, { userId: download.userId() });
+    },
+  });
+
+  /** `…/path/docs/q4/report.pdf`: the newest live file of that name in that folder (`…/path/report.pdf` is a root file). */
+  app.route<{ Params: PathParams; Querystring: DownloadQuery }>({
+    method: ["GET", "HEAD"],
+    url: "/files/:type/:id/path/*",
+    config: READ,
+    handler: async (request, reply) => {
+      const scope = scopeOf(request);
+      const { folderPath, filename } = splitFilePath(request.params["*"]);
+      const path = parsePath(folderPath);
+      const folderId = path === "" ? null : (await findFolder(folderService, scope, path)).id;
+      const row = await findFileInFolder(service, scope, folderId, filename);
+      return sendFile(service, request, reply, row, { userId: download.userId() });
     },
   });
 
@@ -295,11 +277,22 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     "/files/:type/:id/:fileId/info",
     { config: READ },
     async (request): Promise<FileInfo> => {
-      const row = await findFile(service, scopeOf(request), request.params.fileId, {
-        includeDeleted: flag(request.query.include_deleted),
-      });
+      const scope = scopeOf(request);
+      const row = flag(request.query.include_deleted)
+        ? await findFile(service, scope, request.params.fileId, { includeDeleted: true })
+        : await findReadableFile(service, scope, request.params.fileId);
       return serializeFile(row);
     },
+  );
+
+  /** The version chain of the file, newest first; `?include_deleted=1` keeps soft-deleted versions. */
+  app.get<{ Params: FileParams; Querystring: InfoQuery }>(
+    "/files/:type/:id/:fileId/versions",
+    { config: READ },
+    async (request): Promise<FileVersions> =>
+      listVersions(service, scopeOf(request), request.params.fileId, {
+        includeDeleted: flag(request.query.include_deleted),
+      }),
   );
 
   /** The instance's files, newest first; `?cursor`, `?limit` (≤ 200), `?include_deleted=1`. */
@@ -312,6 +305,37 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
         limit: request.query.limit,
         includeDeleted: flag(request.query.include_deleted),
       }),
+  );
+
+  /** Move (`folder_path`, `""` = root, created when missing), rename (`filename`) and/or visibility flags. */
+  app.patch<{ Params: FileParams; Body: unknown }>(
+    "/files/:type/:id/:fileId",
+    { config: WRITE },
+    async (request): Promise<FileInfo> => {
+      const parsed = FilePatchSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        throw new VolaError(
+          "validation_error",
+          422,
+          `${issue?.path.join(".") || "body"}: ${issue?.message ?? "invalid"}`,
+        );
+      }
+      const tenant = requireTenant();
+      const scope = scopeOf(request);
+      const patch = parsed.data;
+      const info = await patchFile(service, scope, request.params.fileId, {
+        folderId:
+          patch.folder_path === undefined
+            ? undefined
+            : await resolveFolderId(folderService, scope, patch.folder_path, tenant.userId),
+        filename: patch.filename,
+        isPublic: patch.is_public,
+        isGlobalPublic: patch.is_global_public,
+        userId: tenant.userId,
+      });
+      return info;
+    },
   );
 
   /** Soft delete; idempotent; the bytes stay. */

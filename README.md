@@ -83,17 +83,58 @@ curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets
 
 | route | scope | notes |
 |---|---|---|
-| `POST /vola/files/:type/:id` | `files:write` | `file` part + optional `metadata`; `413 file_too_large` over `VOLA_MAX_UPLOAD_BYTES` (512 MiB); `a.pdf` → `a (1).pdf` on a name collision; `folder_path`/`parent_id` → `400 not_supported` until 2.2 |
+| `POST /vola/files/:type/:id` | `files:write` | `file` part + optional `metadata`; `folder_path` (created when missing) or `folder_id` places it; `parent_id` makes it a new version; `413 file_too_large` over `VOLA_MAX_UPLOAD_BYTES` (512 MiB); `a.pdf` → `a (1).pdf` on a name collision in the same folder |
 | `PUT /vola/files/:type/:id/slug/:slug` | `files:write` | upsert of a named file |
-| `GET\|HEAD …/:fileId`, `…/slug/:slug` | `files:read` | `Accept-Ranges: bytes`, single `Range` → `206`, outside → `416`; `ETag: "<sha256>"`, `If-None-Match` → `304`; `X-Content-Type-Options: nosniff`; `?download=1`; `last_accessed_*` once a minute (GET only) |
+| `GET\|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` | `files:read` | `Accept-Ranges: bytes`, single `Range` → `206`, outside → `416`; `ETag: "<sha256>"`, `If-None-Match` → `304`; `X-Content-Type-Options: nosniff`; `?download=1`; `last_accessed_*` once a minute (GET only); by id also another tenant's `is_public` file |
 | `GET …/:fileId/info` | `files:read` | metadata, never `fk_ct`/`meta_ct`; `?include_deleted=1` |
+| `GET …/:fileId/versions` | `files:read` | the version chain, newest first; `?include_deleted=1` |
 | `GET /vola/files/:type/:id` | `files:read` | `created_at desc, id desc`, `?cursor`, `?limit` ≤ 200, `?include_deleted=1` |
+| `PATCH …/:fileId` | `files:write` | `{folder_path}` moves (`""` = root), `{filename}` renames (`409 file_exists`), `{is_public}`, `{is_global_public}` (`409 encrypted_not_public` on an encrypted file) |
 | `DELETE …/:fileId` | `files:write` | soft delete (`deleted_at`, `deleted_by`), idempotent |
-| `DELETE …/:fileId/purge` | `files:write` | removes the row (and its version chain); the blob and its derived files leave the disk only when no row of any tenant references them |
+| `DELETE …/:fileId/purge` | `files:write` | removes the row and its whole version chain; the blob and its derived files leave the disk only when no row of any tenant references them |
+| `GET\|HEAD /vola/public/:fileId` | — | anonymous download of an `is_global_public` file (`Cache-Control: public, max-age=300`); anything else is `404` |
 
 MIME is detected from the magic bytes (`file-type`), then the extension, then the declared type;
 `kind` (`image`, `video`, `audio`, `document`, `spreadsheet`, `presentation`, `archive`, `text`,
-`code`, `other`) follows from it. Folders, versions, visibility, resumable uploads, thumbnails and
+`code`, `other`) follows from it.
+
+### Folders, versions, visibility
+
+Folders are virtual: a hierarchy in the database inside one instance (the blob store stays
+flat). A path is `a/b/c` — segments of 1–255 characters without `/`, `\`, NUL or control
+characters, never `.` or `..`, at most 32 levels — and a `..` anywhere is `422 validation_error`.
+The path is the wildcard of the URL, so a name may carry spaces and Unicode (percent-encoded).
+
+```sh
+curl -X POST  -H "Authorization: Bearer $KEY" localhost:8300/vola/folders/tickets/$TICKET/docs/2026   # 201 (200 if it exists); parents are created too
+curl          -H "Authorization: Bearer $KEY" localhost:8300/vola/folders/tickets/$TICKET/docs        # {folder, subfolders[], files[]}; no path = the root
+curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"name":"documents"}' \
+     localhost:8300/vola/folders/tickets/$TICKET/docs                                                # descendants follow; {"parent_path":"archive"} moves
+curl -X DELETE -H "Authorization: Bearer $KEY" "localhost:8300/vola/folders/tickets/$TICKET/docs?recursive=1"
+curl -H "Authorization: Bearer $KEY" -F file=@q4.pdf -F folder_path=docs/2026 localhost:8300/vola/files/tickets/$TICKET
+curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/files/tickets/$TICKET/path/docs/2026/q4.pdf"
+curl -H "Authorization: Bearer $KEY" -F file=@q4-v2.pdf -F parent_id=$FILE localhost:8300/vola/files/tickets/$TICKET  # a new version
+curl -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"is_global_public":true}' \
+     localhost:8300/vola/files/tickets/$TICKET/$FILE
+curl localhost:8300/vola/public/$FILE                                                                 # no key
+```
+
+| route | scope | notes |
+|---|---|---|
+| `POST /vola/folders/:type/:id/*path` | `folders:write` | idempotent; the whole chain of parents |
+| `GET /vola/folders/:type/:id[/*path]` | `folders:read` | one level: `folder` (`null` for the root), direct `subfolders` by name, live `files` by name |
+| `PATCH /vola/folders/:type/:id/*path` | `folders:write` | `{name}` and/or `{parent_path}` (`""` = root, created when missing); every descendant path is rewritten in one transaction; `409 folder_exists`; into itself → `422` |
+| `DELETE /vola/folders/:type/:id/*path` | `folders:write` | soft delete → `{folder, folders, files}`; not empty without `?recursive=1` → `409 folder_not_empty` |
+
+A **version** is an upload with `parent_id`: the new row points at the previous one, inherits its
+`filename` and `folder_id` unless given (the same name is no collision against its own chain),
+and the previous version stays live — a path download answers the newest file of that name.
+`…/versions` lists the chain from any member; purge removes the whole chain.
+
+**Visibility:** `is_public` lets any authenticated tenant download the file (and read `…/info`)
+by its `(type, id, fileId)` — the vola-spp rule; everything else stays the owner's.
+`is_global_public` opens `GET|HEAD /vola/public/:fileId` to anyone, without a key; an encrypted
+file can never get it (`409 encrypted_not_public`). Resumable uploads, thumbnails, shares and
 encryption come with the later tickets of `docs/PLAN.md`.
 
 ## Container

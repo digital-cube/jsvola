@@ -7,8 +7,10 @@ import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import type { RedisLike } from "./redis.js";
 import { fileRoutes } from "./routes/files.js";
+import { folderRoutes } from "./routes/folders.js";
 import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
+import { publicRoutes } from "./routes/public.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 
@@ -92,6 +94,12 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     db: options.db,
     storage,
     maxUploadBytes: options.config.maxUploadBytes,
+    accessThrottle: options.accessThrottle,
+  });
+  await app.register(folderRoutes, { db: options.db });
+  await app.register(publicRoutes, {
+    db: options.db,
+    storage,
     accessThrottle: options.accessThrottle,
   });
   if (options.extend) await options.extend(app);

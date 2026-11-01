@@ -32,7 +32,7 @@ export {
   MIGRATIONS_FOLDER,
   runMigrations,
 } from "./db/index.js";
-export type { ApiKeyRow, FileRow, TenantRow } from "./db/schema.js";
+export type { ApiKeyRow, FileRow, FolderRow, TenantRow } from "./db/schema.js";
 export * as schema from "./db/schema.js";
 export { uuidv7 } from "./db/uuid.js";
 export { codeForStatus, STATUS_CODES, VolaError } from "./errors.js";
@@ -66,9 +66,17 @@ export {
 } from "./files/mime.js";
 export { installErrorHandling, requestId, type VolaPluginOptions, volaPlugin } from "./plugin.js";
 export { connectRedis, type RedisLike } from "./redis.js";
-export { type FileRoutesDeps, fileRoutes, ifNoneMatchMatches } from "./routes/files.js";
+export { type FileRoutesDeps, fileRoutes } from "./routes/files.js";
+export { type FolderRoutesDeps, folderRoutes } from "./routes/folders.js";
 export { type HealthDeps, healthRoutes } from "./routes/health.js";
 export { type KeyRoutesDeps, keyRoutes } from "./routes/keys.js";
+export { PUBLIC_MAX_AGE_SECONDS, type PublicRoutesDeps, publicRoutes } from "./routes/public.js";
+export {
+  type DownloadQuery,
+  ifNoneMatchMatches,
+  type SendFileOptions,
+  sendFile,
+} from "./routes/send-file.js";
 export {
   type AuthenticatedKey,
   authenticateApiKey,
@@ -87,6 +95,7 @@ export {
   touchLastUsed,
 } from "./services/apikeys.js";
 export {
+  type FilePatchInput,
   type FilesDeps,
   type FinalizeUploadInput,
   type FindOptions,
@@ -94,15 +103,20 @@ export {
   finalizeUpload,
   findFile,
   findFileBySlug,
+  findFileInFolder,
+  findGlobalPublicFile,
+  findReadableFile,
   headSniffer,
   type InstanceScope,
   type ListInput,
   listFiles,
+  listVersions,
   openFile,
   parseInstance,
   parseLimit,
   parseMetadata,
   parseSlug,
+  patchFile,
   purgeFile,
   type StagedUpload,
   serializeFile,
@@ -111,7 +125,25 @@ export {
   touchLastAccessed,
   type UploadInput,
   uploadFile,
+  versionFamily,
 } from "./services/files.js";
+export {
+  deleteFolder,
+  type EnsureResult,
+  ensureFolder,
+  type FoldersDeps,
+  findFolder,
+  findFolderById,
+  folderNotFound,
+  listFolder,
+  parentPathOf,
+  parsePath,
+  parseSegment,
+  type RelocateInput,
+  relocateFolder,
+  resolveFolderId,
+  serializeFolder,
+} from "./services/folders.js";
 export {
   type CreateTenantInput,
   createTenant,

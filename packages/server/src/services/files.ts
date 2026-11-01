@@ -8,6 +8,7 @@ import {
   type FileList,
   FileMetadataSchema,
   FileSlugSchema,
+  type FileVersions,
   InstanceTypeSchema,
   type PurgeResult,
 } from "@vola/core";
@@ -179,6 +180,14 @@ export async function stageUpload(
 export interface FinalizeUploadInput {
   scope: InstanceScope;
   upload: StagedUpload;
+  /** The folder the file goes into (resolved by the caller); `null` or absent: the root. */
+  folderId?: string | null | undefined;
+  /**
+   * The previous version this upload supersedes (a live file of the same instance): the new
+   * row points at it with `parent_id`, inherits its `filename` and `folder_id` unless given,
+   * and the previous version stays live.
+   */
+  parent?: FileRow | null | undefined;
   /** The name the client gave the part (sanitised here). */
   filename: string | undefined | null;
   /** `Content-Type` of the part, if any. */
@@ -199,7 +208,9 @@ const pgCode = (error: unknown): string | undefined =>
  * Turns a staged upload into a file row: detects MIME, extension and kind, then in ONE
  * transaction — under an advisory lock on the hash, so a concurrent purge of the same bytes
  * cannot remove the blob between its commit and the row — commits the blob (dedup when it
- * exists), soft-deletes the previous file of `slug`, resolves the collision rename and inserts.
+ * exists), soft-deletes the previous file of `slug`, resolves the collision rename (per
+ * folder) and inserts. A new version (`parent`) keeps the name of the version it supersedes
+ * when the client sent none or the same one — no `(1)` rename against its own chain.
  * On failure the staged blob is discarded.
  */
 export async function finalizeUpload(
@@ -208,7 +219,14 @@ export async function finalizeUpload(
 ): Promise<FileInfo> {
   const { scope, upload } = input;
   const slug = input.slug ?? null;
-  const filename = sanitizeFilename(input.filename, slug ?? "unnamed");
+  const parent = input.parent ?? null;
+  const givenName = input.filename ? sanitizeFilename(input.filename) : null;
+  const inherited = parent !== null && (givenName === null || givenName === parent.filename);
+  const filename = inherited
+    ? parent.filename
+    : (givenName ?? sanitizeFilename(null, slug ?? "unnamed"));
+  const folderId =
+    input.folderId === undefined && parent ? parent.folderId : (input.folderId ?? null);
   const mimeType = await detectMime({
     head: upload.head,
     filename,
@@ -245,7 +263,9 @@ export async function finalizeUpload(
               .set({ deletedAt: now, deletedBy: input.userId, updatedAt: now })
               .where(and(instanceWhere(scope), eq(files.slug, slug), isNull(files.deletedAt)));
           }
-          const resolved = await resolveFilename(tx, scope, filename);
+          const resolved = inherited
+            ? filename
+            : await resolveFilename(tx, scope, filename, folderId);
           const [row] = await tx
             .insert(files)
             .values({
@@ -260,6 +280,8 @@ export async function finalizeUpload(
               mimeType,
               kind,
               metadata,
+              folderId,
+              parentId: parent?.id ?? null,
               createdBy: input.userId,
               // Millisecond timestamps from here, so the list cursor compares exactly.
               createdAt: now,
@@ -306,12 +328,26 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+/** The live files of one folder of the instance (`null`: the root). */
+function folderWhere(scope: InstanceScope, folderId: string | null) {
+  return and(
+    instanceWhere(scope),
+    folderId ? eq(files.folderId, folderId) : isNull(files.folderId),
+    isNull(files.deletedAt),
+  );
+}
+
 /**
- * The free name for `filename` among the live files of the instance (root folder): one exact
- * lookup for the common case, and only on a collision the `base (n).ext` candidates.
+ * The free name for `filename` among the live files of the folder: one exact lookup for the
+ * common case, and only on a collision the `base (n).ext` candidates.
  */
-async function resolveFilename(tx: Tx, scope: InstanceScope, filename: string): Promise<string> {
-  const namespace = and(instanceWhere(scope), isNull(files.folderId), isNull(files.deletedAt));
+async function resolveFilename(
+  tx: Tx,
+  scope: InstanceScope,
+  filename: string,
+  folderId: string | null,
+): Promise<string> {
+  const namespace = folderWhere(scope, folderId);
   const exact = await tx
     .select({ id: files.id })
     .from(files)
@@ -370,6 +406,167 @@ export async function findFileBySlug(
     .limit(1);
   if (!row) throw fileNotFound();
   return row;
+}
+
+/**
+ * The file `fileId` of the instance a reader may see: the tenant's own, or — `is_public` —
+ * another tenant's with the same `(type, id, fileId)` (the vola-spp rule: knowing the three
+ * ids of a public file is enough for any authenticated tenant). `404 file_not_found` otherwise.
+ */
+export async function findReadableFile(
+  deps: FilesDeps,
+  scope: InstanceScope,
+  fileId: string,
+): Promise<FileRow> {
+  if (!UUID_RE.test(fileId)) throw fileNotFound();
+  const [row] = await deps.db
+    .select()
+    .from(files)
+    .where(
+      and(
+        eq(files.instanceType, scope.instanceType),
+        eq(files.instanceId, scope.instanceId),
+        eq(files.id, fileId.toLowerCase()),
+        isNull(files.deletedAt),
+        or(eq(files.tenantId, scope.tenantId), eq(files.isPublic, true)),
+      ),
+    )
+    .limit(1);
+  if (!row) throw fileNotFound();
+  return row;
+}
+
+/**
+ * The live file named `filename` in the folder (`null`: the root) of the instance; with
+ * versions several live rows share a name and the newest answers.
+ */
+export async function findFileInFolder(
+  deps: FilesDeps,
+  scope: InstanceScope,
+  folderId: string | null,
+  filename: string,
+): Promise<FileRow> {
+  if (!filename) throw fileNotFound();
+  const [row] = await deps.db
+    .select()
+    .from(files)
+    .where(and(folderWhere(scope, folderId), eq(files.filename, filename)))
+    .orderBy(desc(files.createdAt), desc(files.id))
+    .limit(1);
+  if (!row) throw fileNotFound();
+  return row;
+}
+
+/**
+ * The file an anonymous `GET /public/:fileId` may serve: live, `is_global_public`, and not
+ * encrypted (that flag cannot be set on an encrypted file; checked again here). No tenant.
+ */
+export async function findGlobalPublicFile(deps: FilesDeps, fileId: string): Promise<FileRow> {
+  if (!UUID_RE.test(fileId)) throw fileNotFound();
+  const [row] = await deps.db
+    .select()
+    .from(files)
+    .where(
+      and(
+        eq(files.id, fileId.toLowerCase()),
+        eq(files.isGlobalPublic, true),
+        eq(files.encryption, "none"),
+        isNull(files.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!row) throw fileNotFound();
+  return row;
+}
+
+// --- patch -------------------------------------------------------------------------------
+
+export interface FilePatchInput {
+  /** The folder to move into (resolved by the caller), `null` for the root; absent: unchanged. */
+  folderId?: string | null | undefined;
+  /** The new name (sanitised here); absent: unchanged. */
+  filename?: string | undefined;
+  isPublic?: boolean | undefined;
+  isGlobalPublic?: boolean | undefined;
+  userId: string | null;
+}
+
+/**
+ * Moves, renames and/or changes the visibility of the tenant's own file `fileId`. A move or
+ * rename lands on a `(folder, filename)` that must be free among the live files of the
+ * folder — `409 file_exists` otherwise (the versions of this file excepted: they share the
+ * name by design). `is_global_public` on an encrypted file is `409 encrypted_not_public`.
+ */
+export async function patchFile(
+  deps: FilesDeps,
+  scope: InstanceScope,
+  fileId: string,
+  patch: FilePatchInput,
+): Promise<FileInfo> {
+  const row = await findFile(deps, scope, fileId);
+  const folderId = patch.folderId === undefined ? row.folderId : patch.folderId;
+  const filename = patch.filename === undefined ? row.filename : sanitizeFilename(patch.filename);
+  if (patch.isGlobalPublic === true && row.encryption !== "none") {
+    throw new VolaError(
+      "encrypted_not_public",
+      409,
+      "an encrypted file cannot be made globally public",
+    );
+  }
+  const relocates = folderId !== row.folderId || filename !== row.filename;
+  if (relocates) {
+    const family = new Set((await versionFamily(deps.db, row)).map((f) => f.id));
+    const taken = await deps.db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(folderWhere(scope, folderId), eq(files.filename, filename)));
+    if (taken.some((f) => !family.has(f.id))) {
+      throw new VolaError("file_exists", 409, `a file "${filename}" already exists in that folder`);
+    }
+  }
+  const now = (deps.now ?? (() => new Date()))();
+  const [updated] = await deps.db
+    .update(files)
+    .set({
+      folderId,
+      filename,
+      extension: filename === row.filename ? row.extension : extensionOf(filename),
+      isPublic: patch.isPublic ?? row.isPublic,
+      isGlobalPublic: patch.isGlobalPublic ?? row.isGlobalPublic,
+      updatedAt: now,
+    })
+    .where(and(eq(files.id, row.id), isNull(files.deletedAt)))
+    .returning();
+  if (!updated) throw fileNotFound();
+  deps.logger?.info(
+    {
+      file: row.id,
+      ...(relocates ? { folder: folderId, filename } : {}),
+      is_public: updated.isPublic,
+      is_global_public: updated.isGlobalPublic,
+    },
+    "file updated",
+  );
+  return serializeFile(updated);
+}
+
+// --- versions ----------------------------------------------------------------------------
+
+/**
+ * The version chain of the tenant's file `fileId` — every row linked through `parent_id`,
+ * older and newer — newest first; soft-deleted versions only with `includeDeleted`.
+ */
+export async function listVersions(
+  deps: FilesDeps,
+  scope: InstanceScope,
+  fileId: string,
+  options: FindOptions = {},
+): Promise<FileVersions> {
+  const row = await findFile(deps, scope, fileId, { includeDeleted: true });
+  const family = (await versionFamily(deps.db, row))
+    .filter((f) => options.includeDeleted || f.deletedAt === null)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
+  return { versions: family.map(serializeFile) };
 }
 
 // --- list --------------------------------------------------------------------------------
@@ -482,9 +679,9 @@ export async function softDeleteFile(
 
 /**
  * Every row linked to `row` through `parent_id`, older and newer versions alike, within the
- * tenant, soft-deleted ones included. Until versions exist (2.2) this is `[row]`.
+ * tenant, soft-deleted ones included (`[row]` for a file without versions).
  */
-async function versionFamily(db: Database, row: FileRow): Promise<FileRow[]> {
+export async function versionFamily(db: Database, row: FileRow): Promise<FileRow[]> {
   const found = new Map<string, FileRow>([[row.id, row]]);
   let frontier: FileRow[] = [row];
   while (frontier.length > 0) {

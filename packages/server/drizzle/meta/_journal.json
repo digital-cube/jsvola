@@ -15,6 +15,13 @@
       "when": 1793545675186,
       "tag": "0001_files",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793547148784,
+      "tag": "0002_folders",
+      "breakpoints": true
     }
   ]
 }

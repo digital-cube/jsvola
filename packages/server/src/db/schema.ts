@@ -5,6 +5,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -72,6 +73,48 @@ export const apiKeys = pgTable(
 );
 
 /**
+ * A virtual folder inside `(tenant, instance_type, instance_id)`: the hierarchy lives only in
+ * the database (the blob store is flat). `path` is the full normalised path `a/b/c` — no
+ * leading or trailing `/` — and is what lookups use (one SELECT, no walk); `parent_id` gives
+ * the tree. A rename or move rewrites the `path` of every descendant in one transaction.
+ * Soft delete keeps the row; the partial unique index lets the path be created again.
+ * `default_keyring_id` is the folder's encryption policy (phase 6.2); NULL until then.
+ */
+export const folders = pgTable(
+  "vola_folder",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    instanceType: varchar("instance_type", { length: 100 }).notNull(),
+    instanceId: uuid("instance_id").notNull(),
+    /** NULL: a top-level folder. */
+    parentId: uuid("parent_id").references((): AnyPgColumn => folders.id, {
+      onDelete: "cascade",
+    }),
+    /** The last segment of `path`. */
+    name: varchar("name", { length: 255 }).notNull(),
+    /** `a/b/c`: at most FOLDER_MAX_DEPTH segments of at most 255 characters. */
+    path: text("path").notNull(),
+    defaultKeyringId: uuid("default_keyring_id"),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: varchar("deleted_by", { length: 255 }),
+  },
+  (t) => [
+    uniqueIndex("vola_folder_path_live_uq")
+      .on(t.tenantId, t.instanceType, t.instanceId, t.path)
+      .where(sql`${t.deletedAt} is null`),
+    index("vola_folder_parent_idx").on(t.tenantId, t.instanceType, t.instanceId, t.parentId),
+    check("vola_folder_instance_type_check", sql`${t.instanceType} ~ '^[a-z][a-z0-9_]*$'`),
+    check("vola_folder_path_check", sql`${t.path} <> '' and ${t.path} !~ '(^/|/$|//)'`),
+  ],
+);
+
+/**
  * A stored file: one row per upload, pointing at a content-addressable blob by `hash` (many
  * rows, of any tenant, may share one blob). Every row belongs to `(tenant, instance_type,
  * instance_id)` — the host application's object the file is attached to. Soft delete keeps the
@@ -79,7 +122,8 @@ export const apiKeys = pgTable(
  *
  * The encryption columns are declared now so phase 6 does not alter the table: until then
  * `encryption` is `none` and `enc_format`, `keyring_id`, `fk_ct`, `meta_ct` are NULL.
- * `folder_id` and `parent_id` (versions) get their foreign keys with folders (2.2).
+ * `folder_id` (NULL: the instance root) points at a `vola_folder`; `parent_id` at the
+ * previous version of the same file (the chain `GET …/versions` walks).
  */
 export const files = pgTable(
   "vola_file",
@@ -104,8 +148,10 @@ export const files = pgTable(
     /** `image` | `document` | … | `other` (FileKinds). */
     kind: varchar("kind", { length: 20 }).notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
-    folderId: uuid("folder_id"),
-    parentId: uuid("parent_id"),
+    folderId: uuid("folder_id").references(() => folders.id, { onDelete: "set null" }),
+    parentId: uuid("parent_id").references((): AnyPgColumn => files.id, {
+      onDelete: "set null",
+    }),
     isPublic: boolean("is_public").notNull().default(false),
     isGlobalPublic: boolean("is_global_public").notNull().default(false),
     /** `none` | `tenant` | `keyring` | `caller`. */
@@ -128,6 +174,8 @@ export const files = pgTable(
   (t) => [
     index("vola_file_instance_idx").on(t.tenantId, t.instanceType, t.instanceId),
     index("vola_file_hash_idx").on(t.hash),
+    index("vola_file_folder_idx").on(t.folderId),
+    index("vola_file_parent_idx").on(t.parentId),
     uniqueIndex("vola_file_slug_live_uq")
       .on(t.tenantId, t.instanceType, t.instanceId, t.slug)
       .where(sql`${t.deletedAt} is null and ${t.slug} is not null`),
@@ -144,3 +192,4 @@ export const files = pgTable(
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
+export type FolderRow = typeof folders.$inferSelect;

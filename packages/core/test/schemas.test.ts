@@ -86,3 +86,65 @@ describe("file schemas", () => {
     expect(PurgeResultSchema.parse({ files: 1, blobs: 0 })).toEqual({ files: 1, blobs: 0 });
   });
 });
+
+describe("folder paths", () => {
+  it("normalises a path and refuses traversal, empty segments and control characters", async () => {
+    const { FOLDER_MAX_DEPTH, parseFolderPath, splitFilePath } = await import("../src/index.js");
+    expect(parseFolderPath("docs/q4")).toEqual({
+      ok: true,
+      path: "docs/q4",
+      segments: ["docs", "q4"],
+    });
+    expect(parseFolderPath("/docs/q4/")).toMatchObject({ ok: true, path: "docs/q4" });
+    expect(parseFolderPath("")).toEqual({ ok: true, path: "", segments: [] });
+    expect(parseFolderPath("/")).toEqual({ ok: true, path: "", segments: [] });
+    expect(parseFolderPath("Rezultati 2026/Q4 — izveštaj.v2")).toMatchObject({ ok: true });
+    for (const bad of [
+      "..",
+      "docs/../x",
+      "../docs",
+      "docs/..",
+      ".",
+      "a/./b",
+      "a//b",
+      "a\\b",
+      "a\0b",
+      "a\nb",
+      "a\u0007b",
+      `${"x".repeat(256)}`,
+      Array.from({ length: FOLDER_MAX_DEPTH + 1 }, () => "d").join("/"),
+    ]) {
+      expect(parseFolderPath(bad).ok, JSON.stringify(bad)).toBe(false);
+    }
+    expect(parseFolderPath(Array.from({ length: FOLDER_MAX_DEPTH }, () => "d").join("/")).ok).toBe(
+      true,
+    );
+    expect(parseFolderPath("x".repeat(255)).ok).toBe(true);
+    expect(splitFilePath("docs/q4/report.pdf")).toEqual({
+      folderPath: "docs/q4",
+      filename: "report.pdf",
+    });
+    expect(splitFilePath("report.pdf")).toEqual({ folderPath: "", filename: "report.pdf" });
+    expect(splitFilePath("/report.pdf/")).toEqual({ folderPath: "", filename: "report.pdf" });
+  });
+
+  it("validates the folder and file patch bodies", async () => {
+    const { FilePatchSchema, FolderPatchSchema, FolderSegmentSchema } = await import(
+      "../src/index.js"
+    );
+    expect(FolderPatchSchema.parse({ name: "renamed" })).toEqual({ name: "renamed" });
+    expect(FolderPatchSchema.parse({ parent_path: "/a/b/" })).toEqual({ parent_path: "a/b" });
+    expect(FolderPatchSchema.parse({ parent_path: "" })).toEqual({ parent_path: "" });
+    for (const bad of [{}, { name: ".." }, { name: "a/b" }, { parent_path: "a/../b" }, { x: 1 }]) {
+      expect(FolderPatchSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(FolderSegmentSchema.safeParse("ok name").success).toBe(true);
+    expect(FilePatchSchema.parse({ folder_path: "", is_public: true })).toEqual({
+      folder_path: "",
+      is_public: true,
+    });
+    for (const bad of [{}, { filename: "" }, { folder_path: ".." }, { is_public: "yes" }]) {
+      expect(FilePatchSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});

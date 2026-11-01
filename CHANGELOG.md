@@ -9,6 +9,17 @@ share one version.
 
 ### Added
 
+- Folders, versions and visibility (`vola_folder`, migration `0002_folders`): virtual folders
+  inside an instance (`POST|GET|PATCH|DELETE /folders/:type/:id/*path` — chain auto-create,
+  one-level listing, rename and move with every descendant path rewritten in one
+  transaction, recursive soft delete, `409 folder_exists` / `folder_not_empty`), paths of
+  1–255-character segments (no `/`, `\`, control characters, `.` or `..`; 32 levels), uploads
+  with `folder_path` / `folder_id`, `GET|HEAD …/path/*`, `PATCH …/:fileId` (move, rename with
+  `409 file_exists`, `is_public`, `is_global_public`), versions through `parent_id`
+  (`GET …/:fileId/versions`, purge of the whole chain), `is_public` readable by any
+  authenticated tenant, and the anonymous `GET|HEAD /public/:fileId` for `is_global_public`
+  files (`Cache-Control: public, max-age=300`; never an encrypted file —
+  `409 encrypted_not_public`). `vola_file.folder_id` and `parent_id` are foreign keys now.
 - Files (`vola_file`, migration `0001_files`): content-addressable storage on disk
   (`StorageBackend` / `FilesystemBackend`: `blobs/aa/bb/cc/<sha256>`, streamed through
   `tmp/` with SHA-256 on the fly, fsync, atomic link, dedup, derived files next to the blob,

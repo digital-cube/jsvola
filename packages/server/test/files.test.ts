@@ -268,16 +268,18 @@ describe("upload and download", () => {
 });
 
 describe("upload validation", () => {
-  it("rejects folder_path and parent_id with 400 not_supported and leaves no blob behind", async () => {
+  it("refuses an unknown parent_id (404) and a bad folder_path (422) and leaves no blob behind", async () => {
     const data = randomBytes(3000);
-    const attempts: Record<string, string>[] = [
-      { folder_path: "docs/q4" },
-      { parent_id: randomUUID() },
+    const attempts: [Record<string, string>, number, string][] = [
+      [{ parent_id: randomUUID() }, 404, "file_not_found"],
+      [{ folder_path: "docs/../q4" }, 422, "validation_error"],
+      [{ folder_path: "docs", folder_id: randomUUID() }, 422, "validation_error"],
+      [{ folder_id: randomUUID() }, 404, "folder_not_found"],
     ];
-    for (const fields of attempts) {
+    for (const [fields, status, code] of attempts) {
       const { response } = await upload(data, "x.bin", { fields });
-      expect(response.statusCode).toBe(400);
-      expect(response.json().error.code).toBe("not_supported");
+      expect(response.statusCode, response.body).toBe(status);
+      expect(response.json().error.code).toBe(code);
     }
     expect(await storage.exists(sha256(data))).toBe(false);
     expect(await readdir(storage.tmpDir)).toEqual([]);
