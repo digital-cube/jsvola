@@ -35,9 +35,15 @@ importers:
       '@vola/core':
         specifier: workspace:*
         version: link:../core
+      '@vola/server':
+        specifier: workspace:*
+        version: link:../server
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
 
   packages/client:
     dependencies:

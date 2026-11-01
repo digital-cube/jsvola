@@ -1,9 +1,11 @@
-/** An error that maps to a `{ error: { code, message } }` response with `status`. */
+/** An error that maps to a `{ error: { code, message, …details } }` response with `status`. */
 export class VolaError extends Error {
   constructor(
     readonly code: string,
     readonly status: number,
     message: string,
+    /** Extra fields of the error body (`required` of a `forbidden`, …). */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "VolaError";

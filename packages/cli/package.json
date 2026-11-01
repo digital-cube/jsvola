@@ -36,7 +36,9 @@
   },
   "dependencies": {
     "@vola/core": "workspace:*",
-    "commander": "^15.0.0"
+    "@vola/server": "workspace:*",
+    "commander": "^15.0.0",
+    "drizzle-orm": "^0.45.4"
   },
   "publishConfig": {
     "access": "public"

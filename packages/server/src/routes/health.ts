@@ -33,9 +33,11 @@ async function probe(check: () => Promise<unknown>, timeoutMs: number): Promise<
 export const healthRoutes: FastifyPluginAsync<HealthDeps> = async (app, deps) => {
   const timeoutMs = deps.timeoutMs ?? 5000;
 
-  app.get("/health/live", async () => ({ status: "ok" }) as const);
+  const PUBLIC = { auth: "none" } as const;
 
-  app.get("/health/ready", async (_request, reply) => {
+  app.get("/health/live", { config: PUBLIC }, async () => ({ status: "ok" }) as const);
+
+  app.get("/health/ready", { config: PUBLIC }, async (_request, reply) => {
     const [database, redis] = await Promise.all([
       probe(() => deps.db.execute(sql`select 1`), timeoutMs),
       deps.redis ? probe(() => (deps.redis as RedisLike).ping(), timeoutMs) : undefined,
