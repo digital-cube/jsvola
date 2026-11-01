@@ -9,6 +9,40 @@ share one version.
 
 ### Added
 
+- **`@vola/react`** (plan 7.2): the React components an application embeds for the whole vola
+  surface, on `@jsudc/react` (peer, with `@jsudc/core` and `@tanstack/react-query`; React 19).
+  `<VolaProvider client locale="en|sr">` — the client, i18n (`VOLA_MESSAGES`, `en` and `sr`,
+  overridable through `messages`), the UDC providers, the keyring store with its auto-lock, and
+  the in-memory cache of decrypted `blob:` URLs. `<VolaFileBrowser instanceType instanceId
+  folderPath? onOpen? columns? actions?>` — breadcrumbs, subfolders (open, rename, delete, new
+  folder) and `<UdcDataView collection="files">` scoped to the instance and the folder through a
+  `ScopedUdcClient` (every `list` ANDed with the scope), kept current through `/udc/subscribe`
+  (`useFilesLive`: a cached row is patched in place, anything else refetches; reconnect with
+  backoff), drawn by the package's `table` renderer (`VolaThumb` in the thumbnail column, the
+  name as the open link, a row-actions menu: download, rename, move, delete, versions, share,
+  visibility — each a dialog), the whole surface a drop zone. `useVolaUpload()` +
+  `<VolaUploadButton>`/`<VolaUploadList>`: one multipart `POST` under
+  `VOLA_RESUMABLE_THRESHOLD` (8 MiB), the resumable protocol above it with progress, cancel and
+  resume (the fingerprint in `localStorage` survives a reload), an encryption select.
+  `<VolaThumb file size crop?>`: fetched with the client's headers into a cached `blob:` URL;
+  `202` is a placeholder retried with backoff and never cached, `failed`/`404` placeholders, a
+  `423` locks the page, a change of `processing_status` asks again. `useVolaKeyring()` (status,
+  setup, unlock, lock, changePin, recover, reset, deletePreview, stay, the auto-lock phase) and
+  `<VolaPinGate>`: six-digit PIN fields, setup with the recovery key shown once behind a
+  "saved" checkbox, `403 pin_wrong` with the attempts, `429 too_many_attempts` with a
+  `retry_after` countdown and the fields disabled, `422 pin_invalid` by reason, recover (a new
+  recovery key shown once), reset with the counts, the sentence about permanence and the word
+  `RESET`; `<VolaKeyringStatus>` and `<VolaChangePinDialog>`. Auto-lock after `lockAfterMs`
+  (120 s) + a 10 s countdown with "Stay unlocked", a slept tab locks at once, a tab hidden
+  `awayMs` (30 s) locks on return, `pagehide` sends the beacon; a lock revokes every `blob:` URL
+  and starts a new generation, so a late answer is dropped (`BlobCache`). `<VolaShareDialog
+  file>`: password, expiry, most downloads, the link shown once with Copy, the note for an
+  encrypted file (plaintext for the recipient, the secret only after `#`), list and revoke.
+  Accessible dialogs (`VolaModal`: `role`, `aria-modal`, focus trap, Escape, overlay, focus
+  restored) and menus (`VolaMenu`: `menu`/`menuitem`, arrows) without a dependency;
+  `@vola/react/styles.css` on `@jsudc/react`'s tokens, no Tailwind in the package. 59 tests
+  (Vitest + Testing Library against a fake `fetch` and a fake WebSocket), coverage ≥ 80 %.
+  `packages/react/README.md` and `docs/REACT.md`.
 - **`@vola/client`** (plan 7.1): the fetch SDK for every route, for Node 24+ and browsers,
   depending on `@vola/core` (and `@jsudc/core` for `vola.udc`) only, with an injectable `fetch`.
   `new VolaClient({ baseUrl, apiKey, userId?, tenantSlug?, fetch?, validate? })` with the groups

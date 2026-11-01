@@ -1,0 +1,675 @@
+/*
+ * @vola/react default styles. Import once: `import "@vola/react/styles.css";` — after
+ * `@jsudc/react/styles.css`, whose tokens (`--background`, `--foreground`, `--border`,
+ * `--primary`, `--sem-*`, light and `.dark`) this sheet reads, with a fallback for a page
+ * without them. Every class starts with `vola-`; theme by redefining the tokens.
+ */
+.vola {
+  --vola-bg: var(--surface, #fff);
+  --vola-fg: var(--foreground, #1c2130);
+  --vola-muted: var(--muted-foreground, #6b7280);
+  --vola-border: var(--border, #e3e5ea);
+  --vola-hover: var(--hover, #f4f5f9);
+  --vola-primary: var(--primary, #4b5fd6);
+  --vola-primary-fg: var(--primary-foreground, #fff);
+  --vola-danger: var(--sem-danger, #c0392b);
+  --vola-danger-bg: var(--sem-danger-bg, #fbeceb);
+  --vola-warning: var(--sem-warning, #a66a00);
+  --vola-warning-bg: var(--sem-warning-bg, #fff6dc);
+  --vola-success: var(--sem-success, #1f8f5f);
+  --vola-info-bg: var(--sem-info-bg, #eef4fb);
+  --vola-ring: var(--ring, #6b7fe3);
+  --vola-radius: 6px;
+  color: var(--vola-fg);
+  font: inherit;
+  min-width: 0;
+}
+.vola *,
+.vola *::before,
+.vola *::after {
+  box-sizing: border-box;
+}
+.vola :focus-visible {
+  outline: 2px solid var(--vola-ring);
+  outline-offset: 2px;
+}
+.vola-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.vola-muted {
+  color: var(--vola-muted);
+  font-size: 0.875rem;
+}
+.vola-error {
+  color: var(--vola-danger);
+  background: var(--vola-danger-bg);
+  border-radius: var(--vola-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.vola-warning {
+  color: var(--vola-warning);
+  background: var(--vola-warning-bg);
+  border-radius: var(--vola-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.vola-notice {
+  background: var(--vola-info-bg);
+  border-radius: var(--vola-radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* --- controls --- */
+.vola-btn {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--vola-fg);
+  background: var(--vola-bg);
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  line-height: 1.25;
+}
+.vola-btn:hover:not(:disabled) {
+  background: var(--vola-hover);
+}
+.vola-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.vola-btn--primary {
+  background: var(--vola-primary);
+  border-color: var(--vola-primary);
+  color: var(--vola-primary-fg);
+}
+.vola-btn--primary:hover:not(:disabled) {
+  background: var(--vola-primary);
+  filter: brightness(1.08);
+}
+.vola-btn--danger {
+  color: var(--vola-danger);
+  border-color: var(--vola-danger);
+}
+.vola-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  padding: 0.25rem 0.5rem;
+}
+.vola-link {
+  font: inherit;
+  color: var(--vola-primary);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vola-link--danger {
+  color: var(--vola-danger);
+}
+.vola-input,
+.vola-select {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--vola-fg);
+  background: var(--vola-bg);
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  padding: 0.375rem 0.5rem;
+  min-width: 0;
+  width: 100%;
+}
+.vola-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--vola-muted);
+  margin-bottom: 0.75rem;
+}
+.vola-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.vola-field--inline .vola-select {
+  width: auto;
+}
+.vola-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+.vola-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.vola-tag {
+  font-size: 0.75rem;
+  border: 1px solid var(--vola-border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  color: var(--vola-muted);
+}
+
+/* --- modal --- */
+.vola-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+.vola-modal {
+  background: var(--vola-bg);
+  color: var(--vola-fg);
+  border: 1px solid var(--vola-border);
+  border-radius: calc(var(--vola-radius) * 1.5);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.2);
+  width: min(32rem, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem 1.25rem;
+}
+.vola-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.vola-modal__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+.vola-modal__description {
+  color: var(--vola-muted);
+  font-size: 0.875rem;
+}
+.vola-modal__footer {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* --- menu --- */
+.vola-menu {
+  position: relative;
+  display: inline-block;
+}
+.vola-menu__list {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  min-width: 10rem;
+  background: var(--vola-bg);
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+}
+.vola-menu__item {
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--vola-radius);
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+  color: var(--vola-fg);
+}
+.vola-menu__item:hover,
+.vola-menu__item:focus-visible {
+  background: var(--vola-hover);
+}
+.vola-menu__item--danger {
+  color: var(--vola-danger);
+}
+
+/* --- browser --- */
+.vola-browser {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  background: var(--vola-bg);
+}
+.vola-browser__header {
+  border-bottom: 1px solid var(--vola-border);
+  padding: 0.625rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vola-browser__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+.vola-browser__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+.vola-browser__spacer {
+  flex: 1;
+}
+.vola-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+}
+.vola-breadcrumbs li + li::before {
+  content: "/";
+  color: var(--vola-muted);
+  margin-right: 0.25rem;
+}
+.vola-breadcrumbs [aria-current="page"] {
+  text-decoration: none;
+  color: var(--vola-fg);
+  font-weight: 600;
+}
+.vola-browser__folders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.vola-browser__folders:empty {
+  display: none;
+}
+.vola-folder {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--vola-border);
+  border-radius: 999px;
+  padding-left: 0.25rem;
+}
+.vola-folder__open {
+  font: inherit;
+  font-size: 0.875rem;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  color: var(--vola-fg);
+}
+.vola-folder__open:hover {
+  text-decoration: underline;
+}
+.vola-browser__view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 16rem;
+}
+.vola-browser--dragging {
+  outline: 2px dashed var(--vola-primary);
+  outline-offset: -4px;
+}
+.vola-browser__drop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 0.7);
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 10;
+}
+.dark .vola-browser__drop {
+  background: rgb(0 0 0 / 0.5);
+}
+.vola-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--vola-muted);
+}
+.vola-live__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--vola-muted);
+}
+.vola-live[data-status="live"] .vola-live__dot {
+  background: var(--vola-success);
+}
+.vola-live[data-status="connecting"] .vola-live__dot {
+  background: var(--vola-warning);
+}
+.vola-live[data-status="offline"] .vola-live__dot {
+  background: var(--vola-danger);
+}
+.vola-keyring-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+.vola-keyring-status__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--vola-danger);
+}
+.vola-keyring-status[data-unlocked="true"] .vola-keyring-status__dot {
+  background: var(--vola-success);
+}
+
+/* --- table --- */
+.vola-table-wrap {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.vola-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.vola-table th,
+.vola-table td {
+  padding: 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--vola-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.vola-table th {
+  position: sticky;
+  top: 0;
+  background: var(--vola-bg);
+  font-weight: 600;
+  color: var(--vola-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.vola-table [data-align="right"] {
+  text-align: right;
+}
+.vola-table [data-align="center"] {
+  text-align: center;
+}
+.vola-table tbody tr:hover {
+  background: var(--vola-hover);
+}
+.vola-table__sort {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.vola-table__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.vola-table__actions {
+  width: 3rem;
+  text-align: right;
+}
+.vola-table__state {
+  padding: 1rem;
+}
+.vola-table__sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem;
+}
+.vola-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* --- thumbnail --- */
+.vola-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--vola-radius);
+  background: var(--vola-hover);
+  color: var(--vola-muted);
+  vertical-align: middle;
+}
+.vola-thumb__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.vola-thumb[data-state="generating"] .vola-thumb__placeholder,
+.vola-thumb[data-state="loading"] .vola-thumb__placeholder {
+  animation: vola-pulse 1.2s ease-in-out infinite;
+}
+@keyframes vola-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vola-thumb__placeholder {
+    animation: none;
+  }
+}
+
+/* --- upload --- */
+.vola-upload__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vola-upload__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.vola-upload__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border-bottom: 1px solid var(--vola-border);
+  font-size: 0.8125rem;
+}
+.vola-upload__item {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(6rem, 2fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vola-upload__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vola-upload__tag {
+  margin-left: 0.375rem;
+  color: var(--vola-muted);
+}
+.vola-upload__bar {
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--vola-primary);
+}
+.vola-upload__item[data-status="error"] .vola-upload__status {
+  color: var(--vola-danger);
+}
+.vola-upload__item[data-status="done"] .vola-upload__status {
+  color: var(--vola-success);
+}
+
+/* --- PIN gate --- */
+.vola-gate {
+  max-width: 24rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border: 1px solid var(--vola-border);
+  border-radius: calc(var(--vola-radius) * 1.5);
+  background: var(--vola-bg);
+}
+.vola-gate__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+.vola-gate__screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.vola-gate__links {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8125rem;
+}
+.vola-pin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.vola-pin__label {
+  font-size: 0.8125rem;
+  color: var(--vola-muted);
+}
+.vola-pin__digits {
+  display: flex;
+  gap: 0.375rem;
+}
+.vola-pin__digit {
+  width: 2.5rem;
+  height: 3rem;
+  text-align: center;
+  font: inherit;
+  font-size: 1.25rem;
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  background: var(--vola-bg);
+  color: var(--vola-fg);
+}
+.vola-recovery-key {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  padding: 0.75rem;
+  border: 1px dashed var(--vola-border);
+  border-radius: var(--vola-radius);
+  text-align: center;
+  user-select: all;
+}
+.vola-lock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--vola-warning-bg);
+  color: var(--vola-warning);
+  border-radius: var(--vola-radius);
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* --- share --- */
+.vola-share__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 0.75rem;
+  align-items: end;
+}
+.vola-share__form .vola-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-bottom: 0.75rem;
+}
+.vola-share__link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+.vola-share__link .vola-field {
+  flex: 1;
+  margin: 0;
+}
+.vola-share__heading {
+  font-size: 0.875rem;
+  margin: 0.75rem 0 0.375rem;
+}
+.vola-share__list,
+.vola-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.vola-share__item,
+.vola-versions__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--vola-border);
+  border-radius: var(--vola-radius);
+  padding: 0.375rem 0.625rem;
+}
+.vola-share__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  color: var(--vola-muted);
+}

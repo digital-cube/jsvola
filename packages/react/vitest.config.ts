@@ -14,9 +14,15 @@ export default defineConfig({
   test: {
     name: "react",
     root: src("."),
-    include: ["test/**/*.test.tsx"],
+    include: ["test/**/*.test.{ts,tsx}"],
     environment: "jsdom",
     setupFiles: ["test/setup.ts"],
+    server: {
+      deps: {
+        // @jsudc/react is a real package in node_modules; inline it so Vite transforms its subpaths.
+        inline: [/@jsudc\/react/],
+      },
+    },
     coverage: {
       include: ["src/**/*.{ts,tsx}"],
       reporter: ["text", "html", "json-summary"],
