@@ -36,7 +36,7 @@
 - **Brute-force i recovery doslovno kao u Notes-u:** tabela 0/0/0/1 s/5 s/30 s×5/1 h pa dupliranje, `SET NX` mutex, `429` čak i za tačan PIN dok traje lock, recovery 8×4 base32 prikazan jednom, normalizacija `0→O 1→I`.
 - **Šifrovan fajl:** nema dedup-a (CAS hash = hash šifrata, hash čistog teksta se nikad ne čuva), storage vidi `application/octet-stream`, `is_global_public` je zabranjen, odgovori imaju `no-store` + `nosniff`, `inline` samo za sniff-ovane slike. Worker preskače šifrovane fajlove. Thumbnail i OCR su šifrovani „sibling“ blobovi pod istim FK, napravljeni u zahtevu koji drži ključ.
 - **Share šifrovanog fajla** je opt-in „share grant“: FK ponovo umotan pod tajnu `S` iz fragmenta linka (`/vola/s/<id>#<S>`). Opoziv je brisanje reda. Nije moguć u `caller` modu.
-- **Grešek:** integrity → `409 vola_integrity` (fiksna rečenica); svaki loš ili istekao token → `423 vola_locked`; zaključan keyring → `429` + `Retry-After`. Nikad ime, PIN, ključ ni token u logu, metapodacima, memento događaju ili URL-u.
+- **Greške:** integrity → `409 vola_integrity` (fiksna rečenica); svaki loš ili istekao token → `423 vola_locked`; zaključan keyring → `429` + `Retry-After`. Nikad ime, PIN, ključ ni token u logu, metapodacima, memento događaju ili URL-u.
 
 ## Zajednički ugovor API-ja (svi tiketi ga poštuju)
 
@@ -67,23 +67,23 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 
 | # | tiket | suština |
 |---|---|---|
-| 1.1 | TCK… | Scaffold monorepo, compose, Dockerfile, CI, health, config |
-| 1.2 | TCK… | Tenant, API ključevi, auth, scope-ovi, CLI, `/vola/keys` |
-| 2.1 | TCK… | CAS storage, streaming upload, download sa Range/HEAD, slug, soft delete, purge |
-| 2.2 | TCK… | Folderi, move, verzije, visibility, `/vola/public` |
-| 2.3 | TCK… | Resumable upload (`/vola/uploads`) |
-| 3.1 | TCK… | `@vola/lookups`, UDC kolekcija `files`, instance-types |
-| 3.2 | TCK… | Real-time: UDC subscribe preko WebSocket-a |
-| 4.1 | TCK… | BullMQ worker, processing jobs, thumbnails (slike + PDF) |
-| 4.2 | TCK… | OCR (tesseract + pdftoppm), `vola_file_metadata` |
-| 5.1 | TCK… | Share linkovi + statistika |
-| 5.2 | TCK… | Admin transfer + memento audit |
-| 6.1 | TCK… | Šifrovanje I: format `JSV`, FK, `tenant` provider, šifrovan upload/download/Range |
-| 6.2 | TCK… | Šifrovanje II: keyring (PIN), unlock, brute-force, recovery, reset, šifrovani folderi |
-| 6.3 | TCK… | Šifrovanje III: `caller` provider, šifrovan resumable, šifrovani thumbnail/OCR, share grant |
-| 7.1 | TCK… | `@vola/client` SDK |
-| 7.2 | TCK… | `@vola/react` |
-| 8.1 | TCK… | `apps/examples` + stage compose |
-| 8.2 | TCK… | Dokumentacija + npm release |
+| 1.1 | TCKW73Q7EJ | Scaffold monorepo, compose, Dockerfile, CI, health, config |
+| 1.2 | TCKMP7M57K | Tenant, API ključevi, auth, scope-ovi, CLI, `/vola/keys` |
+| 2.1 | TCK5HPYMY2 | CAS storage, streaming upload, download sa Range/HEAD, slug, soft delete, purge |
+| 2.2 | TCKM5DHJTH | Folderi, move, verzije, visibility, `/vola/public` |
+| 2.3 | TCKNPKC9XY | Resumable upload (`/vola/uploads`) |
+| 3.1 | TCKUHMFRRQ | `@vola/lookups`, UDC kolekcija `files`, instance-types |
+| 3.2 | TCKFQMCFDT | Real-time: UDC subscribe preko WebSocket-a |
+| 4.1 | TCKXQCJ2YY | BullMQ worker, processing jobs, thumbnails (slike + PDF) |
+| 4.2 | TCKPK3YTKR | OCR (tesseract + pdftoppm), `vola_file_metadata` |
+| 5.1 | TCKKQHMDJT | Share linkovi + statistika |
+| 5.2 | TCK59T5P65 | Admin transfer + memento audit |
+| 6.1 | TCKK5UTHJX | Šifrovanje I: format `JSV`, FK, `tenant` provider, šifrovan upload/download/Range |
+| 6.2 | TCKFT692JH | Šifrovanje II: keyring (PIN), unlock, brute-force, recovery, reset, šifrovani folderi |
+| 6.3 | TCKQ7JWCRJ | Šifrovanje III: `caller` provider, šifrovan resumable, šifrovani thumbnail/OCR, share grant |
+| 7.1 | TCKX7RMHKF | `@vola/client` SDK |
+| 7.2 | TCK9NUHWW6 | `@vola/react` |
+| 8.1 | TCKKR2PUDE | `apps/examples` + stage compose |
+| 8.2 | TCKT9JUU59 | Dokumentacija + npm release |
 
-NON-AI: deploy ključ `github_jsvola`; stage hostname i server za examples.
+NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples).
