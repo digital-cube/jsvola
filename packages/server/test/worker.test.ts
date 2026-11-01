@@ -53,7 +53,14 @@ beforeAll(async () => {
   storage = new FilesystemBackend(root);
   events = new LocalFileEventBus();
   queue = new ProcessingQueue({ redisUrl, prefix, backoffMs: 20 });
-  fx = await setupFixture(handle, { storage, events, jobs: queue, uploadSweepIntervalMs: 0 });
+  // OCR (4.2) is exercised by ocr.test.ts; this suite counts THUMBNAIL rows and events only.
+  fx = await setupFixture(handle, {
+    config: { ...config, ocr: { ...config.ocr, enabled: false } },
+    storage,
+    events,
+    jobs: queue,
+    uploadSweepIntervalMs: 0,
+  });
   app = fx.app;
   await app.ready();
   http = httpClient(app, fx.full.key, TYPE);

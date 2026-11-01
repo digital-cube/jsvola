@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TimestampSchema } from "./apikey.js";
-import { ProcessingStatusSchema } from "./processing.js";
+import { OcrInfoSchema, ProcessingStatusSchema } from "./processing.js";
 
 /** What a file is, derived from its MIME type (the `FileKinds` vocabulary). */
 export const FILE_KINDS = [
@@ -82,6 +82,10 @@ export const FileInfoSchema = z.object({
   processing_status: ProcessingStatusSchema.nullable(),
 });
 export type FileInfo = z.infer<typeof FileInfoSchema>;
+
+/** `GET …/:fileId/info`: a `FileInfo` plus the `ocr` block (see `OcrInfoSchema`). */
+export const FileDetailSchema = FileInfoSchema.extend({ ocr: OcrInfoSchema });
+export type FileDetail = z.infer<typeof FileDetailSchema>;
 
 /** `GET /files/:type/:id` — one page, newest first; `next_cursor` feeds `?cursor=`. */
 export const FileListSchema = z.object({

@@ -164,9 +164,14 @@ async function setupJobs(
     app.addHook("onClose", async () => owned.close());
     queue = owned;
   }
-  const dispatcher = new QueuedJobDispatcher({ db: options.db, queue, logger: app.log });
+  const dispatcher = new QueuedJobDispatcher({
+    db: options.db,
+    queue,
+    logger: app.log,
+    ocr: options.config.ocr.enabled !== false,
+  });
   app.log.info(
-    { queue: queue.queue.name, prefix: queue.prefix },
+    { queue: queue.queue.name, prefix: queue.prefix, ocr: dispatcher.ocr },
     "background jobs: async (worker)",
   );
   return { jobs: { queue, dispatcher }, jobsMode: "async" };

@@ -40,6 +40,11 @@ export interface SqlField {
   expr?: SQLWrapper | undefined;
   /** Default true; `false` for a field that may be filtered but not sorted. */
   sortable?: boolean | undefined;
+  /**
+   * A field that compiles its own conditions (a full-text search): called first for every
+   * condition on it; `undefined` falls back to the generic handling of `expr` and `kind`.
+   */
+  condition?: ((c: Condition) => SQL | undefined) | undefined;
 }
 
 /** `%`, `_` and `\` of a LIKE pattern literal, escaped (PostgreSQL's default escape is `\`). */
@@ -137,7 +142,9 @@ export class SqlFilterCompiler {
   }
 
   private condition(c: Condition): SQL {
-    const { expr, kind } = this.field(c.field);
+    const { expr, kind, condition } = this.field(c.field);
+    const own = condition?.(c);
+    if (own) return own;
     if (kind === "json" && c.op !== "is_null" && c.op !== "is_not_null") {
       throw new UdcError("validation_error", `${c.field} allows only is_null / is_not_null`);
     }

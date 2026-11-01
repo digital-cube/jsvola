@@ -48,8 +48,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: System tools the thumbnail tests need (pdftoppm)
-        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends poppler-utils
+      - name: System tools the thumbnail and OCR tests need (pdftoppm, tesseract eng+srp+deu)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends poppler-utils \
+            tesseract-ocr tesseract-ocr-eng tesseract-ocr-srp tesseract-ocr-deu
+          tesseract --version | head -1 && tesseract --list-langs
       - name: Lint (Biome)
         run: pnpm lint
       - name: Type check

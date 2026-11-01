@@ -1,7 +1,9 @@
 import {
   type Capabilities,
+  type Condition,
   evaluateFilter,
   type FilterNode,
+  isCondition,
   type ListResponse,
   MAX_PAGE_LIMIT,
   type Row,
@@ -16,7 +18,7 @@ import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } fr
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
-import { type FileRow, files, folders } from "../db/schema.js";
+import { type FileRow, fileMetadata, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
 import { processingStatusByFile } from "../services/processing.js";
 import { decodePageCursor, encodePageCursor, type PageCursor } from "./cursor.js";
@@ -40,13 +42,21 @@ export const INSTANCE_TYPE_FILTER = "instance_type";
 export const INSTANCE_ID_FILTER = "instance_id";
 /** `eq true`: soft-deleted files are listed too. */
 export const INCLUDE_DELETED_FILTER = "include_deleted";
+/**
+ * Row: whether OCR text was extracted. Filter: `contains <words>` (or `eq <words>`) is a
+ * full-text search over the text, `plainto_tsquery('simple', …)` against the GIN-indexed
+ * `ocr_tsv`; `eq true|false`, `is_not_null` / `is_null` select files with / without text.
+ */
+export const OCR_FILTER = "ocr";
 export const FILES_DEFAULT_PAGE_SIZE = 50;
 export const FILES_DEFAULT_SORT: SortKey = { field: "created_at", dir: "desc" };
 
-/** One record of the query: the file and the path of its folder (`null` at the root). */
+/** One record of the query: the file, the path of its folder (`null` at the root), its OCR flag. */
 export interface FileRecord {
   file: FileRow;
   folderPath: string | null;
+  /** `vola_file_metadata.ocr_text` is there and not empty. */
+  hasOcr: boolean;
   /** The aggregate of the file's processing jobs, attached by `toRows` (one query per page). */
   processingStatus?: ProcessingStatus | null | undefined;
 }
@@ -107,6 +117,53 @@ const maskedExtension = sql<
 >`case when ${files.encryption} = 'none' then ${files.extension} end`;
 const folderPath = sql<string>`coalesce(${folders.path}, '')`;
 const isDeleted = sql<boolean>`${files.deletedAt} is not null`;
+const hasOcr = sql<boolean>`coalesce(${fileMetadata.ocrText}, '') <> ''`;
+
+/** `true` / `false` of a filter value, `null` for anything that is not one. */
+function booleanValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "1" || value === 1) return true;
+  if (value === "false" || value === "0" || value === 0) return false;
+  return null;
+}
+
+/** `true` when the condition searches the OCR TEXT (not the yes/no flag). */
+function isOcrTextSearch(c: Condition): boolean {
+  if (c.field !== OCR_FILTER) return false;
+  if (c.op === "contains") return true;
+  return (c.op === "eq" || c.op === "neq") && booleanValue(c.value) === null;
+}
+
+/** `true` when the filter has a condition the rows alone cannot answer (an OCR text search). */
+export function needsSqlMatch(node: FilterNode | undefined): boolean {
+  if (!node) return false;
+  if (isCondition(node)) return isOcrTextSearch(node);
+  if ("and" in node) return node.and.some(needsSqlMatch);
+  if ("or" in node) return node.or.some(needsSqlMatch);
+  return needsSqlMatch(node.not);
+}
+
+/** The SQL of a condition on `ocr`: a full-text match, or the yes/no flag. */
+function ocrCondition(c: Condition): SQL | undefined {
+  if (c.op === "is_null") return sql`not ${hasOcr}`;
+  if (c.op === "is_not_null") return hasOcr;
+  if (c.op === "contains" || c.op === "eq" || c.op === "neq") {
+    const flag = c.op === "contains" ? null : booleanValue(c.value);
+    if (flag !== null) return flag === (c.op === "eq") ? hasOcr : sql`not ${hasOcr}`;
+    if (c.value === null || c.value === undefined || typeof c.value === "object") {
+      throw new UdcError("validation_error", `${OCR_FILTER} needs the words to search for`);
+    }
+    const words = String(c.value).trim();
+    if (words === "") return sql`false`;
+    const match = sql`${fileMetadata.ocrTsv} @@ plainto_tsquery('simple', ${words})`;
+    return c.op === "neq" ? sql`not coalesce(${match}, false)` : match;
+  }
+  throw new UdcError(
+    "validation_error",
+    `"${c.op}" is not an op of ${OCR_FILTER} (contains, eq, neq, is_null, is_not_null)`,
+    { field: OCR_FILTER },
+  );
+}
 
 const text = (
   expr: SQLWrapper | undefined,
@@ -317,6 +374,18 @@ export function filesFields(prefix: string): Record<string, FileField> {
       value: (r) => r.file.deletedAt !== null,
       sortable: false,
     },
+    [OCR_FILTER]: {
+      def: {
+        type: "bool",
+        description:
+          "Row: whether OCR text was extracted (yes/no). Filter: `contains <words>` searches the OCR text (full-text, every language alike); `eq true|false` / `is_not_null` / `is_null` select files with or without text.",
+      },
+      kind: "bool",
+      expr: hasOcr,
+      value: (r) => r.hasOcr,
+      sortable: false,
+      condition: ocrCondition,
+    },
   };
 }
 
@@ -396,6 +465,7 @@ export class FilesCollectionSource implements SubscribableSource {
         .select({ total: count() })
         .from(files)
         .leftJoin(folders, eq(folders.id, files.folderId))
+        .leftJoin(fileMetadata, eq(fileMetadata.fileId, files.id))
         .where(where),
     ]);
     const page = records.slice(0, limit);
@@ -556,7 +626,15 @@ export class FilesCollectionSource implements SubscribableSource {
     const gone = !record || (record.file.deletedAt !== null && !target.includeDeleted);
     if (!gone) {
       const [row] = await this.toRows([record], target.tenant);
-      if (row && this.matches(target.filter, row)) return { sink: target.sink, upsert: row };
+      const matched = needsSqlMatch(target.filter)
+        ? await this.matchesInSql(
+            target.tenant,
+            record.file.id,
+            target.filter,
+            target.includeDeleted,
+          )
+        : row !== undefined && this.matches(target.filter, row);
+      if (row && matched) return { sink: target.sink, upsert: row };
     }
     return event.kind === "created" ? null : { sink: target.sink, remove: event.fileId };
   }
@@ -616,10 +694,37 @@ export class FilesCollectionSource implements SubscribableSource {
 
   private select() {
     return this.db
-      .select({ file: files, folderPath: folders.path })
+      .select({ file: files, folderPath: folders.path, hasOcr })
       .from(files)
       .leftJoin(folders, eq(folders.id, files.folderId))
+      .leftJoin(fileMetadata, eq(fileMetadata.fileId, files.id))
       .$dynamic();
+  }
+
+  /**
+   * Whether the file `fileId` of `tenantId` matches `filter` as a `list` would see it: the
+   * check in SQL for a filter the row cannot answer (an OCR text search).
+   */
+  private async matchesInSql(
+    tenant: BoundTenantContext,
+    fileId: string,
+    filter: FilterNode | undefined,
+    includeDeleted: boolean,
+  ): Promise<boolean> {
+    const where = and(
+      eq(files.tenantId, tenant.tenantId),
+      eq(files.id, fileId),
+      includeDeleted ? undefined : isNull(files.deletedAt),
+      filter ? this.compiler.compile(filter) : undefined,
+    );
+    const [row] = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .leftJoin(folders, eq(folders.id, files.folderId))
+      .leftJoin(fileMetadata, eq(fileMetadata.fileId, files.id))
+      .where(where)
+      .limit(1);
+    return row !== undefined;
   }
 
   /** The tenant, the soft-delete rule and the request's filter (without `include_deleted`). */

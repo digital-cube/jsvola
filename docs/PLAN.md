@@ -49,7 +49,7 @@ standalone. Greške su `{error: {code, message}}`; kodovi su snake_case i stabil
   - `GET /vola/health/live|ready`
   - `POST|GET /vola/keys`, `DELETE /vola/keys/:id`
   - `POST /vola/files/:type/:id` (multipart), `PUT /vola/files/:type/:id/slug/:slug`
-  - `GET|HEAD /vola/files/:type/:id/:fileId` (Range), `…/path/*`, `…/slug/:slug`, `…/:fileId/info`, `…/:fileId/thumb/:size?crop=` (200 ready / 202 generating, 4.1)
+  - `GET|HEAD /vola/files/:type/:id/:fileId` (Range), `…/path/*`, `…/slug/:slug`, `…/:fileId/info` (+ `ocr` block, `?ocr=full`, 4.2), `…/:fileId/thumb/:size?crop=` (200 ready / 202 generating, 4.1)
   - `PATCH /vola/files/:type/:id/:fileId` (`{folder_path?, is_public?, is_global_public?, filename?}`), `DELETE …/:fileId` (soft), `DELETE …/:fileId/purge`
   - `POST|GET|PATCH|DELETE /vola/folders/:type/:id/*path`
   - `POST /vola/uploads`, `HEAD|PATCH|DELETE /vola/uploads/:uploadId` (tus 1.0 core semantika, implementirana nativno)

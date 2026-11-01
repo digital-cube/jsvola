@@ -36,6 +36,13 @@
       "when": 1793553358540,
       "tag": "0004_processing_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793555137880,
+      "tag": "0005_file_metadata",
+      "breakpoints": true
     }
   ]
 }

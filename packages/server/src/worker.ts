@@ -10,6 +10,7 @@ import { ConfigError, loadConfig } from "./config.js";
 import { connect } from "./db/index.js";
 import { createFileEventBus } from "./events/bus.js";
 import { ProcessingWorker } from "./jobs/worker.js";
+import { OcrSetupError } from "./services/ocr.js";
 import { FilesystemBackend } from "./storage/index.js";
 import { PartStore } from "./uploads/part-store.js";
 
@@ -46,6 +47,7 @@ const worker = new ProcessingWorker({
     ttlMs: config.uploadTtlHours * 3_600_000,
     maxUploadBytes: config.maxUploadBytes,
   },
+  ocr: config.ocr,
 });
 
 let closing = false;
@@ -63,12 +65,25 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => void shutdown(signal));
 }
 
-await worker.ready();
+try {
+  await worker.ready();
+} catch (error) {
+  if (error instanceof OcrSetupError) {
+    log.fatal(error.message);
+    await worker.close().catch(() => undefined);
+    await events.close().catch(() => undefined);
+    await database.close().catch(() => undefined);
+    process.exit(1);
+  }
+  throw error;
+}
+const ocr = worker.ocrAvailability();
 log.info(
   {
     concurrency: config.worker.concurrency,
     queue: `${config.worker.queuePrefix}:vola-processing`,
     storage: config.storagePath,
+    ocr: ocr.enabled ? `${ocr.version}, ${ocr.langs.join("+")}` : `off (${ocr.reason})`,
   },
   "vola worker ready",
 );

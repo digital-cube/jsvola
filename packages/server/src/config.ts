@@ -1,4 +1,11 @@
 import { resolve } from "node:path";
+import {
+  DEFAULT_OCR_LANGS,
+  DEFAULT_OCR_MAX_PAGES,
+  DEFAULT_OCR_TIMEOUT_S,
+  type OcrLanguage,
+  parseOcrLangs,
+} from "@vola/core";
 import { z } from "zod";
 import { DEFAULT_LOOKUPS_PATH } from "./lookups.js";
 import { DEFAULT_MENU_PATH } from "./udc/menu.js";
@@ -19,6 +26,21 @@ const boolean = (fallback: boolean) =>
       if (["true", "1", "yes", "on"].includes(v)) return true;
       if (["false", "0", "no", "off"].includes(v)) return false;
       ctx.addIssue({ code: "custom", message: "must be true or false" });
+      return z.NEVER;
+    });
+
+/** `auto|true|false|1|0|yes|no|on|off`, case-insensitive; unset → `auto`. */
+const autoBoolean = () =>
+  z
+    .string()
+    .optional()
+    .transform((value, ctx): "auto" | boolean => {
+      if (value === undefined) return "auto";
+      const v = value.trim().toLowerCase();
+      if (v === "auto") return "auto";
+      if (["true", "1", "yes", "on"].includes(v)) return true;
+      if (["false", "0", "no", "off"].includes(v)) return false;
+      ctx.addIssue({ code: "custom", message: "must be auto, true or false" });
       return z.NEVER;
     });
 
@@ -52,18 +74,21 @@ const ConfigSchema = z.object({
   VOLA_RECORD_CANDIDATES: boolean(true),
   VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
   VOLA_MENU_PATH: z.string().min(1).optional(),
-  VOLA_WORKER_ENABLED: z
+  VOLA_WORKER_ENABLED: autoBoolean(),
+  VOLA_OCR_ENABLED: autoBoolean(),
+  VOLA_OCR_LANGS: z
     .string()
     .optional()
-    .transform((value, ctx): "auto" | boolean => {
-      if (value === undefined) return "auto";
-      const v = value.trim().toLowerCase();
-      if (v === "auto") return "auto";
-      if (["true", "1", "yes", "on"].includes(v)) return true;
-      if (["false", "0", "no", "off"].includes(v)) return false;
-      ctx.addIssue({ code: "custom", message: "must be auto, true or false" });
-      return z.NEVER;
+    .transform((value, ctx): OcrLanguage[] => {
+      try {
+        return parseOcrLangs(value ?? DEFAULT_OCR_LANGS);
+      } catch (error) {
+        ctx.addIssue({ code: "custom", message: (error as Error).message });
+        return z.NEVER;
+      }
     }),
+  VOLA_OCR_MAX_PAGES: z.coerce.number().int().min(1).max(1000).default(DEFAULT_OCR_MAX_PAGES),
+  VOLA_OCR_TIMEOUT_S: z.coerce.number().int().min(1).max(3600).default(DEFAULT_OCR_TIMEOUT_S),
   VOLA_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
   VOLA_QUEUE_PREFIX: z
     .string()
@@ -113,7 +138,25 @@ export interface Config {
   subscribe: SubscribeConfig;
   /** Background jobs: the BullMQ queue and the worker process. */
   worker: WorkerConfig;
+  /** OCR (plan 4.2): whether, in which languages, how many pages, how long. */
+  ocr: OcrConfig;
   logLevel: LogLevel;
+}
+
+export interface OcrConfig {
+  /**
+   * `VOLA_OCR_ENABLED`: `auto` (default) — the server queues an `OCR` job for every eligible
+   * upload and the worker runs it when `tesseract` is installed (checked once at its start;
+   * without it the jobs are `SKIPPED`); `true` — the worker refuses to start without
+   * `tesseract`; `false` — no `OCR` job is ever created.
+   */
+  enabled: "auto" | boolean;
+  /** `VOLA_OCR_LANGS` (`eng+srp+deu`): tesseract's `-l`, every code from the `OcrLanguages` vocabulary. */
+  langs: OcrLanguage[];
+  /** `VOLA_OCR_MAX_PAGES`: pages of a PDF the OCR reads, from the first. Default 20. */
+  maxPages: number;
+  /** `VOLA_OCR_TIMEOUT_S`: seconds one page (or one image) may take. Default 120. */
+  timeoutS: number;
 }
 
 export interface WorkerConfig {
@@ -186,6 +229,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       enabled: c.VOLA_WORKER_ENABLED,
       concurrency: c.VOLA_WORKER_CONCURRENCY,
       queuePrefix: c.VOLA_QUEUE_PREFIX,
+    },
+    ocr: {
+      enabled: c.VOLA_OCR_ENABLED,
+      langs: c.VOLA_OCR_LANGS,
+      maxPages: c.VOLA_OCR_MAX_PAGES,
+      timeoutS: c.VOLA_OCR_TIMEOUT_S,
     },
     logLevel: c.VOLA_LOG_LEVEL,
   };

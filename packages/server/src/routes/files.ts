@@ -1,9 +1,11 @@
 import fastifyMultipart from "@fastify/multipart";
 import {
+  type FileDetail,
   type FileInfo,
   type FileList,
   FilePatchSchema,
   type FileVersions,
+  OCR_QUERY_FULL,
   type PurgeResult,
   splitFilePath,
   UPLOAD_FILE_FIELD,
@@ -46,6 +48,7 @@ import {
   parsePath,
   resolveFolderId,
 } from "../services/folders.js";
+import { ocrInfoOf } from "../services/ocr.js";
 import type { StorageBackend } from "../storage/index.js";
 import { type DownloadQuery, flag, sendFile } from "./send-file.js";
 
@@ -90,6 +93,8 @@ interface ListQuery {
 }
 interface InfoQuery {
   include_deleted?: string;
+  /** `full`: the whole OCR text under `ocr.text` (the preview is always there). */
+  ocr?: string;
 }
 
 /**
@@ -102,7 +107,8 @@ interface InfoQuery {
  *   (upsert of a named file) — `files:write`;
  * - `GET|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` — `files:read`: `Range`/`206`,
  *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`;
- * - `GET …/:fileId/info` (with the aggregate `processing_status` of its jobs),
+ * - `GET …/:fileId/info` (with the aggregate `processing_status` of its jobs and the `ocr`
+ *   block: status, language, pages, the first 500 characters; `?ocr=full` the whole text),
  *   `…/:fileId/versions`, `GET /files/:type/:id` (cursor list) — `files:read`;
  * - `GET|HEAD …/:fileId/thumb/:size` lives in `thumbnailRoutes`;
  * - `PATCH …/:fileId` (move, rename, visibility) — `files:write`;
@@ -290,16 +296,24 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     },
   });
 
-  /** Metadata without the bytes (and never `fk_ct` / `meta_ct`). `?include_deleted=1` sees a soft-deleted file. */
+  /**
+   * Metadata without the bytes (and never `fk_ct` / `meta_ct`), plus the `ocr` block.
+   * `?include_deleted=1` sees a soft-deleted file; `?ocr=full` adds the whole OCR text.
+   */
   app.get<{ Params: FileParams; Querystring: InfoQuery }>(
     "/files/:type/:id/:fileId/info",
     { config: READ },
-    async (request): Promise<FileInfo> => {
+    async (request): Promise<FileDetail> => {
       const scope = scopeOf(request);
       const row = flag(request.query.include_deleted)
         ? await findFile(service, scope, request.params.fileId, { includeDeleted: true })
         : await findReadableFile(service, scope, request.params.fileId);
-      return withProcessingStatus(service, row);
+      const full = (request.query.ocr ?? "").toLowerCase() === OCR_QUERY_FULL;
+      const [info, ocr] = await Promise.all([
+        withProcessingStatus(service, row),
+        ocrInfoOf(deps.db, row.id, { full }),
+      ]);
+      return { ...info, ocr };
     },
   );
 

@@ -22,6 +22,8 @@ services:
       VOLA_PREFIX: ${VOLA_PREFIX:-/vola}
       VOLA_LOG_LEVEL: ${VOLA_LOG_LEVEL:-info}
       VOLA_STORAGE_PATH: /data/storage
+      # `0` here means no OCR job is ever queued (the worker's own setting decides whether it runs).
+      VOLA_OCR_ENABLED: ${VOLA_OCR_ENABLED:-auto}
     ports:
       - "${VOLA_HOST_PORT:-8300}:8300"
     volumes:
@@ -34,7 +36,7 @@ services:
       start_period: 20s
       retries: 5
 
-  # The background worker (thumbnails, later OCR): the SAME image, `node dist/worker.js`, the
+  # The background worker (thumbnails, OCR): the SAME image, `node dist/worker.js`, the
   # SAME /data volume (thumbnails are written next to the blobs). Starts after `vola` is healthy,
   # i.e. after the migrations ran. Scale it with `--scale vola-worker=N`.
   vola-worker:

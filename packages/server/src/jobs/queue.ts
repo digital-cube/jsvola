@@ -12,6 +12,8 @@ export const DEFAULT_QUEUE_PREFIX = "vola";
 export const SWEEP_UPLOADS_JOB = "sweep-uploads";
 /** The job name of one thumbnail rendition. */
 export const THUMBNAIL_JOB = "thumbnail";
+/** The job name of the OCR pass of one file (plan 4.2). */
+export const OCR_JOB = "ocr";
 /** Base of the exponential backoff between the tries of a job, in ms. */
 export const DEFAULT_BACKOFF_MS = 1000;
 
@@ -25,7 +27,15 @@ export interface ThumbnailJobData {
   crop: ThumbnailCrop;
 }
 
-export type ProcessingJobData = ThumbnailJobData | Record<string, never>;
+/** What an `ocr` job carries; the languages and limits are the worker's configuration. */
+export interface OcrJobData {
+  /** `vola_processing_job.id` — also the BullMQ job id. */
+  jobId: string;
+  tenantId: string;
+  fileId: string;
+}
+
+export type ProcessingJobData = ThumbnailJobData | OcrJobData | Record<string, never>;
 
 export interface ProcessingQueueOptions {
   redisUrl: string;
@@ -82,10 +92,23 @@ export class ProcessingQueue {
     data: ThumbnailJobData,
     options: { replace?: boolean } = {},
   ): Promise<void> {
+    await this.enqueue(THUMBNAIL_JOB, data, options);
+  }
+
+  /** Queues the OCR pass of one file under the id of its processing row (`replace` as above). */
+  async enqueueOcr(data: OcrJobData, options: { replace?: boolean } = {}): Promise<void> {
+    await this.enqueue(OCR_JOB, data, options);
+  }
+
+  private async enqueue(
+    name: string,
+    data: ThumbnailJobData | OcrJobData,
+    options: { replace?: boolean },
+  ): Promise<void> {
     if (options.replace) {
       await this.queue.remove(data.jobId).catch(() => undefined);
     }
-    await this.queue.add(THUMBNAIL_JOB, data, { ...this.jobOptions, jobId: data.jobId });
+    await this.queue.add(name, data, { ...this.jobOptions, jobId: data.jobId });
   }
 
   /** Keeps the expired-upload sweep running every `everyMs` (one scheduler, shared by every server). */

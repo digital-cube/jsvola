@@ -78,3 +78,74 @@ export function thumbnailSupported(mimeType: string): boolean {
   if (mimeType === "application/pdf") return true;
   return mimeType.startsWith("image/") && mimeType !== "image/svg+xml";
 }
+
+// --- OCR (plan 4.2) ------------------------------------------------------------------------
+
+/** The tesseract language codes the OCR job may run with (the `OcrLanguages` vocabulary). */
+export const OCR_LANGUAGES = ["eng", "srp", "deu"] as const;
+export type OcrLanguage = (typeof OCR_LANGUAGES)[number];
+export const OcrLanguageSchema = z.enum(OCR_LANGUAGES);
+/** `VOLA_OCR_LANGS` when unset: every language the image ships. */
+export const DEFAULT_OCR_LANGS = "eng+srp+deu";
+/** Most pages of a PDF the OCR reads (`VOLA_OCR_MAX_PAGES`). */
+export const DEFAULT_OCR_MAX_PAGES = 20;
+/** Seconds one page (or one image) may take (`VOLA_OCR_TIMEOUT_S`). */
+export const DEFAULT_OCR_TIMEOUT_S = 120;
+/** How much of the text `…/info` carries in `ocr.text_preview`. */
+export const OCR_TEXT_PREVIEW_LENGTH = 500;
+/** `?ocr=full` on `…/info`: the whole text under `ocr.text`. */
+export const OCR_QUERY = "ocr";
+export const OCR_QUERY_FULL = "full";
+/** What the pages of a PDF are joined with in `ocr_text`. */
+export const OCR_PAGE_SEPARATOR = "\f";
+
+/**
+ * `VOLA_OCR_LANGS` (`eng+srp+deu`) as the list tesseract's `-l` takes. Throws a `TypeError`
+ * naming the first language the vocabulary does not know, or when the list is empty.
+ */
+export function parseOcrLangs(spec: string): OcrLanguage[] {
+  const langs = spec
+    .split("+")
+    .map((l) => l.trim().toLowerCase())
+    .filter((l) => l !== "");
+  if (langs.length === 0) throw new TypeError("no language given (eng+srp+deu, for example)");
+  const out: OcrLanguage[] = [];
+  for (const lang of langs) {
+    if (!(OCR_LANGUAGES as readonly string[]).includes(lang)) {
+      throw new TypeError(
+        `unknown OCR language "${lang}" (OcrLanguages: ${OCR_LANGUAGES.join(", ")})`,
+      );
+    }
+    if (!out.includes(lang as OcrLanguage)) out.push(lang as OcrLanguage);
+  }
+  return out;
+}
+
+/**
+ * `true` for a MIME type the OCR job reads: raster images except SVG (no pixels) and GIF
+ * (animations, no text worth the pass), and PDF.
+ */
+export function ocrSupported(mimeType: string): boolean {
+  if (mimeType === "application/pdf") return true;
+  return mimeType.startsWith("image/") && mimeType !== "image/svg+xml" && mimeType !== "image/gif";
+}
+
+/** `true` when the worker will OCR this file: a supported type that is not encrypted. */
+export function isOcrEligible(file: { mimeType: string; encryption: string }): boolean {
+  return file.encryption === "none" && ocrSupported(file.mimeType);
+}
+
+/**
+ * The `ocr` block of `…/info`: `status` is the OCR job's (`null`: no job was ever created —
+ * not eligible, or OCR off), `lang`, `pages` and `text_preview` (the first 500 characters)
+ * come from `vola_file_metadata` once a pass stored its text; `text` (the whole of it) only
+ * with `?ocr=full`.
+ */
+export const OcrInfoSchema = z.object({
+  status: ProcessingStatusSchema.nullable(),
+  lang: z.string().nullable(),
+  pages: z.number().int().nonnegative().nullable(),
+  text_preview: z.string().nullable(),
+  text: z.string().nullable().optional(),
+});
+export type OcrInfo = z.infer<typeof OcrInfoSchema>;

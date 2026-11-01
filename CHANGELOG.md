@@ -9,6 +9,30 @@ share one version.
 
 ### Added
 
+- OCR (plan 4.2). After every upload of a raster image (not SVG, not GIF) or a PDF with
+  `encryption = none` the server also queues one `OCR` job (`VOLA_OCR_ENABLED` = `auto` /
+  `1` / `0`); the worker runs the system `tesseract` — `tesseract <file> stdout -l <langs>`
+  for an image, `pdftoppm -r 200 -png` into a temporary directory and tesseract per page for a
+  PDF (at most `VOLA_OCR_MAX_PAGES` = 20 pages, the texts joined with `\f`), the tools spawned
+  with an argument list and no shell, `VOLA_OCR_TIMEOUT_S` (120) per page, stdout capped at
+  10 MiB, the temporary directory always removed — with the languages of `VOLA_OCR_LANGS`
+  (`eng+srp+deu`, from the `OcrLanguages` vocabulary; an unknown or uninstalled one is a clear
+  error at start). In `auto` mode the worker probes `tesseract --version` at its start and
+  skips the jobs (`SKIPPED`, one WARN line) when it is missing; with `1` it refuses to start.
+  New table `vola_file_metadata` (migration `0005_file_metadata`: `file_id` PK → `vola_file`
+  cascade, `tenant_id`, `ocr_text`, `ocr_lang`, `ocr_pages`, `ocr_at`, `ocr_tsv` — a stored
+  `tsvector` generated from the text with the `simple` configuration, GIN-indexed).
+  `GET …/:fileId/info` gains `ocr: {status, lang, pages, text_preview}` (the first 500
+  characters; `?ocr=full` adds `text`). The UDC `files` collection gains `ocr`: yes/no in the
+  row and the view's "OCR" column, and as a filter `contains <words>` is a full-text search
+  (`plainto_tsquery('simple', …)` over `ocr_tsv`), `eq true|false` / `is_null` /
+  `is_not_null` the flag; a live `subscribe` with such a filter is matched in SQL, so the row
+  arrives when its text is in. The worker publishes a `processing` event after every OCR job.
+  `@vola/core`: `OCR_LANGUAGES`, `parseOcrLangs`, `ocrSupported`, `isOcrEligible`,
+  `OcrInfoSchema`, `FileDetailSchema`, `OCR_TEXT_PREVIEW_LENGTH`, `OCR_PAGE_SEPARATOR`;
+  `@vola/server`: `services/ocr.ts` (`runCapped`, `probeTesseract`, `extractText`,
+  `saveOcrResult`, `ocrInfoOf`), `OCR_JOB`, `JobDispatcher.requestOcr`,
+  `ProcessingWorker.ocrAvailability()`. CI installs `tesseract-ocr` (eng, srp, deu).
 - Background jobs and thumbnails (plan 4.1). `@vola/server` gains a second process, the
   **worker** (`node dist/worker.js`, `pnpm start:worker`, the `vola-worker` compose service on
   the same image), consuming the BullMQ queue `vola-processing` on `VOLA_REDIS_URL` with

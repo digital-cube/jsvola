@@ -75,7 +75,8 @@ curl -X PUT -H "Authorization: Bearer $KEY" -F file=@me.png localhost:8300/vola/
 curl -H "Authorization: Bearer $KEY" -H "Range: bytes=0-1023" localhost:8300/vola/files/tickets/$TICKET/$FILE
 curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/files/tickets/$TICKET/$FILE?download=1"
 curl -H "Authorization: Bearer $KEY" localhost:8300/vola/files/users/$USER/slug/avatar
-curl -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE/info
+curl -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE/info            # + ocr: {status, lang, pages, text_preview}
+curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/files/tickets/$TICKET/$FILE/info?ocr=full"  # + ocr.text, the whole OCR text
 curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/files/tickets/$TICKET?limit=50&cursor=…&include_deleted=1"
 curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE        # soft
 curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE/purge  # → {files, blobs}
@@ -86,7 +87,7 @@ curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets
 | `POST /vola/files/:type/:id` | `files:write` | `file` part + optional `metadata`; `folder_path` (created when missing) or `folder_id` places it; `parent_id` makes it a new version; `413 file_too_large` over `VOLA_MAX_UPLOAD_BYTES` (512 MiB); `a.pdf` → `a (1).pdf` on a name collision in the same folder |
 | `PUT /vola/files/:type/:id/slug/:slug` | `files:write` | upsert of a named file |
 | `GET\|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` | `files:read` | `Accept-Ranges: bytes`, single `Range` → `206`, outside → `416`; `ETag: "<sha256>"`, `If-None-Match` → `304`; `X-Content-Type-Options: nosniff`; `?download=1`; `last_accessed_*` once a minute (GET only); by id also another tenant's `is_public` file |
-| `GET …/:fileId/info` | `files:read` | metadata, never `fk_ct`/`meta_ct`; `?include_deleted=1` |
+| `GET …/:fileId/info` | `files:read` | metadata, never `fk_ct`/`meta_ct`; `?include_deleted=1`; the `ocr` block (`status`, `lang`, `pages`, `text_preview` = the first 500 characters), `?ocr=full` adds `ocr.text` — see [OCR](#ocr--tesseract-in-the-worker) |
 | `GET …/:fileId/versions` | `files:read` | the version chain, newest first; `?include_deleted=1` |
 | `GET /vola/files/:type/:id` | `files:read` | `created_at desc, id desc`, `?cursor`, `?limit` ≤ 200, `?include_deleted=1` |
 | `PATCH …/:fileId` | `files:write` | `{folder_path}` moves (`""` = root), `{filename}` renames (`409 file_exists`), `{is_public}`, `{is_global_public}` (`409 encrypted_not_public` on an encrypted file) |
@@ -143,12 +144,52 @@ rules hold for every size: `[64, 128, 256, 512]`, anything else is `400`.
 The worker publishes a `processing` event after every job, so a live `files` list (see
 [Real-time](#real-time-get-volaudcsubscribe)) sees `processing_status` move without polling.
 
+### OCR — tesseract in the worker
+
+An upload of a raster image (not SVG, not GIF) or a PDF that is not encrypted also queues one
+`OCR` job. The worker runs the system `tesseract` on it — an image as it is, a PDF page by page
+after `pdftoppm -r 200 -png` rasterised the first `VOLA_OCR_MAX_PAGES` (20) pages, the texts
+joined with `\f` — with the languages of `VOLA_OCR_LANGS` (`eng+srp+deu`, every code from the
+`OcrLanguages` vocabulary; an unknown one stops the process at start, as does a language the
+installed tesseract lacks), `VOLA_OCR_TIMEOUT_S` (120) per page, stdout capped at 10 MiB, the
+tools spawned with an argument list (no shell) and the temporary directory always removed. The
+result lands in `vola_file_metadata` (`file_id`, `tenant_id`, `ocr_text`, `ocr_lang`,
+`ocr_pages`, `ocr_at` and `ocr_tsv`, a `tsvector` generated from the text with the `simple`
+configuration under a GIN index), one row per file, gone with the file.
+
+```sh
+curl -s -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE/info | jq .ocr
+# {"status": "DONE", "lang": "eng+srp+deu", "pages": 2, "text_preview": "INVOICE 2026-0042 …"}
+curl -s -H "Authorization: Bearer $KEY" "localhost:8300/vola/files/tickets/$TICKET/$FILE/info?ocr=full" | jq -r .ocr.text
+```
+
+`ocr.status` is the job's (`PENDING` → `RUNNING` → `DONE` | `FAILED` after 3 tries; `SKIPPED`
+when the worker cannot run OCR; `null` when no job was created — not eligible, or OCR off); the
+rest is `null` until a pass stored its text. The UDC `files` collection carries `ocr` as a yes/no
+column and as a filter: `{"field": "ocr", "op": "contains", "value": "invoice 0042"}` is a
+full-text search (`plainto_tsquery('simple', …)` over `ocr_tsv`: every word must occur, in any
+order, case does not matter, no stemming — the same for every language), `eq true|false` /
+`is_not_null` / `is_null` select files with or without text; a live `subscribe` with such a
+filter gets the row the moment its text is in (the worker publishes a `processing` event after
+every OCR job, as after every thumbnail).
+
+| `VOLA_OCR_ENABLED` | server | worker |
+|---|---|---|
+| `auto` *(default)* | queues an `OCR` job per eligible upload | runs it when `tesseract --version` succeeded at start; without tesseract one WARN line and every `OCR` job is `SKIPPED` |
+| `1` / `true` | the same | refuses to start without tesseract (exit 1, the reason on one line) |
+| `0` / `false` | never creates an `OCR` job | skips any it receives |
+
+The Docker image ships `tesseract-ocr` with `eng`, `srp` and `deu`; a worker on another host
+needs the same (`apt-get install tesseract-ocr tesseract-ocr-eng tesseract-ocr-srp
+tesseract-ocr-deu poppler-utils`). Out of scope here: encrypted files (phase 6.3 runs OCR under
+the file key), an AI summary, EXIF.
+
 #### Deployment without a worker (`VOLA_WORKER_ENABLED`)
 
 The worker is a second process of the same image (`node dist/worker.js`, `pnpm start:worker`);
 a deployment that does not run one is supported: thumbnails are rendered lazily on `/thumb`
-(`200`, the real WebP), nothing is recorded in `vola_processing_job`, OCR (phase 4.2) does not
-run. That is **not logged as an error** — one INFO line per process, `background jobs disabled`.
+(`200`, the real WebP), nothing is recorded in `vola_processing_job`, OCR does not run (`ocr.status`
+stays `null`). That is **not logged as an error** — one INFO line per process, `background jobs disabled`.
 
 | `VOLA_WORKER_ENABLED` | behaviour |
 |---|---|
@@ -289,11 +330,12 @@ curl -H "Authorization: Bearer vola_live_…" -H "Content-Type: application/json
 The `files` collection (`packages/server/udc/files/view.yaml` is its view) needs a top-level
 `instance_type` filter — without one the list is empty, as in vola-spp — and takes `instance_id`
 (optional: an admin's "every id of the type"), `folder_path` (that level only; `""` is the root),
-`filename`, `mime_type`, `extension`, `kind`, `size`, `created_at` (`between`, `gt`, …) and
-`include_deleted`; it sorts by `created_at`, `filename` or `size` and pages by an opaque cursor
-(`next_cursor` → `page.cursor`), with an exact `total`. Rows carry `download_url` and
-`thumb_url` (`…/thumb/256`: `200` ready, `202` while the worker renders, `404 no_thumbnail`),
-`kind` / `encryption` / `processing_status` as lookup values. An encrypted file shows `filename: "<encrypted>"` and no
+`filename`, `mime_type`, `extension`, `kind`, `size`, `created_at` (`between`, `gt`, …),
+`include_deleted` and `ocr` (`contains <words>`: a full-text search of the OCR text, see
+[OCR](#ocr--tesseract-in-the-worker)); it sorts by `created_at`, `filename` or `size` and pages by
+an opaque cursor (`next_cursor` → `page.cursor`), with an exact `total`. Rows carry `download_url`
+and `thumb_url` (`…/thumb/256`: `200` ready, `202` while the worker renders, `404 no_thumbnail`),
+`kind` / `encryption` / `processing_status` as lookup values and `ocr` (yes/no: text was extracted). An encrypted file shows `filename: "<encrypted>"` and no
 MIME type or extension — in rows, filters, sorts and cursors alike — until the phase-6 unlock
 puts the real ones back through the `decorateRow` hook of `volaPlugin`. `menu.yaml` is served
 as the `menu` collection (the sidebar of the examples site).
@@ -340,7 +382,8 @@ it) and records lookup candidates under `/data/candidates`. The stack runs two c
 the image: `vola` (`node dist/server.js`, applies migrations, listens) and `vola-worker`
 (`node dist/worker.js`, consumes the BullMQ queue); both mount the same `/data` volume, since
 thumbnails are written next to the blobs. The image ships `libvips`, `poppler-utils`
-(`pdftoppm`) and `tesseract-ocr` for the worker. Locally: `pnpm dev` and `pnpm dev:worker`.
+(`pdftoppm`) and `tesseract-ocr` (`eng`, `srp`, `deu`) for the worker. Locally: `pnpm dev` and
+`pnpm dev:worker`.
 
 ## License
 

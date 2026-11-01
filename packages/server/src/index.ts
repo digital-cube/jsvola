@@ -111,6 +111,8 @@ export {
 export {
   DEFAULT_BACKOFF_MS,
   DEFAULT_QUEUE_PREFIX,
+  OCR_JOB,
+  type OcrJobData,
   PROCESSING_QUEUE,
   type ProcessingJobData,
   ProcessingQueue,
@@ -122,8 +124,10 @@ export {
 } from "./jobs/queue.js";
 export {
   DEFAULT_WORKER_CONCURRENCY,
+  type OcrAvailability,
   ProcessingWorker,
   type ProcessingWorkerOptions,
+  type WorkerOcrOptions,
 } from "./jobs/worker.js";
 export {
   DEFAULT_LOOKUPS_PATH,
@@ -235,6 +239,30 @@ export {
   resolveFolderId,
   serializeFolder,
 } from "./services/folders.js";
+export {
+  DEFAULT_PDFTOPPM,
+  DEFAULT_TESSERACT,
+  extractText,
+  findFileMetadata,
+  OCR_MAX_OUTPUT_BYTES,
+  OCR_PDF_DPI,
+  OcrError,
+  type OcrErrorCode,
+  type OcrResult,
+  type OcrRunOptions,
+  type OcrSave,
+  OcrSetupError,
+  type OcrSource,
+  ocrInfoOf,
+  ocrJobStatus,
+  pdftoppmArgs,
+  probeTesseract,
+  type RunOptions,
+  runCapped,
+  saveOcrResult,
+  type TesseractProbe,
+  tesseractArgs,
+} from "./services/ocr.js";
 export {
   attachProcessingStatus,
   findJob,
