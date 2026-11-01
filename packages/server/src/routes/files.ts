@@ -15,6 +15,7 @@ import {
   UPLOAD_PARENT_ID_FIELD,
 } from "@vola/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
@@ -67,6 +68,8 @@ export interface FileRoutesDeps {
   events?: FileEventBus | undefined;
   /** Background jobs of a new file (`async` mode); absent in `sync` mode. */
   jobs?: JobDispatcher | undefined;
+  /** The audit trail: soft delete, purge, visibility change. */
+  audit?: AuditLog | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -123,12 +126,14 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     lookups: deps.lookups,
     events: deps.events,
     jobs: deps.jobs,
+    audit: deps.audit,
     now: deps.now,
   };
   const folderService: FoldersDeps = {
     db: deps.db,
     logger: service.logger,
     events: deps.events,
+    audit: deps.audit,
     now: deps.now,
   };
 

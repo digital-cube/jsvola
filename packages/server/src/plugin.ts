@@ -5,6 +5,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import type { CollectionRegistry } from "@jsudc/server";
 import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
+import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Database } from "./db/index.js";
@@ -15,6 +16,7 @@ import { type JobDispatcher, QueuedJobDispatcher } from "./jobs/dispatcher.js";
 import { ProcessingQueue } from "./jobs/queue.js";
 import { emptyLookups, initLookups, type Lookups } from "./lookups.js";
 import type { RedisLike } from "./redis.js";
+import { adminRoutes } from "./routes/admin.js";
 import { fileRoutes } from "./routes/files.js";
 import { folderRoutes } from "./routes/folders.js";
 import { healthRoutes } from "./routes/health.js";
@@ -109,6 +111,13 @@ export interface VolaPluginOptions {
    * `config.subscribe`. `false`: no route (events are still published).
    */
   subscribe?: Partial<SubscribeOptions> | false | undefined;
+  /**
+   * The audit trail (plan 5.2). Default: memento when `config.memento` is set — events are
+   * `audit` jobs of the queue in `async` mode, one direct push otherwise — and a silent
+   * no-op without it; an `AuditLog` given here is used as is and closed with the app;
+   * `false`: no audit.
+   */
+  audit?: AuditLog | false | undefined;
   /**
    * Registers more routes INSIDE the plugin, after the built-in ones: they share its prefix,
    * error envelope and auth (`config.scope`, `config.auth`). For a host application's own
@@ -309,13 +318,24 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     });
   }
   const uploadsPath = options.uploadsPath ?? join(options.config.storagePath, "uploads");
+  const audit =
+    options.audit === false
+      ? disabledAuditLog()
+      : (options.audit ??
+        new AuditLog({
+          sink: createAuditSink(options.config.memento, app.log),
+          queue: jobs?.queue ?? null,
+          logger: app.log,
+        }));
+  app.addHook("onClose", async () => audit.close());
   const sharePasswordLimiter =
     options.sharePasswordLimiter ??
     (isLimiterRedis(options.redis)
       ? new RedisSharePasswordLimiter(options.redis, { log: app.log })
       : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
-  await app.register(keyRoutes, { db: options.db });
+  await app.register(keyRoutes, { db: options.db, audit });
+  await app.register(adminRoutes, { db: options.db, events, audit });
   await app.register(lookupRoutes, { db: options.db, lookups });
   await app.register(fileRoutes, {
     db: options.db,
@@ -325,6 +345,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     lookups,
     events,
     jobs: jobs?.dispatcher,
+    audit,
   });
   await app.register(thumbnailRoutes, {
     db: options.db,
@@ -343,13 +364,13 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     events,
     jobs: jobs?.dispatcher,
   });
-  await app.register(folderRoutes, { db: options.db, events });
+  await app.register(folderRoutes, { db: options.db, events, audit });
   await app.register(publicRoutes, {
     db: options.db,
     storage,
     accessThrottle: options.accessThrottle,
   });
-  await app.register(shareRoutes, { db: options.db, publicUrl: options.config.publicUrl });
+  await app.register(shareRoutes, { db: options.db, publicUrl: options.config.publicUrl, audit });
   await app.register(sharePublicRoutes, {
     db: options.db,
     storage,

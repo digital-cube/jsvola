@@ -48,6 +48,7 @@ pnpm vola create-key --tenant acme --name backend --env live --scopes files:read
 pnpm vola create-admin-key --name ops
 pnpm vola list-keys --tenant acme
 pnpm vola revoke-key vola_live…k3Qz          # or the key id
+pnpm vola transfer --from acme --to beta --instance tickets:<uuid> [--user-map users.json] [--dry-run]
 
 curl -H "Authorization: Bearer vola_live_…" localhost:8300/vola/keys
 curl -H "X-Api-Key: vola_admin_…" -H "X-Tenant-Slug: acme" localhost:8300/vola/keys
@@ -346,6 +347,54 @@ The tenant and instance numbers are **snapshots** in `vola_tenant_stats`: comput
 read, forced with `?recompute=1`, and refreshed by the worker's repeatable `refresh-stats` job
 for snapshots older than `VOLA_STATS_TTL_MIN` (60) whose tenant had file activity since (the
 job runs every half TTL). Without a worker a read past the TTL recomputes instead.
+
+### Admin transfer — moving instances between tenants
+
+When the host application moves an entity between tenants (thilo moves a project, with its
+tickets, from one workspace to another), its files follow through one admin call. Rows move,
+blobs stay on disk (they are content-addressed and shared). Everything of the listed instances
+goes: every file row (every version, the soft-deleted ones too), the folders, the share links
+(same tokens, so a public link keeps working), the processing jobs and OCR metadata, the
+finished resumable uploads. Statistics of both tenants are recomputed afterwards and live
+subscribers of both tenants are told (`purged` on the source, `created` on the destination).
+
+```sh
+curl -X POST -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
+     -d '{"from_tenant":"acme","to_tenant":"beta","instances":[{"instance_type":"tickets","instance_id":"'$TICKET'"}],
+          "user_map":{"alice@acme":"u-17"},"dry_run":true}' \
+     localhost:8300/vola/admin/transfer
+#   {"from_tenant":"acme","to_tenant":"beta","instances":1,"files":12,"folders":3,"merged_folders":1,"shares":2,"jobs":40,"metadata":4,"uploads":0,"dry_run":true}
+pnpm vola transfer --from acme --to beta --instance tickets:$TICKET --instance tickets:$OTHER --user-map users.json --dry-run
+```
+
+| route | scope | notes |
+|---|---|---|
+| `POST /vola/admin/transfer` | `admin` (an admin key; a tenant key is `403`; `X-Tenant-Slug` is ignored) | `{from_tenant, to_tenant, instances: [{instance_type, instance_id}], user_map?: {old: new}, dry_run?}` → the counts; `404 tenant_not_found` for either slug (the destination must exist); `409 encrypted_transfer_unsupported` when an instance holds an `encryption != none` file (phase 6.1 adds the re-wrap); `409 uploads_in_progress` when a resumable upload of the instance is still running (finish, delete or let it expire first); `422` for the same tenant twice or no instances |
+
+Rules: a folder whose path already exists for the same instance on the destination is
+**merged** into that folder (its files, subfolders and share links re-pointed, the source row
+removed), never duplicated; a **live** source folder revives a **deleted** destination folder
+it merges into, so its files do not land in the bin. `user_map` rewrites `created_by`,
+`deleted_by` and `last_accessed_by` of files, `created_by` / `deleted_by` of folders and
+`created_by` of share links; a user with no mapping stays. The whole call is **one
+transaction** (every instance moves or none does) and is **idempotent** — a repeated call finds
+nothing on the source and reports zeros. `dry_run` runs the same statements and rolls them
+back: the same counts, nothing written. Only the listed instances move; a file that belongs
+to another instance (thilo: a user's board background lives under the *user*) stays where it
+is unless listed. The CLI form `vola transfer` does the same against the database directly.
+
+### Audit trail (memento, optional)
+
+With `VOLA_MEMENTO_URL` + `VOLA_MEMENTO_API_KEY` (a memento key with the `write` scope) every
+destructive or security-relevant operation becomes a memento event — `VOLA_FILE_DELETED`,
+`VOLA_FILE_PURGED`, `VOLA_FILE_VISIBILITY_CHANGED`, `VOLA_SHARE_CREATED`,
+`VOLA_SHARE_REVOKED`, `VOLA_KEY_CREATED`, `VOLA_KEY_REVOKED`, `VOLA_INSTANCES_TRANSFERRED` —
+with `actor_id` = `X-User-Id` or `key:vola_live…k3Qz`, and a payload of ids, size, MIME type
+and the tenant slug: never a token, a password, a key, nor the name of an encrypted file.
+Delivery is an `audit` BullMQ job the worker pushes with five tries when Redis is there, one
+fire-and-forget push otherwise; a request never waits for memento and never fails because of
+it. Without the two variables the audit is off, logged once at INFO. Event catalogue, payloads
+and the memento-side vocabulary and templates: [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## Lookups and translations
 

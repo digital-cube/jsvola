@@ -1,12 +1,15 @@
 import { type ApiKeyCreated, ApiKeyCreateSchema, type ApiKeyList, missingScopes } from "@vola/core";
 import type { FastifyPluginAsync } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
-import { createApiKey, listApiKeys, revokeApiKey } from "../services/apikeys.js";
+import { createApiKey, keyAuditPayload, listApiKeys, revokeApiKey } from "../services/apikeys.js";
 
 export interface KeyRoutesDeps {
   db: Database;
+  /** The audit trail (`VOLA_KEY_CREATED`, `VOLA_KEY_REVOKED`); never the plaintext or the hash. */
+  audit?: AuditLog | undefined;
 }
 
 const KEYS_WRITE = { scope: "keys:write" } as const;
@@ -16,7 +19,7 @@ const KEYS_WRITE = { scope: "keys:write" } as const;
  * caller's scopes, list them (never the hash), revoke one. A key of another tenant is
  * `404 not_found`. An admin key works here with `X-Tenant-Slug`.
  */
-export const keyRoutes: FastifyPluginAsync<KeyRoutesDeps> = async (app, { db }) => {
+export const keyRoutes: FastifyPluginAsync<KeyRoutesDeps> = async (app, { db, audit }) => {
   /** `{name, scopes, env, expires_at?}` → 201: the key with its plaintext, this once. */
   app.post("/keys", { config: KEYS_WRITE }, async (request, reply) => {
     const tenant = requireTenant();
@@ -49,6 +52,12 @@ export const keyRoutes: FastifyPluginAsync<KeyRoutesDeps> = async (app, { db }) 
     });
     // Never the plaintext: only the key's id reaches the log.
     request.log.info({ created_key: apiKey.id }, "API key created");
+    audit?.emit({
+      event_type: "VOLA_KEY_CREATED",
+      instance_type: "vola_key",
+      instance_id: apiKey.id,
+      payload: keyAuditPayload(apiKey),
+    });
     const response: ApiKeyCreated = { ...apiKey, key };
     return reply.status(201).send(response);
   });
@@ -64,6 +73,12 @@ export const keyRoutes: FastifyPluginAsync<KeyRoutesDeps> = async (app, { db }) 
     const tenant = requireTenant();
     const revoked = await revokeApiKey(db, request.params.id, { tenantId: tenant.tenantId });
     request.log.info({ revoked_key: revoked.id }, "API key revoked");
+    audit?.emit({
+      event_type: "VOLA_KEY_REVOKED",
+      instance_type: "vola_key",
+      instance_id: revoked.id,
+      payload: keyAuditPayload(revoked),
+    });
     return revoked;
   });
 };

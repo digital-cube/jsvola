@@ -6,5 +6,7 @@ export {
   formatKeyLine,
   friendlyError,
   plaintextLines,
+  readUserMap,
   runCli,
+  transferLines,
 } from "./program.js";

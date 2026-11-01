@@ -317,6 +317,7 @@ describe.skipIf(!hasTesseract)("OCR with tesseract", () => {
       tenantId: fx.tenant.id,
       tenantSlug: fx.tenant.slug,
       apiKeyId: fx.full.apiKey.id,
+      apiKeyLabel: "vola_test…abcd",
       scopes: ["files:read" as const],
       isAdmin: false,
       userId: null,

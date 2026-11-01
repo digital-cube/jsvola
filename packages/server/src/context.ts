@@ -11,6 +11,8 @@ export interface TenantContext {
   tenantId: string | null;
   tenantSlug: string | null;
   apiKeyId: string;
+  /** How the key is shown to a person (`vola_live…k3Qz`): the audit actor of a request without `X-User-Id`. */
+  apiKeyLabel: string;
   scopes: readonly Scope[];
   isAdmin: boolean;
   /** The `X-User-Id` of the request (the host application's principal), if any. */

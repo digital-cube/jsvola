@@ -3,6 +3,7 @@ import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { Redis } from "ioredis";
+import { AuditDeliveryError, type AuditSink } from "../audit/memento.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
 import { type FileEventBus, publishProcessingStatus } from "../events/bus.js";
@@ -34,6 +35,8 @@ import { sweepExpiredUploads, type UploadsDeps } from "../services/uploads.js";
 import type { StorageBackend } from "../storage/index.js";
 import type { PartStore } from "../uploads/part-store.js";
 import {
+  AUDIT_JOB,
+  type AuditJobData,
   OCR_JOB,
   type OcrJobData,
   PROCESSING_QUEUE,
@@ -89,6 +92,11 @@ export interface ProcessingWorkerOptions {
   pdftoppm?: string | undefined;
   /** OCR (plan 4.2). Without it every `OCR` job is `SKIPPED`. */
   ocr?: WorkerOcrOptions | undefined;
+  /**
+   * Where `audit` jobs are delivered (plan 5.2): the memento sink of `createAuditSink`.
+   * Without one — the worker lacks `VOLA_MEMENTO_*` — audit jobs are dropped with one WARN line.
+   */
+  audit?: AuditSink | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -100,6 +108,7 @@ export class ProcessingWorker {
   private readonly deps: ProcessingDeps;
   private ocrState: OcrAvailability = { enabled: false, reason: "OCR not configured" };
   private started: Promise<void> | null = null;
+  private warnedNoAudit = false;
 
   constructor(options: ProcessingWorkerOptions) {
     this.options = options;
@@ -196,6 +205,8 @@ export class ProcessingWorker {
         return this.sweep();
       case REFRESH_STATS_JOB:
         return this.refreshStats();
+      case AUDIT_JOB:
+        return this.audit(job as Job<AuditJobData>);
       default:
         throw new UnrecoverableError(`unknown job ${job.name}`);
     }
@@ -218,6 +229,42 @@ export class ProcessingWorker {
       now: this.options.now,
     };
     await sweepExpiredUploads(deps);
+  }
+
+  /**
+   * One audit event to memento. A retryable failure (memento down, `5xx`, `429`) throws so
+   * BullMQ tries again (`AUDIT_MAX_ATTEMPTS`, exponential backoff); one memento refuses for
+   * good (`4xx`) is dropped at once. Without a sink in this process the job is dropped too.
+   */
+  private async audit(job: Job<AuditJobData>): Promise<void> {
+    const sink = this.options.audit;
+    const log = this.options.logger;
+    if (!sink) {
+      if (!this.warnedNoAudit) {
+        this.warnedNoAudit = true;
+        log?.warn(
+          "audit jobs arrive but this worker has no memento sink (VOLA_MEMENTO_URL / VOLA_MEMENTO_API_KEY): they are dropped",
+        );
+      }
+      return;
+    }
+    try {
+      await sink.send(job.data);
+    } catch (error) {
+      const attempt = job.attemptsMade + 1;
+      const attempts = job.opts.attempts ?? 1;
+      const final =
+        attempt >= attempts || (error instanceof AuditDeliveryError && !error.retryable);
+      log?.[final ? "warn" : "info"](
+        { event: job.data.event_type, instance: job.data.instance_id, attempt, err: error },
+        final ? "audit event dropped" : "audit push failed, will retry",
+      );
+      if (error instanceof AuditDeliveryError && !error.retryable) {
+        throw new UnrecoverableError(error.message);
+      }
+      throw error;
+    }
+    log?.debug({ event: job.data.event_type, instance: job.data.instance_id }, "audit event sent");
   }
 
   /** Recomputes every `vola_tenant_stats` snapshot older than the TTL whose tenant had activity since. */

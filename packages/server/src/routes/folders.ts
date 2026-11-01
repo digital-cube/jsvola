@@ -6,6 +6,7 @@ import {
   RECURSIVE_QUERY,
 } from "@vola/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
@@ -24,6 +25,8 @@ import { flag } from "./send-file.js";
 
 export interface FolderRoutesDeps {
   db: Database;
+  /** The audit trail (files a folder delete removes). */
+  audit?: AuditLog | undefined;
   logger?: FastifyBaseLogger | undefined;
   /** Where a change of the files in a folder is announced after its commit. */
   events?: FileEventBus | undefined;
@@ -64,6 +67,7 @@ export const folderRoutes: FastifyPluginAsync<FolderRoutesDeps> = async (app, de
     db: deps.db,
     logger: deps.logger ?? app.log,
     events: deps.events,
+    audit: deps.audit,
     now: deps.now,
   };
 

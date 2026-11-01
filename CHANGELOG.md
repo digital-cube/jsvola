@@ -9,6 +9,52 @@ share one version.
 
 ### Added
 
+- Admin transfer and the memento audit trail (plan 5.2). `POST /admin/transfer` (scope
+  `admin`, i.e. an admin key; `X-Tenant-Slug` ignored; `{from_tenant, to_tenant, instances:
+  [{instance_type, instance_id}], user_map?, dry_run?}`) moves every row of the listed
+  instances from one tenant to another in ONE transaction — `vola_file` (every version, the
+  soft-deleted ones too), `vola_folder` (a path that already exists on the destination is
+  merged into that folder: files, subfolders, share links and uploads re-pointed, the source
+  row removed; a live source folder revives a deleted destination one), `vola_share_link`
+  (tokens unchanged), `vola_processing_job`, `vola_file_metadata`, finished or expired
+  `vola_upload` rows — then recomputes the statistics of both tenants (the source's instance
+  snapshots dropped, the destination's computed) and publishes `purged` on the source
+  tenant's event channel and `created` on the destination's. `user_map` rewrites
+  `created_by` / `deleted_by` / `last_accessed_by` (files), `created_by` / `deleted_by`
+  (folders) and `created_by` (shares) in one `CASE` per column. Answers the counts
+  (`files`, `folders`, `merged_folders`, `shares`, `jobs`, `metadata`, `uploads`,
+  `instances`, `dry_run`); idempotent (a repeat reports zeros); `dry_run` runs the same
+  statements and rolls them back. Refusals before anything is written: `404 tenant_not_found`
+  (the destination must exist — vola-spp created it; this port does not), `409
+  encrypted_transfer_unsupported` for an instance holding an `encryption != none` file (the
+  TODO for phase 6.1 TCKK5UTHJX, the `tenant` re-wrap, is in `services/transfer.ts`), `409
+  uploads_in_progress` for a resumable upload still running (it is refused rather than moved:
+  the client resuming it holds a source-tenant key). CLI `vola transfer --from <slug> --to
+  <slug> --instance type:id [--instance …] [--user-map file.json] [--dry-run]` (announces
+  the move through Redis when `VOLA_REDIS_URL` is set). Audit (decision 13): with
+  `VOLA_MEMENTO_URL` + `VOLA_MEMENTO_API_KEY` (new, both or neither) the operations
+  `VOLA_FILE_DELETED` (soft delete, every file of a recursive folder delete),
+  `VOLA_FILE_PURGED`, `VOLA_FILE_VISIBILITY_CHANGED`, `VOLA_SHARE_CREATED`,
+  `VOLA_SHARE_REVOKED`, `VOLA_KEY_CREATED`, `VOLA_KEY_REVOKED` (API and CLI) and
+  `VOLA_INSTANCES_TRANSFERRED` are pushed to `<url>/events` as memento events
+  (`instance_type` `vola_file` / `vola_share` / `vola_key` / `vola_tenant`, `actor_id` =
+  `X-User-Id` or `key:<prefix…last4>`, `cli:<user>` from the CLI; payloads of ids, size,
+  MIME, kind and tenant slug — never a token, password, key, nor the `filename` of an
+  encrypted file). Delivery: an `audit` BullMQ job (5 tries, exponential backoff; a `4xx`
+  other than 408/429 is dropped at once) the worker pushes when Redis is configured, one
+  direct fire-and-forget push with a 2 s timeout otherwise; a request never waits for memento
+  and never fails because of it; without the variables one INFO line and nothing else. The
+  worker takes the same two variables. `TenantContext` gains `apiKeyLabel`
+  (`vola_live…k3Qz`). `@vola/core`: `TransferRequestSchema`, `TransferResultSchema`,
+  `TransferInstanceSchema`, `TRANSFER_MAX_INSTANCES`; `@vola/server`: `services/transfer.ts`
+  (`transferInstances`, `mapUsers`, `distinctInstances`), `adminRoutes`, `audit/memento.ts`
+  (`AuditSink`, `MementoSink`, `NoopSink`, `AuditDeliveryError`, `fileAuditPayload`),
+  `audit/log.ts` (`AuditLog`, `actorOf`, `createAuditSink`, `disabledAuditLog`),
+  `AUDIT_JOB`, `AUDIT_MAX_ATTEMPTS`, `ProcessingQueue.enqueueAudit`,
+  `ProcessingWorkerOptions.audit`, `VolaPluginOptions.audit`, `keyAuditPayload`,
+  `shareAuditPayload`; `@vola/cli`: `transfer`, `readUserMap`, `transferLines`,
+  `CliOptions.audit` / `actor` / `redisUrl`. New document `docs/AUDIT.md` (events, payloads,
+  the memento-side vocabulary and template lines).
 - Share links and statistics (plan 5.1). New table `vola_share_link` (migration
   `0006_shares_stats`: `tenant_id`, `file_id` XOR `folder_id` (CHECK), `token_hash` — the
   SHA-256 of a 32-byte base64url token, unique — `scope` (`ShareScopes`, v1 `PUBLIC_LINK`

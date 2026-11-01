@@ -7,6 +7,30 @@ export {
 } from "./apikey.js";
 export { type BuildAppOptions, buildApp } from "./app.js";
 export {
+  type AuditEventInput,
+  AuditLog,
+  type AuditLogOptions,
+  actorOf,
+  createAuditSink,
+  disabledAuditLog,
+} from "./audit/log.js";
+export {
+  AUDIT_ACTOR_TYPES,
+  AUDIT_EVENT_TYPES,
+  AUDIT_INSTANCE_TYPES,
+  type AuditActorType,
+  AuditDeliveryError,
+  type AuditEvent,
+  type AuditEventType,
+  type AuditInstanceType,
+  type AuditSink,
+  fileAuditPayload,
+  MEMENTO_TIMEOUT_MS,
+  MementoSink,
+  type MementoSinkOptions,
+  NoopSink,
+} from "./audit/memento.js";
+export {
   authenticateRequest,
   type InstallAuthOptions,
   installAuth,
@@ -20,6 +44,7 @@ export {
   ConfigError,
   type LogLevel,
   loadConfig,
+  type MementoConfig,
   type SubscribeConfig,
   type WorkerConfig,
 } from "./config.js";
@@ -112,6 +137,9 @@ export {
   thumbnailable,
 } from "./jobs/dispatcher.js";
 export {
+  AUDIT_JOB,
+  AUDIT_MAX_ATTEMPTS,
+  type AuditJobData,
   DEFAULT_BACKOFF_MS,
   DEFAULT_QUEUE_PREFIX,
   OCR_JOB,
@@ -155,6 +183,7 @@ export {
   volaPlugin,
 } from "./plugin.js";
 export { connectRedis, type RedisLike } from "./redis.js";
+export { type AdminRoutesDeps, adminRoutes } from "./routes/admin.js";
 export { type FileRoutesDeps, fileRoutes } from "./routes/files.js";
 export { type FolderRoutesDeps, folderRoutes } from "./routes/folders.js";
 export { type HealthDeps, healthRoutes } from "./routes/health.js";
@@ -198,6 +227,7 @@ export {
   createApiKey,
   displayKey,
   findApiKey,
+  keyAuditPayload,
   LAST_USED_INTERVAL_MS,
   LastUsedThrottle,
   type ListApiKeysFilter,
@@ -338,6 +368,7 @@ export {
   scopeOfFolder,
   serializeShare,
   serializeSharedFile,
+  shareAuditPayload,
   sharedFile,
   sharedFolder,
   shareGone,
@@ -382,6 +413,12 @@ export {
   type ThumbnailSource,
   thumbnailPlaceholder,
 } from "./services/thumbnails.js";
+export {
+  distinctInstances,
+  mapUsers,
+  type TransferDeps,
+  transferInstances,
+} from "./services/transfer.js";
 export {
   type AppendInput,
   type AppendResult,

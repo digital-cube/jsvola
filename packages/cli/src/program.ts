@@ -1,22 +1,39 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type ApiKey, displayApiKey, SCOPES, SlugSchema, type Tenant } from "@vola/core";
+import {
+  type ApiKey,
+  displayApiKey,
+  InstanceTypeSchema,
+  SCOPES,
+  SlugSchema,
+  type Tenant,
+  type TransferInstance,
+  TransferRequestSchema,
+  type TransferResult,
+  UserIdSchema,
+} from "@vola/core";
 import { LookupCompileError, promoteCandidates, validateTranslationsCsv } from "@vola/lookups";
 import {
+  AuditLog,
+  type Config,
   ConfigError,
   connect,
   createApiKey,
+  createAuditSink,
+  createFileEventBus,
   createTenant,
   type DatabaseHandle,
   DEFAULT_LOOKUPS_PATH,
   findApiKey,
   getTenantBySlug,
   initLookups,
+  keyAuditPayload,
   listApiKeys,
   loadConfig,
   revokeApiKey,
   runMigrations,
   schema,
+  transferInstances,
   VolaError,
 } from "@vola/server";
 import { Command, InvalidArgumentError, Option } from "commander";
@@ -37,6 +54,19 @@ export interface CliOptions {
   databaseUrl?: string | undefined;
   /** Environment `databaseUrl` is read from. Default `process.env`. */
   env?: Record<string, string | undefined> | undefined;
+  /**
+   * The audit trail key and transfer commands write to (plan 5.2). Default: memento when
+   * `VOLA_MEMENTO_URL` + `VOLA_MEMENTO_API_KEY` are in `env`, nothing otherwise; a push is
+   * one direct try and the command waits for it. Tests pass their own.
+   */
+  audit?: AuditLog | undefined;
+  /** Who the CLI says it is in audit events (`cli:<user>`). Default: `$USER`, else `cli`. */
+  actor?: string | undefined;
+  /**
+   * Redis `transfer` announces the move on (live subscribers of both tenants). Default:
+   * `VOLA_REDIS_URL` from `env`; `null`: announce nowhere (tests).
+   */
+  redisUrl?: string | null | undefined;
 }
 
 const DEFAULT_TENANT_SCOPES = "files:read,files:write,folders:read,folders:write";
@@ -52,6 +82,63 @@ function slugArgument(value: string): string {
 function envArgument(value: string): "live" | "test" {
   if (value !== "live" && value !== "test") throw new InvalidArgumentError("must be live or test");
   return value;
+}
+
+/** `type:id` → a transfer instance. */
+function instanceArgument(value: string, previous: TransferInstance[] = []): TransferInstance[] {
+  const colon = value.indexOf(":");
+  if (colon < 0) throw new InvalidArgumentError("must be <instance_type>:<instance_id>");
+  const type = InstanceTypeSchema.safeParse(value.slice(0, colon));
+  if (!type.success)
+    throw new InvalidArgumentError(`instance_type: ${type.error.issues[0]?.message}`);
+  const id = value.slice(colon + 1);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new InvalidArgumentError("instance_id: must be a UUID");
+  }
+  return [...previous, { instance_type: type.data, instance_id: id.toLowerCase() }];
+}
+
+/** The `--user-map` file: a JSON object `{ "<old user id>": "<new user id>" }`. */
+export async function readUserMap(file: string): Promise<Record<string, string>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    throw new VolaError(
+      "validation_error",
+      422,
+      `--user-map ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new VolaError("validation_error", 422, `--user-map ${file}: must be a JSON object`);
+  }
+  const map: Record<string, string> = {};
+  for (const [from, to] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!UserIdSchema.safeParse(from).success || !UserIdSchema.safeParse(to).success) {
+      throw new VolaError(
+        "validation_error",
+        422,
+        `--user-map ${file}: "${from}" must map to a user id (a string of at most 255 characters)`,
+      );
+    }
+    map[from] = to as string;
+  }
+  return map;
+}
+
+/** The lines a transfer result is printed as. */
+export function transferLines(result: TransferResult): string[] {
+  const verb = result.dry_run ? "would move" : "moved";
+  return [
+    `${verb} ${result.instances} instance(s) from tenant ${result.from_tenant} to ${result.to_tenant}${result.dry_run ? " (dry run, nothing written)" : ""}`,
+    `  files           ${result.files}`,
+    `  folders         ${result.folders} (${result.merged_folders} merged into existing destination folders)`,
+    `  shares          ${result.shares}`,
+    `  jobs            ${result.jobs}`,
+    `  metadata        ${result.metadata}`,
+    `  uploads         ${result.uploads}`,
+  ];
 }
 
 function dateArgument(value: string): Date {
@@ -119,13 +206,17 @@ Examples:
   $ vola create-admin-key --name ops
   $ vola list-keys --tenant acme
   $ vola revoke-key vola_live…k3Qz
+  $ vola transfer --from acme --to beta --instance tickets:5c1b… --instance tickets:9e2f… --dry-run
+  $ vola transfer --from acme --to beta --instance tickets:5c1b… --user-map users.json
   $ vola lookups validate
   $ vola lookups candidates
   $ vola lookup-promote --dry-run
 
 Environment:
-  VOLA_DATABASE_URL  PostgreSQL the commands use (default postgresql://vola:vola@localhost:5432/vola)
-  VOLA_LOOKUPS_PATH  lookups.yaml the vocabulary commands work on (default: the repository's)
+  VOLA_DATABASE_URL     PostgreSQL the commands use (default postgresql://vola:vola@localhost:5432/vola)
+  VOLA_REDIS_URL        with it, transfer announces the move to live subscribers
+  VOLA_MEMENTO_URL      with VOLA_MEMENTO_API_KEY: key and transfer commands write audit events to memento
+  VOLA_LOOKUPS_PATH     lookups.yaml the vocabulary commands work on (default: the repository's)
 
 Scopes: ${SCOPES.join(", ")}`,
     );
@@ -136,14 +227,38 @@ Scopes: ${SCOPES.join(", ")}`,
     else for (const line of Array.isArray(lines) ? lines : [lines]) io.out(line);
   };
 
+  const env = () => options.env ?? process.env;
+  let loaded: Config | undefined;
+  const config = () => {
+    loaded ??= loadConfig(env());
+    return loaded;
+  };
   /** Runs `fn` with a database handle and closes it afterwards. */
   const withDb = async <T>(fn: (handle: DatabaseHandle) => Promise<T>): Promise<T> => {
-    const url = options.databaseUrl ?? loadConfig(options.env ?? process.env).databaseUrl;
+    const url = options.databaseUrl ?? config().databaseUrl;
     const handle = connect(url, { max: 1 });
     try {
       return await fn(handle);
     } finally {
       await handle.close();
+    }
+  };
+  /** The audit trail of this process, created on first use and awaited before the command returns. */
+  let auditLog: AuditLog | undefined;
+  const audit = () => {
+    auditLog ??= options.audit ?? new AuditLog({ sink: createAuditSink(config().memento) });
+    return auditLog;
+  };
+  const actor = () => ({
+    type: "cli" as const,
+    id: `cli:${options.actor ?? env().USER ?? "cli"}`,
+  });
+  /** Runs `fn`, then waits for the audit events it emitted. */
+  const audited = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } finally {
+      await auditLog?.close();
     }
   };
 
@@ -201,6 +316,15 @@ Scopes: ${SCOPES.join(", ")}`,
             expiresAt: opts.expires ?? null,
             createdBy: opts.createdBy ?? null,
           });
+          await audited(async () =>
+            audit().emit({
+              event_type: "VOLA_KEY_CREATED",
+              instance_type: "vola_key",
+              instance_id: apiKey.id,
+              actor: actor(),
+              payload: { ...keyAuditPayload(apiKey), tenant: tenant.slug },
+            }),
+          );
           print({ ...apiKey, key, tenant: tenant.slug }, [
             `created key ${displayApiKey(apiKey.prefix, apiKey.last4)} "${apiKey.name}" for tenant ${tenant.slug}`,
             `  id      ${apiKey.id}`,
@@ -230,6 +354,15 @@ Scopes: ${SCOPES.join(", ")}`,
           expiresAt: opts.expires ?? null,
           createdBy: opts.createdBy ?? null,
         });
+        await audited(async () =>
+          audit().emit({
+            event_type: "VOLA_KEY_CREATED",
+            instance_type: "vola_key",
+            instance_id: apiKey.id,
+            actor: actor(),
+            payload: { ...keyAuditPayload(apiKey), tenant: null },
+          }),
+        );
         print({ ...apiKey, key }, [
           `created admin key ${displayApiKey(apiKey.prefix, apiKey.last4)} "${apiKey.name}"`,
           `  id      ${apiKey.id}`,
@@ -276,12 +409,90 @@ Scopes: ${SCOPES.join(", ")}`,
       await withDb(async ({ db }) => {
         const row = await findApiKey(db, reference);
         const revoked = await revokeApiKey(db, row.id);
+        await audited(async () =>
+          audit().emit({
+            event_type: "VOLA_KEY_REVOKED",
+            instance_type: "vola_key",
+            instance_id: revoked.id,
+            actor: actor(),
+            payload: {
+              ...keyAuditPayload(revoked),
+              tenant: revoked.tenant_id ? await tenantById(db, revoked.tenant_id) : null,
+            },
+          }),
+        );
         print(
           revoked,
           `revoked key ${displayApiKey(revoked.prefix, revoked.last4)} "${revoked.name}" (${revoked.id})`,
         );
       });
     });
+
+  program
+    .command("transfer")
+    .description(
+      "move every file of the given instances from one tenant to another (rows only; blobs stay)",
+    )
+    .requiredOption("--from <slug>", "source tenant", slugArgument)
+    .requiredOption("--to <slug>", "destination tenant (must exist)", slugArgument)
+    .requiredOption(
+      "--instance <type:id>",
+      "an instance to move, e.g. tickets:5c1b…; repeat for several",
+      instanceArgument,
+    )
+    .option(
+      "--user-map <file.json>",
+      'JSON object {"<old user id>": "<new user id>"} rewriting created_by / deleted_by / last_accessed_by',
+    )
+    .option("--dry-run", "report the counts, write nothing")
+    .addHelpText(
+      "after",
+      `
+A folder whose path already exists on the destination is merged into it; share tokens stay the
+same; statistics of both tenants are recomputed. An instance holding an encrypted file is
+refused (encrypted_transfer_unsupported), as is one with a resumable upload in progress
+(uploads_in_progress). With VOLA_REDIS_URL live subscribers of both tenants are told.`,
+    )
+    .action(
+      async (opts: {
+        from: string;
+        to: string;
+        instance: TransferInstance[];
+        userMap?: string;
+        dryRun?: boolean;
+      }) => {
+        const request = TransferRequestSchema.safeParse({
+          from_tenant: opts.from,
+          to_tenant: opts.to,
+          instances: opts.instance,
+          user_map: opts.userMap ? await readUserMap(opts.userMap) : {},
+          dry_run: Boolean(opts.dryRun),
+        });
+        if (!request.success) {
+          const issue = request.error.issues[0];
+          throw new VolaError(
+            "validation_error",
+            422,
+            `${issue?.path.join(".") || "transfer"}: ${issue?.message ?? "invalid"}`,
+          );
+        }
+        await withDb(async ({ db }) => {
+          const redisUrl = options.redisUrl === undefined ? config().redisUrl : options.redisUrl;
+          const events = redisUrl ? createFileEventBus(redisUrl) : undefined;
+          try {
+            const result = await audited(() =>
+              transferInstances(
+                { db, events, audit: request.data.dry_run ? undefined : audit(), actor: actor() },
+                request.data,
+              ),
+            );
+            print(result, transferLines(result));
+          } finally {
+            await events?.close();
+          }
+        });
+      },
+    );
 
   // --- vocabulary ------------------------------------------------------------------------
 

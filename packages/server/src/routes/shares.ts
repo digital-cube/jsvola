@@ -6,6 +6,7 @@ import {
   type ShareList,
 } from "@vola/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
@@ -26,6 +27,7 @@ export interface ShareRoutesDeps {
    * slash); `null`: the protocol and `Host` of the creating request.
    */
   publicUrl?: string | null | undefined;
+  audit?: AuditLog | undefined;
   logger?: FastifyBaseLogger | undefined;
   now?: (() => Date) | undefined;
 }
@@ -61,7 +63,12 @@ export function requestOrigin(request: FastifyRequest): string {
  * - `DELETE /shares/:id` — revoke (idempotent); the link answers `410 share_gone` from then on.
  */
 export const shareRoutes: FastifyPluginAsync<ShareRoutesDeps> = async (app, deps) => {
-  const service: SharesDeps = { db: deps.db, logger: deps.logger ?? app.log, now: deps.now };
+  const service: SharesDeps = {
+    db: deps.db,
+    logger: deps.logger ?? app.log,
+    audit: deps.audit,
+    now: deps.now,
+  };
 
   app.post<{ Body: unknown }>("/shares", { config: WRITE }, async (request, reply) => {
     const tenant = requireTenant();

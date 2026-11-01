@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 import { pino } from "pino";
+import { createAuditSink } from "./audit/log.js";
 import { ConfigError, loadConfig } from "./config.js";
 import { connect } from "./db/index.js";
 import { createFileEventBus } from "./events/bus.js";
@@ -49,6 +50,7 @@ const worker = new ProcessingWorker({
   },
   ocr: config.ocr,
   stats: { ttlMs: config.stats.ttlMin * 60_000 },
+  audit: createAuditSink(config.memento, log),
 });
 
 let closing = false;

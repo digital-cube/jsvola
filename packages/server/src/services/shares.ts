@@ -13,6 +13,7 @@ import {
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { FastifyBaseLogger } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import type { Database } from "../db/index.js";
 import {
   type FileRow,
@@ -43,6 +44,8 @@ export interface SharesDeps {
   logger?: FastifyBaseLogger | undefined;
   /** Wrong-password counter per token. Default: an in-memory one per `SharesDeps`. */
   limiter?: SharePasswordLimiter | undefined;
+  /** The audit trail (`VOLA_SHARE_CREATED`, `VOLA_SHARE_REVOKED`); never the token or the password. */
+  audit?: AuditLog | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -199,6 +202,12 @@ export async function createShare(
         },
         "share created",
       );
+      deps.audit?.emit({
+        event_type: "VOLA_SHARE_CREATED",
+        instance_type: "vola_share",
+        instance_id: row.id,
+        payload: shareAuditPayload(row),
+      });
       return { share: serializeShare(row), token };
     } catch (error) {
       if (attempt < 5 && pgCode(error) === UNIQUE_VIOLATION) continue;
@@ -276,7 +285,30 @@ export async function revokeShare(
     .where(and(eq(shareLinks.id, row.id), isNull(shareLinks.revokedAt)))
     .returning();
   deps.logger?.info({ share: row.id }, "share revoked");
-  return serializeShare(updated ?? { ...row, revokedAt: now });
+  const revoked = updated ?? { ...row, revokedAt: now };
+  deps.audit?.emit({
+    event_type: "VOLA_SHARE_REVOKED",
+    instance_type: "vola_share",
+    instance_id: row.id,
+    payload: shareAuditPayload(revoked),
+  });
+  return serializeShare(revoked);
+}
+
+/** What a share event says: the target, the scope, the limits — never the token hash, never the password hash. */
+export function shareAuditPayload(row: ShareLinkRow): Record<string, unknown> {
+  return {
+    share_id: row.id,
+    file_id: row.fileId,
+    folder_id: row.folderId,
+    scope: row.scope,
+    has_password: row.passwordHash !== null,
+    expires_at: row.expiresAt?.toISOString() ?? null,
+    max_downloads: row.maxDownloads,
+    download_count: row.downloadCount,
+    created_at: row.createdAt.toISOString(),
+    revoked_at: row.revokedAt?.toISOString() ?? null,
+  };
 }
 
 // --- public side: resolve, count ---------------------------------------------------------

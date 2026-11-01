@@ -11,6 +11,7 @@ const tenant: BoundTenantContext = {
   tenantId: "t1",
   tenantSlug: "acme",
   apiKeyId: "k1",
+  apiKeyLabel: "vola_test…abcd",
   scopes: ["files:read"],
   isAdmin: false,
   userId: null,

@@ -45,72 +45,82 @@ const autoBoolean = () =>
       return z.NEVER;
     });
 
-const ConfigSchema = z.object({
-  VOLA_DATABASE_URL: postgresUrl("postgresql://vola:vola@localhost:5432/vola"),
-  VOLA_DATABASE_URL_TEST: postgresUrl("postgresql://vola:vola@localhost:5432/vola_test"),
-  VOLA_REDIS_URL: z
-    .string()
-    .regex(/^rediss?:\/\/.+/, "must be a redis:// URL")
-    .optional(),
-  VOLA_HOST: z.string().min(1).default("0.0.0.0"),
-  VOLA_PORT: z.coerce.number().int().min(0).max(65535).default(8300),
-  VOLA_PREFIX: z
-    .string()
-    .regex(/^\/[\w/-]*$/, "must start with / and contain only letters, digits, _ - /")
-    .default("/vola"),
-  VOLA_STORAGE_PATH: z.string().min(1).default("var/storage"),
-  VOLA_MAX_UPLOAD_BYTES: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(512 * 1024 * 1024),
-  VOLA_UPLOAD_TTL_HOURS: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(24 * 365)
-    .default(24),
-  VOLA_LOOKUPS_PATH: z.string().min(1).optional(),
-  VOLA_TRANSLATIONS_PATH: z.string().min(1).optional(),
-  VOLA_RECORD_CANDIDATES: boolean(true),
-  VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
-  VOLA_MENU_PATH: z.string().min(1).optional(),
-  VOLA_WORKER_ENABLED: autoBoolean(),
-  VOLA_OCR_ENABLED: autoBoolean(),
-  VOLA_OCR_LANGS: z
-    .string()
-    .optional()
-    .transform((value, ctx): OcrLanguage[] => {
-      try {
-        return parseOcrLangs(value ?? DEFAULT_OCR_LANGS);
-      } catch (error) {
-        ctx.addIssue({ code: "custom", message: (error as Error).message });
-        return z.NEVER;
-      }
-    }),
-  VOLA_OCR_MAX_PAGES: z.coerce.number().int().min(1).max(1000).default(DEFAULT_OCR_MAX_PAGES),
-  VOLA_OCR_TIMEOUT_S: z.coerce.number().int().min(1).max(3600).default(DEFAULT_OCR_TIMEOUT_S),
-  VOLA_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
-  VOLA_QUEUE_PREFIX: z
-    .string()
-    .regex(/^[\w:-]{1,64}$/, "letters, digits, _ - : only")
-    .default("vola"),
-  VOLA_STATS_TTL_MIN: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(7 * 24 * 60)
-    .default(DEFAULT_STATS_TTL_MIN),
-  VOLA_PUBLIC_URL: z
-    .string()
-    .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
-    .optional(),
-  VOLA_WS_HEARTBEAT_MS: z.coerce.number().int().min(1000).default(30_000),
-  VOLA_WS_MAX_BUFFERED: z.coerce.number().int().min(1).default(1000),
-  VOLA_LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
-    .default("info"),
-});
+const ConfigSchema = z
+  .object({
+    VOLA_DATABASE_URL: postgresUrl("postgresql://vola:vola@localhost:5432/vola"),
+    VOLA_DATABASE_URL_TEST: postgresUrl("postgresql://vola:vola@localhost:5432/vola_test"),
+    VOLA_REDIS_URL: z
+      .string()
+      .regex(/^rediss?:\/\/.+/, "must be a redis:// URL")
+      .optional(),
+    VOLA_HOST: z.string().min(1).default("0.0.0.0"),
+    VOLA_PORT: z.coerce.number().int().min(0).max(65535).default(8300),
+    VOLA_PREFIX: z
+      .string()
+      .regex(/^\/[\w/-]*$/, "must start with / and contain only letters, digits, _ - /")
+      .default("/vola"),
+    VOLA_STORAGE_PATH: z.string().min(1).default("var/storage"),
+    VOLA_MAX_UPLOAD_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .default(512 * 1024 * 1024),
+    VOLA_UPLOAD_TTL_HOURS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 365)
+      .default(24),
+    VOLA_LOOKUPS_PATH: z.string().min(1).optional(),
+    VOLA_TRANSLATIONS_PATH: z.string().min(1).optional(),
+    VOLA_RECORD_CANDIDATES: boolean(true),
+    VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
+    VOLA_MENU_PATH: z.string().min(1).optional(),
+    VOLA_WORKER_ENABLED: autoBoolean(),
+    VOLA_OCR_ENABLED: autoBoolean(),
+    VOLA_OCR_LANGS: z
+      .string()
+      .optional()
+      .transform((value, ctx): OcrLanguage[] => {
+        try {
+          return parseOcrLangs(value ?? DEFAULT_OCR_LANGS);
+        } catch (error) {
+          ctx.addIssue({ code: "custom", message: (error as Error).message });
+          return z.NEVER;
+        }
+      }),
+    VOLA_OCR_MAX_PAGES: z.coerce.number().int().min(1).max(1000).default(DEFAULT_OCR_MAX_PAGES),
+    VOLA_OCR_TIMEOUT_S: z.coerce.number().int().min(1).max(3600).default(DEFAULT_OCR_TIMEOUT_S),
+    VOLA_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+    VOLA_QUEUE_PREFIX: z
+      .string()
+      .regex(/^[\w:-]{1,64}$/, "letters, digits, _ - : only")
+      .default("vola"),
+    VOLA_STATS_TTL_MIN: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(7 * 24 * 60)
+      .default(DEFAULT_STATS_TTL_MIN),
+    VOLA_PUBLIC_URL: z
+      .string()
+      .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
+      .optional(),
+    VOLA_WS_HEARTBEAT_MS: z.coerce.number().int().min(1000).default(30_000),
+    VOLA_WS_MAX_BUFFERED: z.coerce.number().int().min(1).default(1000),
+    VOLA_MEMENTO_URL: z
+      .string()
+      .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
+      .optional(),
+    VOLA_MEMENTO_API_KEY: z.string().min(1).optional(),
+    VOLA_LOG_LEVEL: z
+      .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+      .default("info"),
+  })
+  .refine((c) => (c.VOLA_MEMENTO_URL === undefined) === (c.VOLA_MEMENTO_API_KEY === undefined), {
+    message: "VOLA_MEMENTO_URL and VOLA_MEMENTO_API_KEY go together: set both or neither",
+    path: ["VOLA_MEMENTO_API_KEY"],
+  });
 
 export type LogLevel = z.infer<typeof ConfigSchema>["VOLA_LOG_LEVEL"];
 
@@ -159,7 +169,18 @@ export interface Config {
    * `null`: the `Host` and protocol of the creating request are used.
    */
   publicUrl: string | null;
+  /**
+   * The optional memento audit (plan 5.2): `VOLA_MEMENTO_URL` (the memento API base, e.g.
+   * `https://memento.example.com/memento`) and `VOLA_MEMENTO_API_KEY` (a key with the `write`
+   * scope). `null`: no audit events are written — a supported configuration, logged once at INFO.
+   */
+  memento: MementoConfig | null;
   logLevel: LogLevel;
+}
+
+export interface MementoConfig {
+  url: string;
+  apiKey: string;
 }
 
 export interface StatsConfig {
@@ -266,6 +287,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     },
     stats: { ttlMin: c.VOLA_STATS_TTL_MIN },
     publicUrl: c.VOLA_PUBLIC_URL ? c.VOLA_PUBLIC_URL.replace(/\/+$/, "") : null,
+    memento:
+      c.VOLA_MEMENTO_URL && c.VOLA_MEMENTO_API_KEY
+        ? { url: c.VOLA_MEMENTO_URL.replace(/\/+$/, ""), apiKey: c.VOLA_MEMENTO_API_KEY }
+        : null,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

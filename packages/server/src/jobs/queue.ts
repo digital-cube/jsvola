@@ -2,6 +2,7 @@ import type { ThumbnailCrop, ThumbnailSize } from "@vola/core";
 import { type JobsOptions, Queue } from "bullmq";
 import type { FastifyBaseLogger } from "fastify";
 import { Redis } from "ioredis";
+import type { AuditEvent } from "../audit/memento.js";
 import { PROCESSING_MAX_ATTEMPTS } from "../services/processing.js";
 
 /** The one BullMQ queue every background job of vola travels through. */
@@ -16,6 +17,10 @@ export const THUMBNAIL_JOB = "thumbnail";
 export const OCR_JOB = "ocr";
 /** The job scheduler id and job name of the statistics refresh (plan 5.1). */
 export const REFRESH_STATS_JOB = "refresh-stats";
+/** The job name of one audit event on its way to memento (plan 5.2). */
+export const AUDIT_JOB = "audit";
+/** Tries the worker gives one audit event before it is dropped (with a WARN line). */
+export const AUDIT_MAX_ATTEMPTS = 5;
 /** Base of the exponential backoff between the tries of a job, in ms. */
 export const DEFAULT_BACKOFF_MS = 1000;
 
@@ -37,7 +42,14 @@ export interface OcrJobData {
   fileId: string;
 }
 
-export type ProcessingJobData = ThumbnailJobData | OcrJobData | Record<string, never>;
+/** What an `audit` job carries: the complete memento event, as the sink posts it. */
+export type AuditJobData = AuditEvent;
+
+export type ProcessingJobData =
+  | ThumbnailJobData
+  | OcrJobData
+  | AuditJobData
+  | Record<string, never>;
 
 export interface ProcessingQueueOptions {
   redisUrl: string;
@@ -111,6 +123,17 @@ export class ProcessingQueue {
       await this.queue.remove(data.jobId).catch(() => undefined);
     }
     await this.queue.add(name, data, { ...this.jobOptions, jobId: data.jobId });
+  }
+
+  /**
+   * Queues one audit event for the worker to push to memento: `AUDIT_MAX_ATTEMPTS` tries with
+   * the queue's exponential backoff. No job id: every event is its own job.
+   */
+  async enqueueAudit(event: AuditJobData): Promise<void> {
+    await this.queue.add(AUDIT_JOB, event, {
+      ...this.jobOptions,
+      attempts: AUDIT_MAX_ATTEMPTS,
+    });
   }
 
   /** Keeps the expired-upload sweep running every `everyMs` (one scheduler, shared by every server). */

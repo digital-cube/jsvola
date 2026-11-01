@@ -1,4 +1,5 @@
 import {
+  displayApiKey,
   extractApiKey,
   extractSubprotocolKey,
   missingScopes,
@@ -106,6 +107,7 @@ export async function authenticateRequest(
     tenantId: tenant?.id ?? null,
     tenantSlug: tenant?.slug ?? null,
     apiKeyId: found.key.id,
+    apiKeyLabel: displayApiKey(found.key.prefix, found.key.last4),
     scopes: found.key.scopes as Scope[],
     isAdmin: found.key.isAdmin,
     userId: requestUserId(request),

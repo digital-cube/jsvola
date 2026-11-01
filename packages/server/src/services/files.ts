@@ -15,6 +15,8 @@ import {
 } from "@vola/core";
 import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
+import type { AuditLog } from "../audit/log.js";
+import { fileAuditPayload } from "../audit/memento.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
 import { VolaError } from "../errors.js";
@@ -52,6 +54,8 @@ export interface FilesDeps {
    * Absent (`sync` mode): nothing is queued, `/thumb` renders inline.
    */
   jobs?: JobDispatcher | undefined;
+  /** The audit trail (plan 5.2): soft delete, purge and visibility changes are recorded on it. */
+  audit?: AuditLog | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -601,6 +605,19 @@ export async function patchFile(
     fileId: updated.id,
     kind: "updated",
   });
+  if (updated.isPublic !== row.isPublic || updated.isGlobalPublic !== row.isGlobalPublic) {
+    deps.audit?.emit({
+      event_type: "VOLA_FILE_VISIBILITY_CHANGED",
+      instance_type: "vola_file",
+      instance_id: updated.id,
+      payload: {
+        ...fileAuditPayload(updated),
+        is_public: updated.isPublic,
+        is_global_public: updated.isGlobalPublic,
+        previous: { is_public: row.isPublic, is_global_public: row.isGlobalPublic },
+      },
+    });
+  }
   return withProcessingStatus(deps, updated);
 }
 
@@ -742,6 +759,12 @@ export async function softDeleteFile(
     fileId: row.id,
     kind: "deleted",
   });
+  deps.audit?.emit({
+    event_type: "VOLA_FILE_DELETED",
+    instance_type: "vola_file",
+    instance_id: row.id,
+    payload: fileAuditPayload(row),
+  });
   return withProcessingStatus(
     deps,
     updated ?? { ...row, deletedAt: now, deletedBy: userId, updatedAt: now },
@@ -822,6 +845,17 @@ export async function purgeFile(
     }
   }
   deps.logger?.info({ file: row.id, files: deleted.length, blobs }, "file purged");
+  deps.audit?.emit({
+    event_type: "VOLA_FILE_PURGED",
+    instance_type: "vola_file",
+    instance_id: row.id,
+    payload: {
+      ...fileAuditPayload(row),
+      versions: ids,
+      files: deleted.length,
+      blobs,
+    },
+  });
   return { files: deleted.length, blobs };
 }
 

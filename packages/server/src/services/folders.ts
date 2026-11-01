@@ -8,6 +8,8 @@ import {
 } from "@vola/core";
 import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
+import type { AuditLog } from "../audit/log.js";
+import { fileAuditPayload } from "../audit/memento.js";
 import type { Database } from "../db/index.js";
 import { type FolderRow, files, folders } from "../db/schema.js";
 import { VolaError } from "../errors.js";
@@ -20,6 +22,8 @@ export interface FoldersDeps {
   logger?: FastifyBaseLogger | undefined;
   /** Where a change of the files in a folder is announced after its commit; absent: nowhere. */
   events?: FileEventBus | undefined;
+  /** The audit trail: every file a folder delete soft-deletes is recorded (`VOLA_FILE_DELETED`). */
+  audit?: AuditLog | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -422,7 +426,7 @@ export async function deleteFolder(
       .update(files)
       .set({ deletedAt: now, deletedBy: options.userId, updatedAt: now })
       .where(and(inArray(files.folderId, ids), isNull(files.deletedAt)))
-      .returning({ id: files.id, folderId: files.folderId });
+      .returning();
     const deletedFolders = await tx
       .update(folders)
       .set({ deletedAt: now, deletedBy: options.userId, updatedAt: now })
@@ -448,5 +452,13 @@ export async function deleteFolder(
     };
   });
   await publishFileEvents(deps, { ...scope, kind: "deleted" }, deletedFiles);
+  for (const file of deletedFiles) {
+    deps.audit?.emit({
+      event_type: "VOLA_FILE_DELETED",
+      instance_type: "vola_file",
+      instance_id: file.id,
+      payload: { ...fileAuditPayload(file), folder_path: path, recursive: options.recursive },
+    });
+  }
   return result;
 }

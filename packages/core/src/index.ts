@@ -242,6 +242,15 @@ export {
   WelcomeMessageSchema,
 } from "./subscribe.js";
 export {
+  TRANSFER_MAX_INSTANCES,
+  type TransferInstance,
+  TransferInstanceSchema,
+  type TransferRequest,
+  TransferRequestSchema,
+  type TransferResult,
+  TransferResultSchema,
+} from "./transfer.js";
+export {
   decodeTusMetadata,
   encodeTusMetadata,
   TUS_EXTENSION_HEADER,

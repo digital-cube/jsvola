@@ -90,6 +90,22 @@ export async function createApiKey(db: Database, input: CreateApiKeyInput): Prom
   return { apiKey: serializeApiKey(row as ApiKeyRow), key: generated.key };
 }
 
+/** What a key event says about its key: ids, name, prefix and last four, scopes, dates — never the plaintext, never the hash. */
+export function keyAuditPayload(key: ApiKey): Record<string, unknown> {
+  return {
+    key_id: key.id,
+    name: key.name,
+    prefix: key.prefix,
+    last4: key.last4,
+    scopes: key.scopes,
+    is_admin: key.is_admin,
+    expires_at: key.expires_at,
+    created_at: key.created_at,
+    revoked_at: key.revoked_at,
+    created_by: key.created_by,
+  };
+}
+
 export interface ListApiKeysFilter {
   /** Only this tenant's keys; `null` only admin keys; absent: every key. */
   tenantId?: string | null;

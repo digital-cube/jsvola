@@ -128,6 +128,7 @@ describe("authentication", () => {
         tenantId: fx.tenant.id,
         tenantSlug: "acme",
         apiKeyId: fx.full.apiKey.id,
+        apiKeyLabel: `${fx.full.apiKey.prefix}…${fx.full.apiKey.last4}`,
         scopes: fx.full.apiKey.scopes,
         isAdmin: false,
         userId: "user-42",
@@ -257,6 +258,7 @@ describe("admin keys and X-Tenant-Slug", () => {
       tenantId: fx.tenant.id,
       tenantSlug: "acme",
       apiKeyId: fx.admin.apiKey.id,
+      apiKeyLabel: `${fx.admin.apiKey.prefix}…${fx.admin.apiKey.last4}`,
       scopes: ["admin"],
       isAdmin: true,
     });
