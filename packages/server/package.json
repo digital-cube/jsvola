@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.6",
+    "@fastify/websocket": "^11.3.5",
     "@jsudc/core": "0.2.0",
     "@jsudc/server": "0.2.1",
     "@vola/core": "workspace:*",
@@ -53,7 +54,9 @@
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.11"
+    "@types/ws": "^8.18.2",
+    "drizzle-kit": "^0.31.11",
+    "ws": "^8.22.1"
   },
   "publishConfig": {
     "access": "public"

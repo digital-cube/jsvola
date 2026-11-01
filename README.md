@@ -228,8 +228,34 @@ The `files` collection (`packages/server/udc/files/view.yaml` is its view) needs
 `processing_status` as lookup values. An encrypted file shows `filename: "<encrypted>"` and no
 MIME type or extension — in rows, filters, sorts and cursors alike — until the phase-6 unlock
 puts the real ones back through the `decorateRow` hook of `volaPlugin`. `menu.yaml` is served
-as the `menu` collection (the sidebar of the examples site). Real-time `subscribe` is the next
-ticket.
+as the `menu` collection (the sidebar of the examples site).
+
+### Real-time: `GET /vola/udc/subscribe`
+
+The same rows, live. A WebSocket (`["vola.v1", "bearer.<key>"]` as subprotocols, or the usual
+headers; `files:read`) takes `udc.subscribe` messages with a `list`-style filter — a top-level
+`instance_type` is required, `instance_id` and `folder_path` narrow it — and pushes
+`udc.row.upsert` (the row, exactly as `list` would answer it) and `udc.row.remove` (an id) as
+files are uploaded, replaced, moved, renamed, deleted and purged. Every writer publishes an
+event after its commit on a `FileEventBus`: Redis pub/sub (`vola:files:<tenant id>`) with
+`VOLA_REDIS_URL`, so several server and worker processes share one feed, in-process without.
+Only ids travel; the row is read back under the tenant's id and the same masking as `list`.
+A client that reads too slowly is closed with `4008` (`VOLA_WS_MAX_BUFFERED`), one that stops
+answering pings is terminated (`VOLA_WS_HEARTBEAT_MS`). The protocol and its schemas
+(`@vola/core`) are in [docs/REALTIME.md](docs/REALTIME.md).
+
+```js
+const ws = new WebSocket("ws://localhost:8300/vola/udc/subscribe", ["vola.v1", `bearer.${key}`]);
+ws.onopen = () =>
+  ws.send(JSON.stringify({
+    kind: "udc.subscribe", id: "ticket-42",
+    payload: { collection: "files", filter: { and: [
+      { field: "instance_type", op: "eq", value: "tickets" },
+      { field: "instance_id", op: "eq", value: "0192…" },
+    ] } },
+  }));
+ws.onmessage = (e) => console.log(JSON.parse(e.data)); // udc.welcome, udc.subscribe.ok, udc.row.upsert …
+```
 
 ## Container
 

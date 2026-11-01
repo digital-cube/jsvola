@@ -32,8 +32,11 @@ let other: { tenantId: string; key: string };
 
 const TYPE = "tickets";
 const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
+// A 1×1 PNG with a well-formed IHDR and IEND: `file-type` walks the chunk list, so random
+// bytes after the signature made the detection flaky.
 const PNG = Buffer.concat([
-  Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"),
+  Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108000000003a7e9b55", "hex"),
+  Buffer.from("0000000049454e44ae426082", "hex"),
   randomBytes(64),
 ]);
 

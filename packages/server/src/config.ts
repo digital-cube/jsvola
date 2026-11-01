@@ -52,6 +52,8 @@ const ConfigSchema = z.object({
   VOLA_RECORD_CANDIDATES: boolean(true),
   VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
   VOLA_MENU_PATH: z.string().min(1).optional(),
+  VOLA_WS_HEARTBEAT_MS: z.coerce.number().int().min(1000).default(30_000),
+  VOLA_WS_MAX_BUFFERED: z.coerce.number().int().min(1).default(1000),
   VOLA_LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
@@ -90,7 +92,16 @@ export interface Config {
   lookups: LookupsConfig;
   /** The menu YAML served as the `menu` UDC collection (`VOLA_MENU_PATH`). */
   menuPath: string;
+  /** The real-time `subscribe` WebSocket (`/udc/subscribe`). */
+  subscribe: SubscribeConfig;
   logLevel: LogLevel;
+}
+
+export interface SubscribeConfig {
+  /** `VOLA_WS_HEARTBEAT_MS`: a ping this often; a client that missed the last one is cut off. */
+  heartbeatIntervalMs: number;
+  /** `VOLA_WS_MAX_BUFFERED`: unwritten messages a connection may pile up before it is closed (4008). */
+  maxBufferedMessages: number;
 }
 
 /** Thrown by `loadConfig` — one message listing every invalid `VOLA_*` variable. */
@@ -132,6 +143,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         : null,
     },
     menuPath: c.VOLA_MENU_PATH ? resolve(c.VOLA_MENU_PATH) : DEFAULT_MENU_PATH,
+    subscribe: {
+      heartbeatIntervalMs: c.VOLA_WS_HEARTBEAT_MS,
+      maxBufferedMessages: c.VOLA_WS_MAX_BUFFERED,
+    },
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

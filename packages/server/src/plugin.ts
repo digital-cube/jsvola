@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import fastifyWebsocket from "@fastify/websocket";
 import type { CollectionRegistry } from "@jsudc/server";
 import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
@@ -8,6 +9,7 @@ import { installAuth } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
+import { createFileEventBus, type FileEventBus } from "./events/bus.js";
 import { emptyLookups, initLookups, type Lookups } from "./lookups.js";
 import type { RedisLike } from "./redis.js";
 import { fileRoutes } from "./routes/files.js";
@@ -21,8 +23,10 @@ import type { LastUsedThrottle } from "./services/apikeys.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 import { filesCollections } from "./udc/collections.js";
 import type { DecorateRow } from "./udc/files-source.js";
+import { SubscriptionHub } from "./udc/hub.js";
 import { menuCollection } from "./udc/menu.js";
 import { udcRoutes } from "./udc/plugin.js";
+import { selectSubprotocol, subscribeRoutes } from "./udc/subscribe-route.js";
 
 export interface VolaPluginOptions {
   config: Config;
@@ -56,6 +60,18 @@ export interface VolaPluginOptions {
   menu?: string | false | undefined;
   /** Phase-6 hook of the `files` collection: decorates every row after the built-in masking. */
   decorateRow?: DecorateRow | undefined;
+  /**
+   * The bus every file change is announced on and the `files` collection's `subscribe`
+   * listens to. Default: Redis pub/sub on `config.redisUrl` when set, in-process otherwise
+   * (`createFileEventBus`); a bus made here is closed with the app. `false`: no events and
+   * no `/udc/subscribe` route.
+   */
+  events?: FileEventBus | false | undefined;
+  /**
+   * The real-time WebSocket (`/udc/subscribe`): heartbeat and slow-consumer limits. Default:
+   * `config.subscribe`. `false`: no route (events are still published).
+   */
+  subscribe?: Partial<SubscribeOptions> | false | undefined;
   /**
    * Registers more routes INSIDE the plugin, after the built-in ones: they share its prefix,
    * error envelope and auth (`config.scope`, `config.auth`). For a host application's own
@@ -96,6 +112,13 @@ async function loadLookups(app: FastifyInstance, config: Config): Promise<Lookup
     "lookups loaded",
   );
   return lookups;
+}
+
+export interface SubscribeOptions {
+  /** A WebSocket ping this often; a client that missed the last one is terminated. */
+  heartbeatIntervalMs: number;
+  /** Unwritten messages a connection may pile up before it is closed with 4008. */
+  maxBufferedMessages: number;
 }
 
 const REQUEST_ID_RE = /^[\w.:-]{1,128}$/;
@@ -151,6 +174,30 @@ export function installErrorHandling(app: FastifyInstance): void {
  */
 export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, options) => {
   installErrorHandling(app);
+  let events: FileEventBus | undefined;
+  if (options.events === undefined) {
+    events = createFileEventBus(options.config.redisUrl, { log: app.log });
+    const owned = events;
+    app.addHook("onClose", async () => owned.close());
+  } else if (options.events) {
+    events = options.events;
+  }
+  const subscribe =
+    events && options.udc !== false && options.subscribe !== false
+      ? (options.subscribe ?? {})
+      : null;
+  let hub: SubscriptionHub | null = null;
+  if (subscribe) {
+    // Before @fastify/websocket's preClose, which closes sockets without a code: ours says 1001.
+    app.addHook("preClose", async () => hub?.close());
+    // Before the auth hooks: a refused upgrade is answered (401/403) and its socket destroyed
+    // only when @fastify/websocket saw the request first. A host that registered it is reused.
+    if (!app.hasDecorator("websocketServer")) {
+      await app.register(fastifyWebsocket, {
+        options: { maxPayload: 64 * 1024, handleProtocols: selectSubprotocol },
+      });
+    }
+  }
   installAuth(app, options.db, { lastUsed: options.lastUsed });
   const storage = options.storage ?? new FilesystemBackend(options.config.storagePath);
   const lookups = options.lookups ?? (await loadLookups(app, options.config));
@@ -163,6 +210,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     maxUploadBytes: options.config.maxUploadBytes,
     accessThrottle: options.accessThrottle,
     lookups,
+    events,
   });
   await app.register(uploadRoutes, {
     db: options.db,
@@ -172,8 +220,9 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     uploadTtlHours: options.config.uploadTtlHours,
     sweepIntervalMs: options.uploadSweepIntervalMs,
     lookups,
+    events,
   });
-  await app.register(folderRoutes, { db: options.db });
+  await app.register(folderRoutes, { db: options.db, events });
   await app.register(publicRoutes, {
     db: options.db,
     storage,
@@ -182,7 +231,13 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   if (options.udc !== false) {
     const registry =
       options.udc ??
-      filesCollections({ db: options.db, prefix: app.prefix, decorateRow: options.decorateRow });
+      filesCollections({
+        db: options.db,
+        prefix: app.prefix,
+        decorateRow: options.decorateRow,
+        events,
+        logger: app.log,
+      });
     const menu =
       options.menu === undefined
         ? existsSync(options.config.menuPath)
@@ -194,6 +249,17 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       app.log.warn({ path: options.config.menuPath }, "menu.yaml not found: no menu collection");
     }
     await app.register(udcRoutes, { db: options.db, registry, lastUsed: options.lastUsed });
+    if (subscribe) {
+      hub = new SubscriptionHub({
+        registry,
+        log: app.log,
+        heartbeatIntervalMs:
+          subscribe.heartbeatIntervalMs ?? options.config.subscribe.heartbeatIntervalMs,
+        maxBufferedMessages:
+          subscribe.maxBufferedMessages ?? options.config.subscribe.maxBufferedMessages,
+      });
+      await app.register(subscribeRoutes, { hub });
+    }
   }
   if (options.extend) await options.extend(app);
 };

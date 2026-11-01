@@ -1,5 +1,6 @@
 import {
   type Capabilities,
+  evaluateFilter,
   type FilterNode,
   type ListResponse,
   MAX_PAGE_LIMIT,
@@ -9,12 +10,14 @@ import {
   SUPPORTED_OPS,
   UdcError,
 } from "@jsudc/core";
-import type { Source, SourceListRequest } from "@jsudc/server";
+import type { SourceListRequest } from "@jsudc/server";
 import { LOOKUP_SECTIONS } from "@vola/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
+import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files, folders } from "../db/schema.js";
+import type { FileEvent, FileEventBus } from "../events/bus.js";
 import { decodePageCursor, encodePageCursor, type PageCursor } from "./cursor.js";
 import {
   coerce,
@@ -24,6 +27,7 @@ import {
   schemaOf,
   withoutTopLevel,
 } from "./sql-filter.js";
+import type { RowSink, SubscribableSource, Subscription } from "./subscribable.js";
 
 /** The name of the collection under `/udc`. */
 export const FILES_COLLECTION = "files";
@@ -59,11 +63,17 @@ export interface FilesSourceOptions {
   /** Mount prefix of the vola routes (`/vola`), for `download_url` and `thumb_url`. */
   prefix: string;
   decorateRow?: DecorateRow | undefined;
+  /**
+   * The bus file changes arrive on; with it the collection is subscribable
+   * (`capabilities.subscribe`), without it `subscribe` is `unsupported_op`.
+   */
+  events?: FileEventBus | undefined;
+  logger?: FastifyBaseLogger | undefined;
 }
 
 export const FILES_SOURCE_CAPABILITIES: Capabilities = {
   mutate: false,
-  subscribe: false,
+  subscribe: true,
   total_count: true,
   schema_edit: false,
   config_edit: false,
@@ -119,6 +129,30 @@ interface SortableField {
 }
 
 /** The sort keys the collection accepts (each with `id` as the tiebreak). */
+/** One live subscription of the `files` collection. */
+interface FilesSubscription {
+  tenant: BoundTenantContext;
+  instanceType: string;
+  /** `null`: every instance of the type (an admin's view). */
+  instanceId: string | null;
+  includeDeleted: boolean;
+  /** The request's filter without `include_deleted`, evaluated against the decorated row. */
+  filter: FilterNode | undefined;
+  sink: RowSink;
+}
+
+/** The subscriptions of one tenant, sharing one bus subscription and one dispatch queue. */
+interface TenantGroup {
+  subscriptions: Set<FilesSubscription>;
+  /** Resolves to the function that ends the bus subscription. */
+  feed: Promise<() => Promise<void>>;
+  /** Events are dispatched one after another, so every sink sees them in publish order. */
+  queue: Promise<void>;
+}
+
+/** What one subscription gets for one event, decided before anything is sent. */
+type Decision = { sink: RowSink; upsert: Row } | { sink: RowSink; remove: string } | null;
+
 export const FILES_SORTABLE: Record<string, SortableField> = {
   created_at: {
     expr: files.createdAt,
@@ -291,15 +325,26 @@ export function filesFields(prefix: string): Record<string, FileField> {
  * cursor paging with `id` as the tiebreak, an exact `total`. The name, MIME type and
  * extension of an encrypted file are masked in rows, filters, sorts and cursors alike;
  * `decorateRow` (phase 6) may put the real ones back under an unlock.
+ *
+ * `subscribe` follows the same rows live (see `SubscribableSource`): a subscription pins
+ * `instance_type` (required) and optionally `instance_id`; every file event of the tenant
+ * that lands in that instance is read back from the database and offered to the
+ * subscription's full filter — a row that matches is an `upsert`, one that stopped matching
+ * (deleted, purged, moved to another folder, renamed out of a `filename` filter) a `remove`.
+ * Events of other tenants never reach a subscription: the bus is subscribed per tenant and
+ * the row is read under the tenant's id.
  */
-export class FilesCollectionSource implements Source {
-  readonly capabilities = FILES_SOURCE_CAPABILITIES;
+export class FilesCollectionSource implements SubscribableSource {
+  readonly capabilities: Capabilities;
   readonly kind = "postgres_jsonb" as const;
   private readonly db: Database;
   private readonly fields: Record<string, FileField>;
   private readonly schema: SchemaDoc;
   private readonly compiler: SqlFilterCompiler;
   private readonly decorateRow: DecorateRow | undefined;
+  private readonly events: FileEventBus | undefined;
+  private readonly logger: FastifyBaseLogger | undefined;
+  private readonly groups = new Map<string, TenantGroup>();
 
   constructor(options: FilesSourceOptions) {
     this.db = options.db;
@@ -307,6 +352,9 @@ export class FilesCollectionSource implements Source {
     this.schema = schemaOf(this.fields);
     this.compiler = new SqlFilterCompiler(this.fields);
     this.decorateRow = options.decorateRow;
+    this.events = options.events;
+    this.logger = options.logger;
+    this.capabilities = { ...FILES_SOURCE_CAPABILITIES, subscribe: this.events !== undefined };
   }
 
   async describe(): Promise<SchemaDoc> {
@@ -379,6 +427,150 @@ export class FilesCollectionSource implements Source {
     const [row] = await this.toRows(records, tenant);
     if (!row) throw new UdcError("not_found", `no file ${id}`);
     return row;
+  }
+
+  /**
+   * Follows the rows of `filter` live for the current tenant. The filter is checked like a
+   * `list`'s (unknown field or op: `validation_error`) and must pin `instance_type`.
+   * Resolves once the tenant's events are flowing; `internal` when the feed cannot be
+   * subscribed (Redis down).
+   */
+  async subscribe(filter: FilterNode | undefined, sink: RowSink): Promise<Subscription> {
+    const tenant = requireTenant();
+    const events = this.events;
+    if (!events) {
+      throw new UdcError("unsupported_op", "this collection has no event feed to subscribe to");
+    }
+    const instanceType = pinnedValue(filter, INSTANCE_TYPE_FILTER);
+    if (!instanceType) {
+      throw new UdcError(
+        "validation_error",
+        `a subscription needs a top-level "${INSTANCE_TYPE_FILTER}" eq filter`,
+        { field: INSTANCE_TYPE_FILTER },
+      );
+    }
+    const includeDeleted = pinnedValue(filter, INCLUDE_DELETED_FILTER);
+    const rest = withoutTopLevel(filter, INCLUDE_DELETED_FILTER);
+    if (rest) this.compiler.compile(rest); // the same validation a list gets
+    const subscription: FilesSubscription = {
+      tenant,
+      instanceType,
+      instanceId: pinnedValue(filter, INSTANCE_ID_FILTER)?.toLowerCase() ?? null,
+      includeDeleted:
+        includeDeleted !== null && coerce(INCLUDE_DELETED_FILTER, "bool", includeDeleted) === true,
+      filter: rest,
+      sink,
+    };
+
+    let group = this.groups.get(tenant.tenantId);
+    if (!group) {
+      const created: TenantGroup = {
+        subscriptions: new Set(),
+        queue: Promise.resolve(),
+        feed: events.subscribe(tenant.tenantId, (event) => this.enqueue(created, event)),
+      };
+      group = created;
+      this.groups.set(tenant.tenantId, group);
+    }
+    const members = group;
+    members.subscriptions.add(subscription);
+    let unsubscribe: () => Promise<void>;
+    try {
+      unsubscribe = await members.feed;
+    } catch (error) {
+      this.forget(tenant.tenantId, members, subscription);
+      this.logger?.error({ err: error, tenant: tenant.tenantSlug }, "file event feed unavailable");
+      throw new UdcError("internal", "event feed unavailable");
+    }
+    let closed = false;
+    return {
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        if (this.forget(tenant.tenantId, members, subscription)) await unsubscribe();
+      },
+    };
+  }
+
+  /** Subscriptions per tenant id. */
+  subscriptions(): Record<string, number> {
+    return Object.fromEntries([...this.groups].map(([id, g]) => [id, g.subscriptions.size]));
+  }
+
+  /** Resolves when every event received so far has been dispatched. */
+  async idle(): Promise<void> {
+    await Promise.all([...this.groups.values()].map((g) => g.queue));
+  }
+
+  /** Drops `subscription`; `true` when it was the tenant's last one (its feed must end). */
+  private forget(tenantId: string, group: TenantGroup, subscription: FilesSubscription): boolean {
+    group.subscriptions.delete(subscription);
+    if (group.subscriptions.size > 0 || this.groups.get(tenantId) !== group) return false;
+    this.groups.delete(tenantId);
+    return true;
+  }
+
+  private enqueue(group: TenantGroup, event: FileEvent): void {
+    group.queue = group.queue
+      .then(() => this.dispatch(group, event))
+      .catch((error) =>
+        this.logger?.error({ err: error, file: event.fileId }, "file event not dispatched"),
+      );
+  }
+
+  /**
+   * One event for every subscription of the tenant it names: the row is read ONCE (soft-
+   * deleted too; `null` once purged), decorated per subscription, and the decisions are then
+   * emitted in one synchronous pass so a connection's buffer accounting sees them together.
+   */
+  private async dispatch(group: TenantGroup, event: FileEvent): Promise<void> {
+    const targets = [...group.subscriptions].filter(
+      (s) =>
+        s.instanceType === event.instanceType &&
+        (s.instanceId === null || s.instanceId === event.instanceId),
+    );
+    if (targets.length === 0) return;
+    const record = await this.record(event.tenantId, event.fileId);
+    const decisions: Decision[] = [];
+    for (const target of targets) {
+      decisions.push(await this.decide(target, record, event));
+    }
+    for (const decision of decisions) {
+      if (!decision) continue;
+      if ("upsert" in decision) decision.sink.upsert(decision.upsert, event.kind);
+      else decision.sink.remove(decision.remove, event.kind);
+    }
+  }
+
+  private async decide(
+    target: FilesSubscription,
+    record: FileRecord | null,
+    event: FileEvent,
+  ): Promise<Decision> {
+    // A row the subscription cannot have: nothing to upsert, and for a new file nothing to remove.
+    const gone = !record || (record.file.deletedAt !== null && !target.includeDeleted);
+    if (!gone) {
+      const [row] = await this.toRows([record], target.tenant);
+      if (row && this.matches(target.filter, row)) return { sink: target.sink, upsert: row };
+    }
+    return event.kind === "created" ? null : { sink: target.sink, remove: event.fileId };
+  }
+
+  private matches(filter: FilterNode | undefined, row: Row): boolean {
+    try {
+      return evaluateFilter(filter, row);
+    } catch {
+      return false; // a value the evaluator rejects (checked at subscribe time; defensive)
+    }
+  }
+
+  /** The file `fileId` of `tenantId`, soft-deleted or not; `null` when purged. */
+  private async record(tenantId: string, fileId: string): Promise<FileRecord | null> {
+    if (!UUID_RE.test(fileId)) return null;
+    const [record] = await this.select()
+      .where(and(eq(files.tenantId, tenantId), eq(files.id, fileId.toLowerCase())))
+      .limit(1);
+    return record ?? null;
   }
 
   mutate(): Promise<Row> {

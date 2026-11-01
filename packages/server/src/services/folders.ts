@@ -11,11 +11,14 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
 import { type FolderRow, files, folders } from "../db/schema.js";
 import { VolaError } from "../errors.js";
+import { type FileEventBus, publishFileEvents } from "../events/bus.js";
 import { type InstanceScope, serializeFile } from "./files.js";
 
 export interface FoldersDeps {
   db: Database;
   logger?: FastifyBaseLogger | undefined;
+  /** Where a change of the files in a folder is announced after its commit; absent: nowhere. */
+  events?: FileEventBus | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -318,7 +321,7 @@ export async function relocateFolder(
 
   const now = (deps.now ?? (() => new Date()))();
   try {
-    return await deps.db.transaction(async (tx) => {
+    const { result, movedFiles } = await deps.db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${`${scope.tenantId}/${scope.instanceType}/${scope.instanceId}`}, 0))`,
       );
@@ -341,8 +344,26 @@ export async function relocateFolder(
         { folder: folder.id, from: path, to: target, folders: moved.length },
         "folder relocated",
       );
-      return serializeFolder(updated);
+      // Every live file in the subtree now has another `folder_path`.
+      const movedFiles =
+        deps.events && moved.length > 0
+          ? await tx
+              .select({ id: files.id, folderId: files.folderId })
+              .from(files)
+              .where(
+                and(
+                  inArray(
+                    files.folderId,
+                    moved.map((f) => f.id),
+                  ),
+                  isNull(files.deletedAt),
+                ),
+              )
+          : [];
+      return { result: serializeFolder(updated), movedFiles };
     });
+    await publishFileEvents(deps, { ...scope, kind: "updated" }, movedFiles);
+    return result;
   } catch (error) {
     if (pgCode(error) === UNIQUE_VIOLATION) throw folderExists(target);
     throw error;
@@ -375,7 +396,7 @@ export async function deleteFolder(
 ): Promise<FolderDeleteResult> {
   const folder = await findFolder(deps, scope, path);
   const now = (deps.now ?? (() => new Date()))();
-  return deps.db.transaction(async (tx) => {
+  const { result, deletedFiles } = await deps.db.transaction(async (tx) => {
     const subtree = await tx
       .select({ id: folders.id })
       .from(folders)
@@ -397,7 +418,7 @@ export async function deleteFolder(
       .update(files)
       .set({ deletedAt: now, deletedBy: options.userId, updatedAt: now })
       .where(and(inArray(files.folderId, ids), isNull(files.deletedAt)))
-      .returning({ id: files.id });
+      .returning({ id: files.id, folderId: files.folderId });
     const deletedFolders = await tx
       .update(folders)
       .set({ deletedAt: now, deletedBy: options.userId, updatedAt: now })
@@ -414,9 +435,14 @@ export async function deleteFolder(
       "folder soft-deleted",
     );
     return {
-      folder: serializeFolder(self),
-      folders: deletedFolders.length,
-      files: deletedFiles.length,
+      result: {
+        folder: serializeFolder(self),
+        folders: deletedFolders.length,
+        files: deletedFiles.length,
+      },
+      deletedFiles,
     };
   });
+  await publishFileEvents(deps, { ...scope, kind: "deleted" }, deletedFiles);
+  return result;
 }

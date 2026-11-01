@@ -9,6 +9,27 @@ share one version.
 
 ### Added
 
+- Real-time `subscribe` (plan 3.2): `GET /udc/subscribe` upgrades to a WebSocket
+  (`bearer.<key>` subprotocol next to `vola.v1`, or the usual headers; `files:read`; refusals
+  are plain `401`/`403`/`400` before the upgrade; the key is never read from the URL). A
+  client sends `udc.subscribe {collection: "files", filter}` with a `list`-style filter
+  (top-level `instance_type` required, `instance_id`, `folder_path`, `include_deleted` and
+  the rest as in `list`; up to 32 per connection) and receives `udc.row.upsert` (the row as
+  `list` answers it, read back under the tenant and the same masking / `decorateRow`) or
+  `udc.row.remove` (an id) whenever a file of that instance is uploaded, replaced by slug,
+  versioned, completed by a resumable upload, moved, renamed, made (in)visible, soft-deleted,
+  purged, or moved by a folder rename / deleted with a folder. `FileEventBus`
+  (`@vola/server`): every writer publishes `{tenantId, instanceType, instanceId, folderId,
+  fileId, kind}` after its commit — Redis pub/sub on `vola:files:<tenant id>` with
+  `VOLA_REDIS_URL` (several server and worker processes), in-process without;
+  `publishProcessingStatus` is the hook for the plan-4.1 worker. Heartbeat
+  (`VOLA_WS_HEARTBEAT_MS`), slow-consumer close `4008` (`VOLA_WS_MAX_BUFFERED`), `1001` on
+  shutdown, `1011` when the feed is down. `volaPlugin` takes `events` and `subscribe`
+  (`false` switches either off); `@fastify/websocket` is registered unless the host did.
+  Wire schemas in `@vola/core` (`ClientMessageSchema`, `ServerMessageSchema`,
+  `SUBSCRIBE_CLOSE_CODES`, `FILE_EVENT_KINDS`). The `files` collection now reports
+  `capabilities.subscribe: true`. Docs: `docs/REALTIME.md`.
+
 - Lookups, translations and the UDC `files` collection (plan 3.1). `@vola/lookups` is now the
   full copy of `@memento/lookups` (YAML compiler and registry, CSV translations with a
   validator, candidate recorder, codegen) plus `promoteCandidates`; `lookups.yaml`

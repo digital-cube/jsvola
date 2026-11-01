@@ -22,6 +22,7 @@ import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import type { UploadRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
+import type { FileEventBus } from "../events/bus.js";
 import type { Lookups } from "../lookups.js";
 import {
   appendUpload,
@@ -51,6 +52,8 @@ export interface UploadRoutesDeps {
   logger?: FastifyBaseLogger | undefined;
   /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
   lookups?: Lookups | undefined;
+  /** Where the completed file is announced after its commit (real-time `subscribe`). */
+  events?: FileEventBus | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -104,6 +107,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
     ttlMs: deps.uploadTtlHours * 3_600_000,
     logger,
     lookups: deps.lookups,
+    events: deps.events,
     now: deps.now,
   };
 

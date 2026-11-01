@@ -17,6 +17,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
 import { VolaError } from "../errors.js";
+import { type FileEventBus, publishFileEvent, publishFileEvents } from "../events/bus.js";
 import {
   extensionOf,
   nextCollisionFilename,
@@ -41,6 +42,8 @@ export interface FilesDeps {
   logger?: FastifyBaseLogger | undefined;
   /** The vocabulary: a `kind` or `encryption` it does not know is recorded as a candidate. */
   lookups?: Lookups | undefined;
+  /** Where every change is announced after its commit (real-time `subscribe`); absent: nowhere. */
+  events?: FileEventBus | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -214,7 +217,8 @@ const pgCode = (error: unknown): string | undefined =>
  * exists), soft-deletes the previous file of `slug`, resolves the collision rename (per
  * folder) and inserts. A new version (`parent`) keeps the name of the version it supersedes
  * when the client sent none or the same one — no `(1)` rename against its own chain.
- * On failure the staged blob is discarded.
+ * On failure the staged blob is discarded. After the commit a `created` event goes out for
+ * the new row, and a `deleted` one for every live file of `slug` it replaced.
  */
 export async function finalizeUpload(
   deps: FilesDeps,
@@ -246,7 +250,7 @@ export async function finalizeUpload(
     // row is live by then and gets soft-deleted on the next pass.
     for (let attempt = 1; ; attempt++) {
       try {
-        const info = await deps.db.transaction(async (tx) => {
+        const { info, replaced } = await deps.db.transaction(async (tx) => {
           await tx.execute(
             sql`select pg_advisory_xact_lock(hashtextextended(${upload.staged.hash}, 0))`,
           );
@@ -260,12 +264,13 @@ export async function finalizeUpload(
               "the stored bytes vanished before the file was recorded",
             );
           }
-          if (slug) {
-            await tx
-              .update(files)
-              .set({ deletedAt: now, deletedBy: input.userId, updatedAt: now })
-              .where(and(instanceWhere(scope), eq(files.slug, slug), isNull(files.deletedAt)));
-          }
+          const replaced = slug
+            ? await tx
+                .update(files)
+                .set({ deletedAt: now, deletedBy: input.userId, updatedAt: now })
+                .where(and(instanceWhere(scope), eq(files.slug, slug), isNull(files.deletedAt)))
+                .returning({ id: files.id, folderId: files.folderId })
+            : [];
           const resolved = inherited
             ? filename
             : await resolveFilename(tx, scope, filename, folderId);
@@ -291,10 +296,17 @@ export async function finalizeUpload(
               updatedAt: now,
             })
             .returning();
-          return serializeFile(row as FileRow);
+          return { info: serializeFile(row as FileRow), replaced };
         });
         // Best effort, after the commit: a value the vocabulary does not know is queued for review.
         await recordFileCandidates(deps.lookups, info);
+        await publishFileEvents(deps, { ...scope, kind: "deleted" }, replaced);
+        await publishFileEvent(deps, {
+          ...scope,
+          folderId: info.folder_id,
+          fileId: info.id,
+          kind: "created",
+        });
         return info;
       } catch (error) {
         if (slug && attempt < 3 && pgCode(error) === UNIQUE_VIOLATION) continue;
@@ -553,6 +565,12 @@ export async function patchFile(
     },
     "file updated",
   );
+  await publishFileEvent(deps, {
+    ...scope,
+    folderId: updated.folderId,
+    fileId: updated.id,
+    kind: "updated",
+  });
   return serializeFile(updated);
 }
 
@@ -680,6 +698,12 @@ export async function softDeleteFile(
     .set({ deletedAt: now, deletedBy: userId, updatedAt: now })
     .where(and(eq(files.id, row.id), isNull(files.deletedAt)))
     .returning();
+  await publishFileEvent(deps, {
+    ...scope,
+    folderId: row.folderId,
+    fileId: row.id,
+    kind: "deleted",
+  });
   return serializeFile(updated ?? { ...row, deletedAt: now, deletedBy: userId, updatedAt: now });
 }
 
@@ -730,6 +754,12 @@ export async function purgeFile(
 
   const deleted = await deps.db.transaction((tx) =>
     tx.delete(files).where(inArray(files.id, ids)).returning({ id: files.id }),
+  );
+  const gone = new Set(deleted.map((f) => f.id));
+  await publishFileEvents(
+    deps,
+    { ...scope, kind: "purged" },
+    family.filter((f) => gone.has(f.id)),
   );
 
   let blobs = 0;

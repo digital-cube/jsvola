@@ -1,6 +1,8 @@
 import type { ViewConfig } from "@jsudc/core";
 import { CollectionRegistry } from "@jsudc/server";
+import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
+import type { FileEventBus } from "../events/bus.js";
 import { type DecorateRow, FILES_COLLECTION, FilesCollectionSource } from "./files-source.js";
 import { loadFilesView } from "./files-view.js";
 
@@ -9,6 +11,9 @@ export interface FilesCollectionsOptions {
   /** Mount prefix of the vola routes (`/vola`), for the URLs in rows. */
   prefix: string;
   decorateRow?: DecorateRow | undefined;
+  /** The bus the `files` collection's `subscribe` listens to; without one it is not subscribable. */
+  events?: FileEventBus | undefined;
+  logger?: FastifyBaseLogger | undefined;
   /** Default: `udc/files/view.yaml`. */
   view?: ViewConfig | undefined;
 }

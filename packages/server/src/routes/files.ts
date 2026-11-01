@@ -16,6 +16,7 @@ import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyReques
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
+import type { FileEventBus } from "../events/bus.js";
 import type { Lookups } from "../lookups.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
 import {
@@ -58,6 +59,8 @@ export interface FileRoutesDeps {
   logger?: FastifyBaseLogger | undefined;
   /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
   lookups?: Lookups | undefined;
+  /** Where every change is announced after its commit (real-time `subscribe`). */
+  events?: FileEventBus | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -108,9 +111,15 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     accessThrottle: deps.accessThrottle,
     logger: deps.logger ?? app.log,
     lookups: deps.lookups,
+    events: deps.events,
     now: deps.now,
   };
-  const folderService: FoldersDeps = { db: deps.db, logger: service.logger, now: deps.now };
+  const folderService: FoldersDeps = {
+    db: deps.db,
+    logger: service.logger,
+    events: deps.events,
+    now: deps.now,
+  };
 
   await app.register(fastifyMultipart, {
     // At the limit busboy truncates the part (and flags it) instead of throwing: the handler

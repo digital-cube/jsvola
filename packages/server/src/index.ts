@@ -15,7 +15,13 @@ export {
   unauthorized,
   websocketKey,
 } from "./auth.js";
-export { type Config, ConfigError, type LogLevel, loadConfig } from "./config.js";
+export {
+  type Config,
+  ConfigError,
+  type LogLevel,
+  loadConfig,
+  type SubscribeConfig,
+} from "./config.js";
 export {
   type BoundTenantContext,
   currentContext,
@@ -36,6 +42,23 @@ export type { ApiKeyRow, FileRow, FolderRow, TenantRow, UploadRow } from "./db/s
 export * as schema from "./db/schema.js";
 export { uuidv7 } from "./db/uuid.js";
 export { codeForStatus, STATUS_CODES, VolaError } from "./errors.js";
+export {
+  createFileEventBus,
+  FILE_EVENTS_CHANNEL_PREFIX,
+  type FileEvent,
+  type FileEventBus,
+  type FileEventKind,
+  type FileEventListener,
+  type FileEventPublisher,
+  fileEventsChannel,
+  LocalFileEventBus,
+  parseEvent,
+  publishFileEvent,
+  publishFileEvents,
+  publishProcessingStatus,
+  RedisFileEventBus,
+  type RedisFileEventBusOptions,
+} from "./events/bus.js";
 export {
   type ByteRange,
   contentRange,
@@ -77,7 +100,13 @@ export {
   recordFileCandidates,
   unknownFileLookups,
 } from "./lookups.js";
-export { installErrorHandling, requestId, type VolaPluginOptions, volaPlugin } from "./plugin.js";
+export {
+  installErrorHandling,
+  requestId,
+  type SubscribeOptions,
+  type VolaPluginOptions,
+  volaPlugin,
+} from "./plugin.js";
 export { connectRedis, type RedisLike } from "./redis.js";
 export { type FileRoutesDeps, fileRoutes } from "./routes/files.js";
 export { type FolderRoutesDeps, folderRoutes } from "./routes/folders.js";
@@ -222,6 +251,14 @@ export {
 } from "./udc/files-source.js";
 export { FILES_VIEW_PATH, loadFilesView } from "./udc/files-view.js";
 export {
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_MAX_BUFFERED_MESSAGES,
+  type SubscribeSocket,
+  SubscriptionConnection,
+  SubscriptionHub,
+  type SubscriptionHubOptions,
+} from "./udc/hub.js";
+export {
   DEFAULT_MENU_PATH,
   MENU_COLLECTION,
   MENU_COLLECTION_ICONS,
@@ -241,6 +278,13 @@ export {
   topLevel,
   withoutTopLevel,
 } from "./udc/sql-filter.js";
+export {
+  isSubscribable,
+  type RowSink,
+  type SubscribableSource,
+  type Subscription,
+} from "./udc/subscribable.js";
+export { selectSubprotocol, subscribeRoutes } from "./udc/subscribe-route.js";
 export {
   type AppendResult as PartAppendResult,
   PartOverflowError,

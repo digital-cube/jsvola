@@ -9,6 +9,7 @@ import type { FastifyBaseLogger, FastifyPluginAsync, FastifyRequest } from "fast
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
+import type { FileEventBus } from "../events/bus.js";
 import { parseInstance } from "../services/files.js";
 import {
   deleteFolder,
@@ -24,6 +25,8 @@ import { flag } from "./send-file.js";
 export interface FolderRoutesDeps {
   db: Database;
   logger?: FastifyBaseLogger | undefined;
+  /** Where a change of the files in a folder is announced after its commit. */
+  events?: FileEventBus | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -57,7 +60,12 @@ interface DeleteQuery {
  *   without `recursive` is `409 folder_not_empty`.
  */
 export const folderRoutes: FastifyPluginAsync<FolderRoutesDeps> = async (app, deps) => {
-  const service: FoldersDeps = { db: deps.db, logger: deps.logger ?? app.log, now: deps.now };
+  const service: FoldersDeps = {
+    db: deps.db,
+    logger: deps.logger ?? app.log,
+    events: deps.events,
+    now: deps.now,
+  };
 
   const scopeOf = (request: FastifyRequest<{ Params: InstanceParams }>) =>
     parseInstance(requireTenant().tenantId, request.params.type, request.params.id);

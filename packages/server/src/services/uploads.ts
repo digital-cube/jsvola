@@ -5,6 +5,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
 import { type FileRow, type UploadRow, uploads } from "../db/schema.js";
 import { VolaError } from "../errors.js";
+import type { FileEventBus } from "../events/bus.js";
 import { sanitizeFilename } from "../files/filename.js";
 import type { Lookups } from "../lookups.js";
 import type { StorageBackend } from "../storage/index.js";
@@ -31,6 +32,8 @@ export interface UploadsDeps {
   logger?: FastifyBaseLogger | undefined;
   /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
   lookups?: Lookups | undefined;
+  /** Where the completed file is announced (real-time `subscribe`); absent: nowhere. */
+  events?: FileEventBus | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -50,11 +53,12 @@ function filesDeps(deps: UploadsDeps): FilesDeps {
     storage: deps.storage,
     logger: deps.logger,
     lookups: deps.lookups,
+    events: deps.events,
     now: deps.now,
   };
 }
 function foldersDeps(deps: UploadsDeps): FoldersDeps {
-  return { db: deps.db, logger: deps.logger, now: deps.now };
+  return { db: deps.db, logger: deps.logger, events: deps.events, now: deps.now };
 }
 
 /** The one answer for an upload that is not there — or belongs to another tenant (never 403). */

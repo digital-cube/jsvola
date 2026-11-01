@@ -58,7 +58,7 @@ standalone. Greške su `{error: {code, message}}`; kodovi su snake_case i stabil
   - `GET /vola/stats/tenant|storage`, `GET /vola/stats/instance/:type/:id`, `GET /vola/instance-types`, `GET /vola/lookups`
   - `POST /vola/admin/transfer`
   - `/vola/keyrings…` (faza 6.2)
-  - `/vola/udc/*` (`@jsudc/server` plugin, uključujući WS subscribe)
+  - `/vola/udc/*` (`@jsudc/server` plugin) i `GET /vola/udc/subscribe` (WS subscribe; `@jsudc/server` 0.2 nema transport za `capabilities.subscribe`, pa je transport vola-in, `docs/REALTIME.md`)
 - **Tabele** imaju prefiks `vola_`. Drizzle migracije su u gitu (`packages/server/drizzle`).
 
 ## Faze i tiketi
