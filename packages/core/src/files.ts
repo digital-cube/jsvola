@@ -133,6 +133,8 @@ export const ENCRYPTED_STORED_MIME = "application/octet-stream";
  * is refused with `400 caller_key_from_browser`. Needs the `encryption:caller` scope.
  */
 export const CONTENT_KEY_HEADER = "x-vola-content-key";
+/** Bytes of a `caller` content key (and of every AES-256-GCM key in the format). */
+export const CONTENT_KEY_BYTES = 32;
 export const CALLER_KEY_FROM_BROWSER_CODE = "caller_key_from_browser";
 /** On every download of an encrypted file: its `encryption` mode (`client` tells a reader the body is a `JSV` blob). */
 export const ENCRYPTION_RESPONSE_HEADER = "x-vola-encryption";

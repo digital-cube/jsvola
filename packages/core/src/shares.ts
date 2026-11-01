@@ -30,6 +30,14 @@ export const SHARE_SECRET_BYTES = 32;
 export const ShareSecretSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 /** `409`: the file is encrypted in a mode the server cannot make a grant for (`caller` without `fk_share_ct`, `client`). */
 export const ENCRYPTED_SHARE_REQUIRES_GRANT_CODE = "encrypted_share_requires_grant";
+/**
+ * The AAD of a share grant a CALLER made (`fk_share_ct` of `POST /shares` for a `caller`
+ * file, `docs/CRYPTO.md` § 9 and § 12): `nonce(12) ∥ AES-256-GCM(S, FK, aad) ∥ tag(16)`, base64.
+ * Bound to the file id, since the caller cannot know the share id.
+ */
+export function callerGrantAad(fileId: string): string {
+  return `${fileId}:key:share:caller`;
+}
 
 /** The password of a protected share travels in this header … */
 export const SHARE_PASSWORD_HEADER = "x-share-password";

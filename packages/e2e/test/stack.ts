@@ -70,6 +70,8 @@ interface StackEnv {
   queuePrefix: string;
   /** The tenant-encryption key file of this run (`VOLA_KEY_FILE`), one fresh line. */
   keyFile: string;
+  /** The keyring pepper file of this run (`VOLA_PEPPER_FILE`), one fresh line. */
+  pepperFile: string;
 }
 
 function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string>) {
@@ -82,6 +84,7 @@ function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string
       VOLA_STORAGE_PATH: env.storagePath,
       VOLA_QUEUE_PREFIX: env.queuePrefix,
       VOLA_KEY_FILE: env.keyFile,
+      VOLA_PEPPER_FILE: env.pepperFile,
       VOLA_LOG_LEVEL: process.env.VOLA_E2E_LOG_LEVEL ?? "warn",
       ...extra,
     },
@@ -141,12 +144,15 @@ export default async function setup({ provide }: TestProject) {
   const storagePath = await mkdtemp(join(tmpdir(), "vola-e2e-storage-"));
   const keyFile = join(storagePath, "vola.key");
   await writeFile(keyFile, `${generateKeyLine()}\n`, { mode: 0o600 });
+  const pepperFile = join(storagePath, "vola.pepper");
+  await writeFile(pepperFile, `${generateKeyLine()}\n`, { mode: 0o600 });
   const env: StackEnv = {
     databaseUrl: config.testDatabaseUrl,
     redisUrl: config.redisUrl,
     storagePath,
     queuePrefix: `vola-e2e-${randomUUID().slice(0, 8)}`,
     keyFile,
+    pepperFile,
   };
   const [base, server] = await startServer(env);
   const worker = startWorker(env);

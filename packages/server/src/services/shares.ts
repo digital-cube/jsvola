@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  callerGrantAad as coreCallerGrantAad,
   ENCRYPTED_SHARE_REQUIRES_GRANT_CODE,
   IMPLEMENTED_SHARE_SCOPES,
   SHARE_SECRET_BYTES,
@@ -115,7 +116,7 @@ export function shareGrantAad(shareId: string): Buffer {
 
 /** `<file id>:key:share:caller`: the AAD of a grant a CALLER made (it cannot know the share id). */
 export function callerGrantAad(fileId: string): Buffer {
-  return Buffer.from(`${fileId}:key:share:caller`, "utf8");
+  return Buffer.from(coreCallerGrantAad(fileId), "utf8");
 }
 
 /** A fresh link secret `S` and its base64url form (the URL fragment). */

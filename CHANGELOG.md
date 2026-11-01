@@ -9,6 +9,36 @@ share one version.
 
 ### Added
 
+- **`@vola/client`** (plan 7.1): the fetch SDK for every route, for Node 24+ and browsers,
+  depending on `@vola/core` (and `@jsudc/core` for `vola.udc`) only, with an injectable `fetch`.
+  `new VolaClient({ baseUrl, apiKey, userId?, tenantSlug?, fetch?, validate? })` with the groups
+  `files` (upload from a `File`/`Blob`/`Uint8Array`/stream — streams are framed as multipart
+  without buffering — download as a streaming `Response` with `Range`/`304`, `info`, `list`,
+  `iterate`, `versions`, `patch`, `delete`, `purge`, `byPath`, `bySlug`, `putSlug`, `public`,
+  `thumb` → `{status: "ready" | "generating" | "failed" | "not_modified"}`, `thumbUrl`),
+  `folders`, `uploads` (`resumable()`: tus creation, `HEAD` for the offset, `PATCH` in chunks,
+  progress, `AbortSignal`, a fingerprint store — `localStorage` in a browser, memory in Node, or
+  injected — so an interrupted upload continues where the server stands; plus `create`,
+  `status`, `append`, `abort`, `protocol`), `shares` (create/list/get/revoke, the recipient's
+  `VolaClient.openShare(url)` that turns the `#<secret>` fragment into `X-Share-Secret`, folder
+  `listing`, and `createCallerGrant` — the caller-made grant of a `caller` file, sealed with
+  WebCrypto), `keyrings` (status/setup/changePin/recover/unlock/lock/close/reset/deletePreview,
+  admin `statusOf`/`resetOf`; the unlock token lives in the instance's memory only, `lock()`
+  ends and forgets it, `withUnlock(token)` derives a second instance, `lockOnUnload()` sends a
+  `navigator.sendBeacon` to `/unlock/close` on `pagehide`), `stats`, `keys`, `admin.transfer`,
+  `instanceTypes()`, `lookups()`, `live()`/`ready()`, and `udc` (an `UdcClient` on `/udc` with
+  the same auth). Errors: `VolaError {status, code, message, retryAfter?, details, requestId}`,
+  `VolaLockedError` for `423`, `VolaIntegrityError` for `409 vola_integrity`. `contentKey` is
+  refused in a browser (`caller_key_from_browser`) before any request. Every answer is typed by
+  its `@vola/core` schema; `validate: true` parses it. `packages/client/README.md` has an
+  example per group and the vola-spp route → method migration table.
+- `@vola/core`: `callerGrantAad(fileId)` and `CONTENT_KEY_BYTES` (the server's share service
+  uses the former).
+- E2E: `packages/e2e/test/client.e2e.ts` drives the built SDK against the built server (upload,
+  `Range`, a resumable upload aborted mid-`PATCH` and resumed, the keyring flow, a share grant
+  opened through its fragment URL, `caller` from Node); the E2E stack now writes a
+  `VOLA_PEPPER_FILE` so keyrings work there.
+
 - Encryption at rest, part III (plan 6.3, `docs/CRYPTO.md` § 9–13).
   - The **`caller` provider**: the file key is wrapped under a 32-byte key the caller sends in
     `X-Vola-Content-Key` on the upload and on every read (AAD `<file id>:key:caller:<tenant id>`,

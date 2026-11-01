@@ -50,6 +50,9 @@ importers:
 
   packages/client:
     dependencies:
+      '@jsudc/core':
+        specifier: 0.2.0
+        version: 0.2.0
       '@vola/core':
         specifier: workspace:*
         version: link:../core
@@ -62,6 +65,9 @@ importers:
 
   packages/e2e:
     dependencies:
+      '@vola/client':
+        specifier: workspace:*
+        version: link:../client
       '@vola/core':
         specifier: workspace:*
         version: link:../core

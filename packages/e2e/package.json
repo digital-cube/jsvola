@@ -10,6 +10,7 @@
     "test:e2e": "vitest run"
   },
   "dependencies": {
+    "@vola/client": "workspace:*",
     "@vola/core": "workspace:*",
     "@vola/server": "workspace:*"
   },

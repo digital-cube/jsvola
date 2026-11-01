@@ -40,6 +40,7 @@ export {
 } from "./errors.js";
 export {
   CALLER_KEY_FROM_BROWSER_CODE,
+  CONTENT_KEY_BYTES,
   CONTENT_KEY_HEADER,
   DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES,
   ENCRYPTED_STORED_MIME,
@@ -221,6 +222,7 @@ export {
   TenantScopeSchema,
 } from "./scopes.js";
 export {
+  callerGrantAad,
   ENCRYPTED_SHARE_REQUIRES_GRANT_CODE,
   IMPLEMENTED_SHARE_SCOPES,
   INCLUDE_REVOKED_QUERY,
