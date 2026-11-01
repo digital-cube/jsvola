@@ -83,8 +83,8 @@ export async function setTenantActive(
   return serializeTenant(row);
 }
 
-/** The default encryption modes a tenant may be set to now (`keyring` / `caller` come with 6.2 / 6.3). */
-export const TENANT_DEFAULT_ENCRYPTIONS = ["none", "tenant"] as const;
+/** The default encryption modes a tenant may be set to now (`caller` comes with 6.3). */
+export const TENANT_DEFAULT_ENCRYPTIONS = ["none", "tenant", "keyring"] as const;
 export type TenantDefaultEncryption = (typeof TENANT_DEFAULT_ENCRYPTIONS)[number];
 
 /**

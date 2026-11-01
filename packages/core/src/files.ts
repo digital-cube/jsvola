@@ -110,7 +110,8 @@ export const UPLOAD_FILE_FIELD = "file";
 export const UPLOAD_METADATA_FIELD = "metadata";
 /**
  * `encryption` form field (BEFORE the `file` part) or `X-Vola-Encryption` header of an upload:
- * `none` | `tenant` (phase 6.1). Absent: the tenant's `default_encryption`.
+ * `none` | `tenant` (6.1) | `keyring` (6.2, needs `X-Vola-Unlock`). Absent: the folder's
+ * policy, else the tenant's `default_encryption`.
  */
 export const UPLOAD_ENCRYPTION_FIELD = "encryption";
 export const ENCRYPTION_HEADER = "x-vola-encryption";

@@ -309,8 +309,47 @@ vola keys-status                   # files per key line; rotate by PREPENDING a 
 ```
 
 Without the key file the server starts and serves plain files; anything encrypted answers
-`503 encryption_unavailable` until the file is there (no restart needed). `keyring` (a PIN per
-principal) and `caller` (a key per request) are phases 6.2 and 6.3 and answer `501` today.
+`503 encryption_unavailable` until the file is there (no restart needed). `caller` (a key per
+request) is phase 6.3 and answers `501` today.
+
+### Keyrings — a PIN per principal (`encryption=keyring`)
+
+A **keyring** belongs to a principal of a tenant (the `X-User-Id`) and is locked by a 6-digit
+PIN: the keys of that principal's `keyring` files are wrapped under the keyring's master key,
+the master key under Argon2id(PIN, pepper) and under a recovery key. An unlock is a short-lived
+token (`VOLA_UNLOCK_TTL_S`, default 150 s, sliding) sent in `X-Vola-Unlock` — never in a URL;
+without it a keyring file is `423 vola_locked` and lists show `<encrypted>`. Needs Redis (the
+tokens), `VOLA_PEPPER_FILE` (`vola pepper-generate`) and the key file; otherwise `503`.
+`docs/CRYPTO.md` § 8 has the whole model: brute force (counter in the row, `429` + `Retry-After`
+even for the right PIN), recovery, reset (crypto-shred), encrypted folders.
+
+```sh
+vola pepper-generate                                           # VOLA_PEPPER_FILE, 0600, refuses to overwrite
+H='-H "Authorization: Bearer $KEY" -H "X-User-Id: user-42"'
+curl -X POST $H -H "Content-Type: application/json" -d '{"pin":"135790"}' localhost:8300/vola/keyrings/me
+                                                               # 201 {keyring_id, recovery_key}  — the key ONCE
+curl -X POST $H -H "Content-Type: application/json" -d '{"pin":"135790"}' localhost:8300/vola/keyrings/me/unlock
+                                                               # {token, expires_in}
+curl -X POST $H -H "X-Vola-Unlock: $TOKEN" -H "X-Vola-Encryption: keyring" -F file=@diary.txt \
+     localhost:8300/vola/files/tickets/$ID                      # 201 … keyring_id; 423 without the token
+curl $H -H "X-Vola-Unlock: $TOKEN" localhost:8300/vola/files/tickets/$ID/$FILE     # the bytes; 423 without
+curl -X PATCH $H -H "Content-Type: application/json" -d '{"default_keyring":"me"}' \
+     localhost:8300/vola/folders/tickets/$ID/private            # every upload into private/… is a keyring file now
+curl -X DELETE $H -H "X-Vola-Unlock: $TOKEN" localhost:8300/vola/keyrings/me/unlock   # lock (or POST …/unlock/close {token} as a beacon)
+vola pepper-status                                             # keyrings per pepper line; rotate by PREPENDING a line
+```
+
+| | scope `keyrings:write`, `X-User-Id` required | |
+|---|---|---|
+| `GET /vola/keyrings/me/status` | `{has_pin, locked, unlock_expires_in, locked_until, attempts}` | does not extend the token |
+| `POST /vola/keyrings/me` | `{pin}` → `201 {keyring_id, recovery_key}` | `409 keyring_exists`; `422 pin_invalid {reason}` |
+| `PUT /vola/keyrings/me/pin` | `{current_pin, new_pin}` → `204` | files untouched; every token of the principal dies |
+| `POST /vola/keyrings/me/recover` | `{recovery_key, new_pin}` → `{recovery_key}` (a new one) | a wrong key is `403` and never counts as a PIN attempt |
+| `POST /vola/keyrings/me/unlock` | `{pin}` → `{token, expires_in}` | `403 pin_wrong {attempts, retry_after}`; `429 too_many_attempts` + `Retry-After` while locked out — the right PIN too |
+| `DELETE /vola/keyrings/me/unlock` · `POST …/unlock/close {token}` | `204` | the second needs no API key (`sendBeacon`) |
+| `POST /vola/keyrings/me/reset` | `{confirm: "RESET"}` → `{files, blobs}` | crypto-shred of every file under the keyring, then the keyring; re-auth is the caller's job |
+| `GET /vola/keyrings/me/delete-preview` | `{files, live_files, bytes}` | counts only |
+| `GET\|POST /vola/keyrings/by-principal/:p/{status,reset}` | admin key | never an unlock |
 
 ### Share links
 
@@ -397,7 +436,7 @@ pnpm vola transfer --from acme --to beta --instance tickets:$TICKET --instance t
 
 | route | scope | notes |
 |---|---|---|
-| `POST /vola/admin/transfer` | `admin` (an admin key; a tenant key is `403`; `X-Tenant-Slug` is ignored) | `{from_tenant, to_tenant, instances: [{instance_type, instance_id}], user_map?: {old: new}, dry_run?}` → the counts; `404 tenant_not_found` for either slug (the destination must exist); a `tenant`-encrypted file's key is re-wrapped for the destination in the same transaction (`503 encryption_unavailable` without `VOLA_KEY_FILE`, `409 vola_integrity` for a key that does not open); `409 encrypted_transfer_unsupported` when an instance holds a `keyring` / `caller` file (phases 6.2 / 6.3); `409 uploads_in_progress` when a resumable upload of the instance is still running (finish, delete or let it expire first); `422` for the same tenant twice or no instances |
+| `POST /vola/admin/transfer` | `admin` (an admin key; a tenant key is `403`; `X-Tenant-Slug` is ignored) | `{from_tenant, to_tenant, instances: [{instance_type, instance_id}], user_map?: {old: new}, dry_run?}` → the counts; `404 tenant_not_found` for either slug (the destination must exist); a `tenant`-encrypted file's key is re-wrapped for the destination in the same transaction (`503 encryption_unavailable` without `VOLA_KEY_FILE`, `409 vola_integrity` for a key that does not open); `409 encrypted_transfer_unsupported` when an instance holds a `keyring` file (a keyring is a principal's of ONE tenant: download under an unlock and upload in the destination instead) or a `caller` file (6.3); `409 uploads_in_progress` when a resumable upload of the instance is still running (finish, delete or let it expire first); `422` for the same tenant twice or no instances |
 
 Rules: a folder whose path already exists for the same instance on the destination is
 **merged** into that folder (its files, subfolders and share links re-pointed, the source row
@@ -480,7 +519,7 @@ and `thumb_url` (`…/thumb/256`: `200` ready, `202` while the worker renders, `
 row carries its real `filename`, `mime_type`, `extension` and `kind` when the server holds the key
 (`tenant` mode, `VOLA_KEY_FILE` present) and `filename: "<encrypted>"` with no MIME type or
 extension otherwise; **filters, sorts and cursors always see the mask** (the real name is never
-in SQL). The `decorateRow` hook of `volaPlugin` runs after that (the phase-6.2 unlock). `menu.yaml`
+in SQL); a `keyring` row is revealed under the request's `X-Vola-Unlock` (a subscription: the token of its own upgrade). The `decorateRow` hook of `volaPlugin` runs after that. `menu.yaml`
 is served as the `menu` collection (the sidebar of the examples site).
 
 ### Real-time: `GET /vola/udc/subscribe`

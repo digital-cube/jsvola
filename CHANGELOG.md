@@ -9,6 +9,72 @@ share one version.
 
 ### Added
 
+- Encryption at rest, part II — the **`keyring` provider** (plan 6.2, `docs/CRYPTO.md` § 8;
+  the thilo Notes model taken as it is). A keyring belongs to one principal (`X-User-Id`) of one
+  tenant (`vola_keyring`, migration `0008_keyrings`; unique per live `(tenant_id, principal)`)
+  and holds a 32-byte master key twice wrapped: under Argon2id(PIN, 16 B salt, pepper as the
+  Argon2 `secret`; 64 MiB / t = 3 / p = 1, the parameters stored PER KEYRING in `kdf` so a raise
+  needs no migration) and under a 160-bit base32 recovery key (8 × 4, shown once, typed input
+  normalised: case, separators, `0 → O`, `1 → I`); AAD `<keyring id>:mk:pin` / `:mk:recovery`.
+  The file key of a `keyring` file is wrapped under the master key (`fk_ct` 60 B, AAD
+  `<file id>:key:keyring:<keyring id>`, `vola_file.keyring_id`). The pepper comes from
+  `VOLA_PEPPER_FILE` (default `/run/secrets/vola.pepper`; key-file format, the first line
+  active, rotate by prepending — a keyring moves to the active line at its next unlock;
+  `vola pepper-generate`, `vola pepper-status`). Routes under `/keyrings` (scope
+  `keyrings:write`, `400 user_required` without `X-User-Id`): `GET me/status` (does not extend
+  the token), `POST me {pin}` → `201 {keyring_id, recovery_key}` (`409 keyring_exists`,
+  `422 pin_invalid {reason: length | digits | trivial}` — six digits, no all-the-same, no run),
+  `PUT me/pin` (re-wraps the master key only — `fk_ct` and blobs untouched — and drops every
+  token), `POST me/recover {recovery_key, new_pin}` → a NEW recovery key (a wrong one is `403
+  recovery_wrong` and never counts as a PIN attempt), `POST me/unlock {pin}` → `{token,
+  expires_in}`, `DELETE me/unlock` and the API-key-less beacon alias `POST me/unlock/close
+  {token}` (JSON or `text/plain`), `POST me/reset {confirm: "RESET"}` (the crypto-shred: every
+  file under the keyring — versions, soft-deleted rows — storage first, then the rows, then
+  the keyring, then every token; `500 blob_not_removed` keeps the rows of what failed),
+  `GET me/delete-preview`; an admin key may read the status of and reset another principal
+  (`/keyrings/by-principal/:principal/…`), never unlock. Unlock tokens (`services/unlock.ts`):
+  32 random bytes base64url in Redis (`vola:unlock:<token>` → `{tenant_id, principal,
+  keyring_id, mk}` with the master key wrapped under the active `VOLA_KEY_FILE` line, HKDF salt
+  `vola-unlock-kek`, bound to the token; an index set per principal for `dropAll`), a sliding
+  TTL `VOLA_UNLOCK_TTL_S` (default 150 s) refreshed by every request that carries
+  `X-Vola-Unlock` — never a URL —, and one `423 vola_locked` for every missing, expired,
+  foreign or wrong token. Brute force: the counter and `locked_until` in the keyring row
+  (survive a restart), a per-principal mutex (`SET NX EX 15`; a second check in flight is
+  `429` with `retry_after: 1`), the Notes table (1–2 free, 3 → 1 s, 4 → 5 s, 5–9 → 30 s,
+  10 → 1 h, then doubling), `429 too_many_attempts` + `Retry-After` for the right PIN too
+  while locked, `403 pin_wrong {attempts, retry_after}`, the right PIN clears the counter.
+  Files: `encryption=keyring` on an upload (multipart, slug, tus) needs the owner's token
+  (`423` before a byte is read); download, `info` and `PATCH {filename}` of a keyring file
+  without it are `423`; REST lists, UDC rows and subscriptions keep the `<encrypted>` mask
+  (a subscription reveals under the token of ITS OWN upgrade, never the uploader's — `decide`
+  now runs under the subscription's context); another principal's token behaves as none; a
+  `keyring` file can still not be shared, made globally public or thumbnailed, and an
+  instance holding one is refused by `POST /admin/transfer` with
+  `409 encrypted_transfer_unsupported` — by design, a keyring is one person's of one tenant.
+  **Encrypted folders** are a policy: `PATCH /folders/… {default_keyring: "me" | null}` sets
+  `default_keyring_id`, and every new upload into the folder or below it is a keyring file
+  under that keyring (the uploader needs that keyring's token; an explicit other mode is `422`;
+  the folder must be named before the `file` part like the `encryption` field; versions inherit
+  through their parent; a tus upload reads the policy at creation and completion); moving a
+  file never touches its crypto. `vola tenant-set --default-encryption keyring` is allowed.
+  Audit events `VOLA_KEYRING_CREATED`, `_PIN_CHANGED`, `_RECOVERED`, `_RESET`, `_LOCKED_OUT`
+  (`instance_type: vola_keyring`, ids and counts only); logs `vola_unlock_failed`,
+  `vola_locked_out`, `vola_recovery_failed` with ids and counters; never a PIN, a recovery
+  key, a token (a 16-hex fingerprint at most), a master key or a name. Without Redis, the
+  pepper file or the key file the provider is `503 encryption_unavailable` (the start-up log
+  says `no Redis: no keyring provider`); plain and `tenant` files are unaffected. `@vola/core`:
+  `UNLOCK_HEADER`, `DEFAULT_UNLOCK_TTL_S`, `PIN_LENGTH`, the `*_CODE` constants, the keyring
+  schemas, `FolderPatchSchema.default_keyring`; `@vola/server`: `src/crypto/keyring.ts`,
+  `services/keyrings.ts`, `services/unlock.ts`, `routes/keyrings.ts`, `KeyringWrapProvider`,
+  `LockedError`, `EncryptionService.assertUploadable` / `currentUnlock` / `unlocks`,
+  `wrapNewKey` → `{fkCt, keyringId}`, `resolveMode(tenant, explicit, policyKeyringId)`,
+  `effectiveKeyringId(OfPath)`, `setFolderKeyring`, `keyringPepperUsage`,
+  `TenantContext.unlockToken`, `VolaPluginOptions.unlocks` / `keyrings`, `Config.pepperFile` /
+  `unlockTtlS`; `@vola/cli`: `pepper-generate`, `pepper-status`. Tests:
+  `test/keyring-crypto.test.ts` (unit), `test/keyrings.test.ts` (a real Redis, a fake clock for
+  the lock-out table, a dump test that re-derives MK and FK and searches every column, the
+  blob and Redis for them).
+
 - Encryption at rest, part I (plan 6.1, `docs/CRYPTO.md`). A new crypto core
   (`@vola/server` `src/crypto/`, pure `node:crypto` AES-256-GCM, no I/O): the segmented blob
   format **`JSV` v1** — a 24-byte header (`"JSV"`, version, `segment_size` u32 — default 1 MiB,
@@ -62,9 +128,9 @@ share one version.
   `tenantKeyUsage` (`services/encryption.ts`), `VolaPluginOptions.encryption`, `Config.keyFile`,
   `FilesDeps.crypto`, `describeFile(s)`, `revealFile`, `StageOptions`, `EncryptedStage`,
   `sendEncryptedFile`, `ENCRYPTED_INLINE_MIMES`, `detectMimeDetailed`,
-  `setTenantDefaultEncryption`. New document `docs/CRYPTO.md`. Phases 6.2 (`keyring`: PIN,
-  unlock, recovery) and 6.3 (`caller`, encrypted thumbnails/OCR, share grant, segment-wise
-  resumable) plug into the same format and interface; asking for them answers `501` today.
+  `setTenantDefaultEncryption`. New document `docs/CRYPTO.md`. Phase 6.2 (`keyring`, above)
+  and 6.3 (`caller`, encrypted thumbnails/OCR, share grant, segment-wise resumable) plug into
+  the same format and interface; `caller` answers `501` today.
 
 - Admin transfer and the memento audit trail (plan 5.2). `POST /admin/transfer` (scope
   `admin`, i.e. an admin key; `X-Tenant-Slug` ignored; `{from_tenant, to_tenant, instances:

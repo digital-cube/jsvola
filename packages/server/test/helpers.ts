@@ -7,6 +7,7 @@ import {
   apiKeys,
   files,
   folders,
+  keyrings,
   processingJobs,
   shareLinks,
   tenantStats,
@@ -39,6 +40,7 @@ export async function truncate(handle: DatabaseHandle): Promise<void> {
   await handle.db.delete(uploads);
   await handle.db.delete(files);
   await handle.db.delete(folders);
+  await handle.db.delete(keyrings);
   await handle.db.delete(apiKeys);
   await handle.db.delete(tenants);
 }

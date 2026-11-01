@@ -321,6 +321,7 @@ describe.skipIf(!hasTesseract)("OCR with tesseract", () => {
       scopes: ["files:read" as const],
       isAdmin: false,
       userId: null,
+      unlockToken: null,
     };
     const subscription = await runWithTenant(context, () =>
       source.subscribe(inType({ field: "ocr", op: "contains", value: "pelican" }) as never, {

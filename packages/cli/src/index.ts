@@ -6,6 +6,7 @@ export {
   formatKeyLine,
   friendlyError,
   keyStatusLines,
+  pepperStatusLines,
   plaintextLines,
   readUserMap,
   runCli,

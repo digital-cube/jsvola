@@ -6,7 +6,7 @@ import {
   folderSegmentError,
   parseFolderPath,
 } from "@vola/core";
-import { and, asc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
@@ -165,6 +165,80 @@ export async function resolveFolderId(
 ): Promise<string | null> {
   if (folderPath === "") return null;
   return (await ensureFolder(deps, scope, folderPath, userId)).folder.id;
+}
+
+// --- encryption policy (plan 6.2) --------------------------------------------------------
+
+/**
+ * The keyring every new upload into the folder `folderId` goes under: the folder's own
+ * `default_keyring_id`, else the nearest ancestor's; `null` for the root or a lineage
+ * without a policy. One query over the path prefixes — folders are looked up by their full
+ * path, never walked. A soft-deleted folder has no policy.
+ */
+export async function effectiveKeyringId(
+  deps: Pick<FoldersDeps, "db">,
+  scope: InstanceScope,
+  folderId: string | null,
+): Promise<string | null> {
+  if (folderId === null) return null;
+  const [folder] = await deps.db
+    .select({ path: folders.path })
+    .from(folders)
+    .where(and(instanceWhere(scope), eq(folders.id, folderId), isNull(folders.deletedAt)))
+    .limit(1);
+  if (!folder) return null;
+  return effectiveKeyringIdOfPath(deps, scope, folder.path);
+}
+
+/** `effectiveKeyringId` for a path (the folder may not exist yet: its ancestors still decide). */
+export async function effectiveKeyringIdOfPath(
+  deps: Pick<FoldersDeps, "db">,
+  scope: InstanceScope,
+  path: string,
+): Promise<string | null> {
+  if (path === "") return null;
+  const segments = path.split("/");
+  const prefixes = segments.map((_, i) => segments.slice(0, i + 1).join("/"));
+  const [nearest] = await deps.db
+    .select({ keyringId: folders.defaultKeyringId })
+    .from(folders)
+    .where(
+      and(
+        instanceWhere(scope),
+        isNull(folders.deletedAt),
+        isNotNull(folders.defaultKeyringId),
+        inArray(folders.path, prefixes),
+      ),
+    )
+    .orderBy(desc(sql`length(${folders.path})`))
+    .limit(1);
+  return nearest?.keyringId ?? null;
+}
+
+/**
+ * `PATCH …/*path {default_keyring}`: sets (or clears, with `null`) the folder's own policy.
+ * Files already in the folder are not touched — the policy is for what arrives next.
+ */
+export async function setFolderKeyring(
+  deps: FoldersDeps,
+  scope: InstanceScope,
+  path: string,
+  keyringId: string | null,
+): Promise<FolderInfo> {
+  const folder = await findFolder(deps, scope, path);
+  if (folder.defaultKeyringId === keyringId) return serializeFolder(folder);
+  const now = (deps.now ?? (() => new Date()))();
+  const [updated] = await deps.db
+    .update(folders)
+    .set({ defaultKeyringId: keyringId, updatedAt: now })
+    .where(and(eq(folders.id, folder.id), isNull(folders.deletedAt)))
+    .returning();
+  if (!updated) throw folderNotFound(path);
+  deps.logger?.info(
+    { folder: folder.id, path, keyring: keyringId },
+    keyringId ? "folder encryption policy set" : "folder encryption policy cleared",
+  );
+  return serializeFolder(updated);
 }
 
 // --- create ------------------------------------------------------------------------------

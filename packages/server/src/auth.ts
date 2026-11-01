@@ -5,6 +5,7 @@ import {
   missingScopes,
   type Scope,
   TENANT_SLUG_HEADER,
+  UNLOCK_HEADER,
   USER_ID_HEADER,
   UserIdSchema,
 } from "@vola/core";
@@ -78,7 +79,8 @@ function headerValue(request: FastifyRequest, name: string): string | null {
 /**
  * Authenticates `request` and builds its `TenantContext`. Throws `unauthorized` for a
  * missing or unusable key, `tenant_not_found` for an admin's unknown or inactive
- * `X-Tenant-Slug`, `bad_request` for an invalid `X-User-Id`.
+ * `X-Tenant-Slug`, `bad_request` for an invalid `X-User-Id`. The `X-Vola-Unlock` header is
+ * carried along unchecked (the keyring provider resolves it when a keyring file is touched).
  */
 export async function authenticateRequest(
   request: FastifyRequest,
@@ -111,6 +113,7 @@ export async function authenticateRequest(
     scopes: found.key.scopes as Scope[],
     isAdmin: found.key.isAdmin,
     userId: requestUserId(request),
+    unlockToken: headerValue(request, UNLOCK_HEADER),
   };
 }
 

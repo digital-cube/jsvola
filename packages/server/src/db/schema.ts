@@ -49,8 +49,8 @@ export const tenants = pgTable(
     /** Inactive: every key of the tenant fails authentication. */
     isActive: boolean("is_active").notNull().default(true),
     /**
-     * The encryption of an upload that names none (`none` | `tenant`; `vola tenant-set
-     * --default-encryption`). `keyring` / `caller` are in the CHECK for later phases.
+     * The encryption of an upload that names none (`none` | `tenant` | `keyring`; `vola
+     * tenant-set --default-encryption`). `caller` is in the CHECK for phase 6.3.
      */
     defaultEncryption: varchar("default_encryption", { length: 16 }).notNull().default("none"),
     createdAt: createdAt(),
@@ -102,7 +102,8 @@ export const apiKeys = pgTable(
  * leading or trailing `/` — and is what lookups use (one SELECT, no walk); `parent_id` gives
  * the tree. A rename or move rewrites the `path` of every descendant in one transaction.
  * Soft delete keeps the row; the partial unique index lets the path be created again.
- * `default_keyring_id` is the folder's encryption policy (phase 6.2); NULL until then.
+ * `default_keyring_id` is the folder's encryption policy (6.2): every new upload into it or
+ * below it is encrypted under that keyring; NULL means no policy of its own.
  */
 export const folders = pgTable(
   "vola_folder",
@@ -150,8 +151,8 @@ export const folders = pgTable(
  * under the file key), while `filename` is `<id>.bin`, `mime_type` `application/octet-stream`,
  * `extension` NULL, `kind` `other`, `metadata` `{}`; `size` is the PLAINTEXT length (quotas
  * and the UI count what the user stored, not the 16 B per segment of GCM tags) and `hash` is
- * the SHA-256 of the CIPHERTEXT (the plaintext hash is never stored). `keyring_id` is for
- * phase 6.2 and NULL until then.
+ * the SHA-256 of the CIPHERTEXT (the plaintext hash is never stored). `keyring_id` names the
+ * `vola_keyring` whose master key wraps `fk_ct` of a `keyring` file (6.2); NULL otherwise.
  * `folder_id` (NULL: the instance root) points at a `vola_folder`; `parent_id` at the
  * previous version of the same file (the chain `GET …/versions` walks).
  */
@@ -206,6 +207,7 @@ export const files = pgTable(
     index("vola_file_hash_idx").on(t.hash),
     index("vola_file_folder_idx").on(t.folderId),
     index("vola_file_parent_idx").on(t.parentId),
+    index("vola_file_keyring_idx").on(t.keyringId),
     uniqueIndex("vola_file_slug_live_uq")
       .on(t.tenantId, t.instanceType, t.instanceId, t.slug)
       .where(sql`${t.deletedAt} is null and ${t.slug} is not null`),
@@ -450,6 +452,64 @@ export const tenantStats = pgTable(
   ],
 );
 
+/**
+ * The Argon2id parameters of one keyring, written at setup and read at every unlock
+ * (`crypto/keyring.ts`): raising the cost changes only new wraps, never needs a migration.
+ * `salt` is standard base64 of 16 bytes; `pepper_line` is the `kid` (hex) of the pepper line
+ * the PIN wrap was last made with — a hint which line to try first, never a secret.
+ */
+export interface KeyringKdf {
+  alg: "argon2id";
+  salt: string;
+  m: number;
+  t: number;
+  p: number;
+  pepper_line: string;
+}
+
+/**
+ * A keyring (plan 6.2, `docs/CRYPTO.md` § keyring): one per `(tenant, principal)` — the
+ * principal is the `X-User-Id` of the host application. Holds the master key (MK) twice
+ * wrapped and nothing else: `mk_pin_ct` under Argon2id(PIN, salt, pepper), `mk_recovery_ct`
+ * under Argon2id(recovery key, recovery_salt, pepper); both `nonce ∥ ct ∥ tag` with the AAD
+ * `<keyring id>:mk:pin` / `<keyring id>:mk:recovery`. The PIN, the recovery key and the MK
+ * are never stored. `attempts` and `locked_until` are the brute-force state (they survive a
+ * restart). A reset soft-deletes the row after the crypto-shred of every file under it; the
+ * partial unique index lets the principal set up a new one.
+ */
+export const keyrings = pgTable(
+  "vola_keyring",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** The `X-User-Id` that owns it. */
+    principal: varchar("principal", { length: 255 }).notNull(),
+    kdf: jsonb("kdf").$type<KeyringKdf>().notNull(),
+    /** MK under the PIN-derived key. */
+    mkPinCt: bytea("mk_pin_ct").notNull(),
+    /** MK under the recovery-key-derived key. */
+    mkRecoveryCt: bytea("mk_recovery_ct").notNull(),
+    /** 16 random bytes: the Argon2 salt of the recovery key (same m/t/p as `kdf`). */
+    recoverySalt: bytea("recovery_salt").notNull(),
+    /** Wrong PINs in a row; 0 after a right one. */
+    attempts: integer("attempts").notNull().default(0),
+    /** Until when every PIN — the right one too — is refused (`429`). */
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    pinSetAt: timestamp("pin_set_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+    /** Set by a reset; the files under it are gone by then. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("vola_keyring_principal_live_uq")
+      .on(t.tenantId, t.principal)
+      .where(sql`${t.deletedAt} is null`),
+    check("vola_keyring_attempts_check", sql`${t.attempts} >= 0`),
+  ],
+);
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
@@ -459,3 +519,4 @@ export type ProcessingJobRow = typeof processingJobs.$inferSelect;
 export type FileMetadataRow = typeof fileMetadata.$inferSelect;
 export type ShareLinkRow = typeof shareLinks.$inferSelect;
 export type TenantStatsRow = typeof tenantStats.$inferSelect;
+export type KeyringRow = typeof keyrings.$inferSelect;

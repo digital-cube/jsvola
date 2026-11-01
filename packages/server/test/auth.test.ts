@@ -132,6 +132,7 @@ describe("authentication", () => {
         scopes: fx.full.apiKey.scopes,
         isAdmin: false,
         userId: "user-42",
+        unlockToken: null,
       });
       // requireTenant() (AsyncLocalStorage) sees the same context as request.vola.
       expect(seen.store).toBe(seen.context);

@@ -4,10 +4,12 @@ import {
   DEFAULT_OCR_MAX_PAGES,
   DEFAULT_OCR_TIMEOUT_S,
   DEFAULT_STATS_TTL_MIN,
+  DEFAULT_UNLOCK_TTL_S,
   type OcrLanguage,
   parseOcrLangs,
 } from "@vola/core";
 import { z } from "zod";
+import { DEFAULT_PEPPER_FILE } from "./crypto/keyring.js";
 import { DEFAULT_KEY_FILE } from "./crypto/tenant.js";
 import { DEFAULT_LOOKUPS_PATH } from "./lookups.js";
 import { DEFAULT_MENU_PATH } from "./udc/menu.js";
@@ -115,6 +117,13 @@ const ConfigSchema = z
       .optional(),
     VOLA_MEMENTO_API_KEY: z.string().min(1).optional(),
     VOLA_KEY_FILE: z.string().min(1).default(DEFAULT_KEY_FILE),
+    VOLA_PEPPER_FILE: z.string().min(1).default(DEFAULT_PEPPER_FILE),
+    VOLA_UNLOCK_TTL_S: z.coerce
+      .number()
+      .int()
+      .min(5)
+      .max(24 * 3600)
+      .default(DEFAULT_UNLOCK_TTL_S),
     VOLA_LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
@@ -184,6 +193,18 @@ export interface Config {
    * downloads answer `503 encryption_unavailable` until it is there.
    */
   keyFile: string;
+  /**
+   * `VOLA_PEPPER_FILE` (default `/run/secrets/vola.pepper`): the pepper lines of the
+   * `keyring` provider (the Argon2 `secret`; same format as the key file, the first line
+   * active, rotate by prepending). Create it with `vola pepper-generate`. Without it every
+   * keyring route and `keyring` file answers `503 encryption_unavailable`.
+   */
+  pepperFile: string;
+  /**
+   * `VOLA_UNLOCK_TTL_S` (default 150): seconds an unlock token lives without a request;
+   * every request that carries it starts the count again (`GET /keyrings/me/status` does not).
+   */
+  unlockTtlS: number;
   logLevel: LogLevel;
 }
 
@@ -301,6 +322,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         ? { url: c.VOLA_MEMENTO_URL.replace(/\/+$/, ""), apiKey: c.VOLA_MEMENTO_API_KEY }
         : null,
     keyFile: resolve(c.VOLA_KEY_FILE),
+    pepperFile: resolve(c.VOLA_PEPPER_FILE),
+    unlockTtlS: c.VOLA_UNLOCK_TTL_S,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

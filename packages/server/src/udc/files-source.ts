@@ -16,7 +16,7 @@ import type { SourceListRequest } from "@jsudc/server";
 import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vola/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
-import { type BoundTenantContext, requireTenant } from "../context.js";
+import { type BoundTenantContext, requireTenant, runWithTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, fileMetadata, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
@@ -637,7 +637,9 @@ export class FilesCollectionSource implements SubscribableSource {
     // A row the subscription cannot have: nothing to upsert, and for a new file nothing to remove.
     const gone = !record || (record.file.deletedAt !== null && !target.includeDeleted);
     if (!gone) {
-      const [row] = await this.toRows([record], target.tenant);
+      // Under the SUBSCRIPTION's context, not the one of whatever request caused the event:
+      // a keyring row is revealed by the subscriber's own unlock token (6.2), never the uploader's.
+      const [row] = await runWithTenant(target.tenant, () => this.toRows([record], target.tenant));
       const matched = needsSqlMatch(target.filter)
         ? await this.matchesInSql(
             target.tenant,

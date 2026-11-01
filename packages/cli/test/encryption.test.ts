@@ -35,7 +35,7 @@ async function vola(keyFile: string, ...argv: string[]) {
   const program = buildProgram(c.io, {
     databaseUrl,
     redisUrl: null,
-    env: { ...process.env, VOLA_KEY_FILE: keyFile },
+    env: { ...process.env, VOLA_KEY_FILE: keyFile, VOLA_PEPPER_FILE: keyFile },
   });
   const code = await runCli(argv, c.io, program);
   return { code, out: c.out.join("\n"), err: c.err.join("\n"), lines: c.out };
@@ -44,6 +44,7 @@ async function vola(keyFile: string, ...argv: string[]) {
 beforeAll(async () => {
   handle = connect(databaseUrl, { max: 2 });
   await handle.db.delete(schema.files);
+  await handle.db.delete(schema.keyrings);
   await handle.db.delete(schema.apiKeys);
   await handle.db.delete(schema.tenants);
   dir = await mkdtemp(join(tmpdir(), "vola-cli-keys-"));
@@ -170,16 +171,16 @@ describe("vola tenant-set", () => {
       .from(schema.tenants)
       .where(eq(schema.tenants.slug, slug));
     expect(row?.defaultEncryption).toBe("tenant");
-    const keyring = await vola(
+    const caller = await vola(
       join(dir, "x.key"),
       "tenant-set",
       "--slug",
       slug,
       "--default-encryption",
-      "keyring",
+      "caller",
     );
-    expect(keyring.code).toBe(1);
-    expect(keyring.err).toContain("validation_error");
+    expect(caller.code).toBe(1);
+    expect(caller.err).toContain("validation_error");
     const nothing = await vola(join(dir, "x.key"), "tenant-set", "--slug", slug);
     expect(nothing.code).toBe(1);
     expect(nothing.err).toContain("nothing to set");
@@ -194,5 +195,65 @@ describe("vola tenant-set", () => {
     );
     expect(JSON.parse(back.out)).toMatchObject({ slug, default_encryption: "none" });
     expect((await voleGenerate(join(dir, "gen.key"))).code).toBe(0);
+  });
+});
+
+describe("vola pepper-generate / pepper-status", () => {
+  it("writes one pepper line with mode 0600, refuses to overwrite, counts keyrings per line", async () => {
+    const path = join(dir, "nested", "vola.pepper");
+    const first = await vola(path, "pepper-generate");
+    expect(first.code, first.err).toBe(0);
+    expect(first.out).toContain(`wrote ${path}`);
+    expect(first.out).not.toMatch(/[A-Za-z0-9+/]{43}=/);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    const [active] = parseKeyFile(await readFile(path, "utf8"));
+    const again = await vola(path, "pepper-generate");
+    expect(again.code).toBe(1);
+    expect(again.err).toContain("refusing to overwrite");
+
+    const older = generateKeyLine();
+    const removed = generateKeyLine();
+    const activeLine = Buffer.from(active?.key as Buffer).toString("base64");
+    await writeFile(path, `${activeLine}\n${older}\n`, { mode: 0o600 });
+    const tenant = await createTenant(handle.db, { slug: `kp-${randomUUID().slice(0, 8)}` });
+    const keyringUnder = async (line: string, n: number) => {
+      for (let i = 0; i < n; i++) {
+        await handle.db.insert(schema.keyrings).values({
+          tenantId: tenant.id,
+          principal: `u-${randomUUID()}`,
+          kdf: {
+            alg: "argon2id",
+            salt: Buffer.alloc(16, 1).toString("base64"),
+            m: 1024,
+            t: 1,
+            p: 1,
+            pepper_line: keyId(Buffer.from(line, "base64")).toString("hex"),
+          },
+          mkPinCt: Buffer.alloc(60),
+          mkRecoveryCt: Buffer.alloc(60),
+          recoverySalt: Buffer.alloc(16),
+        });
+      }
+    };
+    await keyringUnder(activeLine, 2);
+    await keyringUnder(older, 1);
+    await keyringUnder(removed, 1);
+    const status = await vola(path, "pepper-status");
+    expect(status.code, status.err).toBe(0);
+    expect(status.out).toContain(`${path}: 2 pepper line(s), line 0 active; 4 keyring(s)`);
+    expect(status.out).toContain(
+      `kid ${keyId(Buffer.from(activeLine, "base64")).toString("hex")}  line 0 (active)  2 keyring(s)`,
+    );
+    expect(status.out).toContain(
+      `kid ${keyId(Buffer.from(older, "base64")).toString("hex")}  line 1  1 keyring(s)`,
+    );
+    expect(status.out).toContain("NO LINE  1 keyring(s)");
+    expect(status.out).toContain(
+      "WARNING: 1 keyring(s) depend on a pepper that is not in the file",
+    );
+    expect(status.out).not.toContain(activeLine);
+    expect(status.out).not.toContain(older);
+    const json = await vola(path, "--json", "pepper-status");
+    expect(JSON.parse(json.out)).toMatchObject({ path, lines: 2, orphaned_keyrings: 1 });
   });
 });

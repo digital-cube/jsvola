@@ -21,6 +21,7 @@ import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyReques
 import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
+import type { FileRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import type { JobDispatcher } from "../jobs/dispatcher.js";
@@ -47,6 +48,7 @@ import {
   withProcessingStatus,
 } from "../services/files.js";
 import {
+  effectiveKeyringId,
   type FoldersDeps,
   findFolder,
   findFolderById,
@@ -112,8 +114,9 @@ interface InfoQuery {
  * file its owner marked `is_public`, which any authenticated tenant may download by id.
  *
  * - `POST /files/:type/:id` (multipart, streamed into storage; `folder_path` or `folder_id`
- *   places it, `parent_id` makes it a new version) and `PUT /files/:type/:id/slug/:slug`
- *   (upsert of a named file) — `files:write`;
+ *   places it, `parent_id` makes it a new version; a folder with an encryption policy makes
+ *   the upload a `keyring` one — `423` without the owner's `X-Vola-Unlock`) and
+ *   `PUT /files/:type/:id/slug/:slug` (upsert of a named file) — `files:write`;
  * - `GET|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` — `files:read`: `Range`/`206`,
  *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`;
  * - `GET …/:fileId/info` (with the aggregate `processing_status` of its jobs and the `ocr`
@@ -172,11 +175,58 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
   };
 
   /**
+   * Where an upload lands, from the fields seen so far: the folder (`folder_path` is created
+   * when missing, `folder_id` must exist), the parent version (whose folder is inherited
+   * when no folder is named), and the keyring the folder's encryption policy demands (6.2).
+   * `folderId` undefined: the parent's folder for a version, the root otherwise.
+   */
+  async function placementOf(
+    scope: ReturnType<typeof scopeOf>,
+    fields: Record<string, string>,
+    userId: string | null,
+  ): Promise<{
+    folderId: string | null | undefined;
+    parent: FileRow | null;
+    policy: string | null;
+  }> {
+    const parentId = fields[UPLOAD_PARENT_ID_FIELD];
+    const parent = parentId ? await findFile(service, scope, parentId) : null;
+    const folderPath = fields[UPLOAD_FOLDER_PATH_FIELD];
+    const folderIdField = fields[UPLOAD_FOLDER_ID_FIELD];
+    if (folderPath !== undefined && folderIdField !== undefined) {
+      throw new VolaError(
+        "validation_error",
+        422,
+        `${UPLOAD_FOLDER_PATH_FIELD} and ${UPLOAD_FOLDER_ID_FIELD} exclude each other`,
+      );
+    }
+    let folderId: string | null | undefined;
+    if (folderPath !== undefined) {
+      folderId = await resolveFolderId(
+        folderService,
+        scope,
+        parsePath(folderPath, UPLOAD_FOLDER_PATH_FIELD),
+        userId,
+      );
+    } else if (folderIdField !== undefined) {
+      folderId =
+        folderIdField === ""
+          ? null
+          : (await findFolderById(folderService, scope, folderIdField)).id;
+    }
+    const effective = folderId === undefined ? (parent?.folderId ?? null) : folderId;
+    const policy = await effectiveKeyringId(folderService, scope, effective);
+    return { folderId, parent, policy };
+  }
+
+  /**
    * Streams the one `file` part into storage while collecting the text fields, then records
    * the row. The encryption mode must be known when the file part STARTS (it decides what is
    * written to disk), so it comes from `X-Vola-Encryption`, from an `encryption` field sent
-   * before the file part, or from the tenant's default — a field after the file part is
-   * accepted only when it agrees (`422` otherwise).
+   * before the file part, from the policy of the folder named BEFORE the file part
+   * (`folder_path` / `folder_id` / `parent_id`, 6.2), or from the tenant's default — a field
+   * after the file part is accepted only when it agrees with what was stored (`422`
+   * otherwise). A folder policy outranks an explicit mode: naming another one is `422`.
    */
   async function handleUpload(
     request: FastifyRequest<{ Params: InstanceParams }>,
@@ -196,6 +246,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
       headerValue(request, ENCRYPTION_HEADER),
     );
     let usedEncryption: FileEncryption | undefined;
+    let usedPolicy: string | null = null;
     const fields: Record<string, string> = {};
     try {
       for await (const part of request.parts()) {
@@ -208,12 +259,15 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
             );
           }
           if (upload) throw new VolaError("bad_request", 400, "exactly one file part is allowed");
+          // The folder (if named by now) decides before the tenant default does.
+          usedPolicy = (await placementOf(scope, fields, tenant.userId)).policy;
           usedEncryption = deps.crypto
-            ? await deps.crypto.resolveMode(scope.tenantId, encryption)
+            ? await deps.crypto.resolveMode(scope.tenantId, encryption, usedPolicy)
             : "none";
           upload = await stageUpload(service, part.file, {
             maxBytes: deps.maxUploadBytes,
             encryption: usedEncryption,
+            keyringId: usedPolicy,
           });
           if (part.file.truncated) {
             throw new VolaError(
@@ -243,31 +297,14 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
       if (!upload)
         throw new VolaError("file_required", 400, `a "${UPLOAD_FILE_FIELD}" part is required`);
       const metadata = parseMetadata(fields[UPLOAD_METADATA_FIELD]);
-      const parentId = fields[UPLOAD_PARENT_ID_FIELD];
-      const parent = parentId ? await findFile(service, scope, parentId) : null;
-      const folderPath = fields[UPLOAD_FOLDER_PATH_FIELD];
-      const folderIdField = fields[UPLOAD_FOLDER_ID_FIELD];
-      if (folderPath !== undefined && folderIdField !== undefined) {
+      const { folderId, parent, policy } = await placementOf(scope, fields, tenant.userId);
+      if (policy !== usedPolicy || (policy && upload.encrypted?.keyringId !== policy)) {
+        // The folder came after the file part and asks for a keyring the blob is not under.
         throw new VolaError(
           "validation_error",
           422,
-          `${UPLOAD_FOLDER_PATH_FIELD} and ${UPLOAD_FOLDER_ID_FIELD} exclude each other`,
+          `${UPLOAD_FOLDER_PATH_FIELD}: that folder requires keyring encryption — send the folder field before the file part`,
         );
-      }
-      // undefined: the parent's folder for a version, the root otherwise.
-      let folderId: string | null | undefined;
-      if (folderPath !== undefined) {
-        folderId = await resolveFolderId(
-          folderService,
-          scope,
-          parsePath(folderPath, UPLOAD_FOLDER_PATH_FIELD),
-          tenant.userId,
-        );
-      } else if (folderIdField !== undefined) {
-        folderId =
-          folderIdField === ""
-            ? null
-            : (await findFolderById(folderService, scope, folderIdField)).id;
       }
       const info = await finalizeUpload(service, {
         scope,
@@ -290,6 +327,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
           folder: info.folder_id,
           parent: info.parent_id,
           encryption: info.encryption,
+          keyring: info.keyring_id,
           instance: `${scope.instanceType}/${scope.instanceId}`,
         },
         "file uploaded",
@@ -353,7 +391,8 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
    * Metadata without the bytes (and never `fk_ct` / `meta_ct`), plus the `ocr` block.
    * `?include_deleted=1` sees a soft-deleted file; `?ocr=full` adds the whole OCR text. For
    * an encrypted file the real name, type and metadata come out of `meta_ct` — `503` when
-   * the server has no key material for its mode, `409` when the record does not open.
+   * the server has no key material for its mode, `409` when the record does not open, `423`
+   * for a `keyring` file without the owner's unlock.
    */
   app.get<{ Params: FileParams; Querystring: InfoQuery }>(
     "/files/:type/:id/:fileId/info",

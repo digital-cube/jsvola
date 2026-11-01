@@ -15,6 +15,7 @@ const tenant: BoundTenantContext = {
   scopes: ["files:read"],
   isAdmin: false,
   userId: null,
+  unlockToken: null,
 };
 
 /** A socket whose `send` callbacks fire only when the test says so. */

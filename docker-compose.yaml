@@ -36,6 +36,10 @@ services:
       # read-only at VOLA_KEY_FILE (default /run/secrets/vola.key) — in BOTH services. Without
       # it the server starts and serves plain files; encrypted ones answer 503.
       # - ./secrets/vola.key:/run/secrets/vola.key:ro
+      # Keyrings (PIN per principal, docs/CRYPTO.md § 8): the pepper file made with
+      # `vola pepper-generate` at VOLA_PEPPER_FILE (default /run/secrets/vola.pepper) — the
+      # server only. Without it (or without Redis) keyring routes and keyring files answer 503.
+      # - ./secrets/vola.pepper:/run/secrets/vola.pepper:ro
     healthcheck:
       test: ["CMD", "vola-healthcheck"]
       interval: 10s

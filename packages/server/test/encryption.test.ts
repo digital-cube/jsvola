@@ -240,7 +240,7 @@ describe("encrypted upload (encryption=tenant)", () => {
     expect(plain.response.json()).toMatchObject({ encryption: "none", hash: sha256(SECRET) });
   });
 
-  it("refuses an encryption field that arrives after the file part and disagrees (422), unknown modes (422) and later phases (501)", async () => {
+  it("refuses an encryption field that arrives after the file part and disagrees (422), unknown modes (422), keyring without Redis (503) and later phases (501)", async () => {
     const late = await http.upload(SECRET, "late.txt", { fields: { encryption: "tenant" } });
     expect(late.response.statusCode, late.response.body).toBe(422);
     expect(late.response.json().error.message).toContain("before the file part");
@@ -253,8 +253,9 @@ describe("encrypted upload (encryption=tenant)", () => {
       fields: { encryption: "keyring" },
       fieldsFirst: true,
     });
-    expect(keyring.response.statusCode).toBe(501);
-    expect(keyring.response.json().error.code).toBe("not_implemented");
+    // This app has no Redis: the keyring provider does not exist here (test/keyrings.test.ts has it).
+    expect(keyring.response.statusCode).toBe(503);
+    expect(keyring.response.json().error.code).toBe("encryption_unavailable");
     const caller = await http.upload(SECRET, "c.txt", {
       headers: { "x-vola-encryption": "caller" },
     });
@@ -304,7 +305,7 @@ describe("encrypted upload (encryption=tenant)", () => {
       await setTenantDefaultEncryption(handle.db, fx.tenant.slug, "none");
     }
     await expect(
-      setTenantDefaultEncryption(handle.db, fx.tenant.slug, "keyring"),
+      setTenantDefaultEncryption(handle.db, fx.tenant.slug, "caller"),
     ).rejects.toMatchObject({
       code: "validation_error",
     });
@@ -589,6 +590,7 @@ describe("encrypted metadata in info, lists and UDC", () => {
       scopes: ["files:read"] as const,
       isAdmin: false,
       userId: null,
+      unlockToken: null,
     };
     const subscription = await runWithTenant(tenant, () =>
       source.subscribe(

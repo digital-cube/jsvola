@@ -88,7 +88,10 @@ export const FolderInfoSchema = z.object({
   name: z.string().min(1).max(FOLDER_SEGMENT_MAX_LENGTH),
   /** `a/b/c`, no leading or trailing `/`. */
   path: z.string().min(1),
-  /** The folder's encryption policy (phase 6.2); `null` until then. */
+  /**
+   * The folder's own encryption policy (plan 6.2): the keyring every new upload into it or
+   * below it is encrypted under; `null` when it has none (an ancestor's still applies).
+   */
   default_keyring_id: z.uuid().nullable(),
   created_by: z.string().nullable(),
   created_at: TimestampSchema,
@@ -109,17 +112,27 @@ export type FolderListing = z.infer<typeof FolderListingSchema>;
 /**
  * `PATCH /folders/:type/:id/*path`: `name` renames the folder (its descendants follow),
  * `parent_path` moves it under another folder (`""`: the root, created when missing). Both
- * together move and rename at once.
+ * together move and rename at once. `default_keyring` sets the encryption policy (6.2).
  */
 export const FolderPatchSchema = z
   .object({
     name: FolderSegmentSchema.optional(),
     parent_path: FolderPathSchema.optional(),
+    /**
+     * The folder's encryption policy (plan 6.2): `"me"` — every new upload into this folder
+     * or one below it is encrypted under the keyring of the request's `X-User-Id` (an
+     * unlock token is then required); `null` — no policy of its own.
+     */
+    default_keyring: z.literal("me").nullable().optional(),
   })
   .strict()
-  .refine((patch) => patch.name !== undefined || patch.parent_path !== undefined, {
-    message: "name or parent_path is required",
-  });
+  .refine(
+    (patch) =>
+      patch.name !== undefined ||
+      patch.parent_path !== undefined ||
+      patch.default_keyring !== undefined,
+    { message: "name, parent_path or default_keyring is required" },
+  );
 export type FolderPatch = z.infer<typeof FolderPatchSchema>;
 
 /** `DELETE /folders/:type/:id/*path`: the folder as soft-deleted, and how much went with it. */

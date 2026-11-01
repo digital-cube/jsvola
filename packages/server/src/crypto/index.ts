@@ -9,7 +9,12 @@ export {
   newFileKey,
   TAG_BYTES,
 } from "./aead.js";
-export { EncryptionUnavailableError, INTEGRITY_MESSAGE, IntegrityError } from "./errors.js";
+export {
+  EncryptionUnavailableError,
+  INTEGRITY_MESSAGE,
+  IntegrityError,
+  LockedError,
+} from "./errors.js";
 export {
   assertSegmentSize,
   type ByteSpan as CipherByteSpan,
@@ -45,6 +50,43 @@ export {
   segmentNonce,
   segmentOffset,
 } from "./format.js";
+export {
+  ARGON2_ITERATIONS,
+  ARGON2_LANES,
+  ARGON2_MEMORY_KIB,
+  attemptDelayS,
+  base32Encode,
+  DEFAULT_KDF_COST,
+  DEFAULT_PEPPER_FILE,
+  deriveKek,
+  deriveUnlockKek,
+  FREE_ATTEMPTS,
+  freshKdf,
+  hasPinShape,
+  isRecoveryKeyShaped,
+  isTrivialPin,
+  type KdfCost,
+  KEYRING_FK_CT_BYTES,
+  KeyringWrapProvider,
+  kdfSalt,
+  LOCKOUT_AT,
+  LOCKOUT_BASE_S,
+  MK_CT_BYTES,
+  mkAad,
+  newMasterKey,
+  newRecoveryKey,
+  normalizeRecoveryKey,
+  pepperLineId,
+  pinInvalidReason,
+  SALT_BYTES,
+  secretsEqual,
+  tokenFingerprint,
+  UNLOCK_KEK_SALT,
+  unwrapFromStore,
+  unwrapMasterKey,
+  wrapForStore,
+  wrapMasterKey,
+} from "./keyring.js";
 export {
   type FileMeta,
   META_MAX_BYTES,

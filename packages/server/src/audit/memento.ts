@@ -7,11 +7,15 @@
  * BullMQ `audit` job with retries when the queue is there, one fire-and-forget try otherwise.
  *
  * What a payload NEVER carries: a share token, a password, an API key (plaintext or hash),
- * a file key — and the `filename` of an encrypted file (`encryption != none`).
+ * a file key, a PIN, a recovery key, an unlock token, a master key — and the `filename` of
+ * an encrypted file (`encryption != none`).
  */
 import type { FileRow } from "../db/schema.js";
 
-/** The event types vola writes. `VOLA_KEYRING_*` join in phase 6.2 (TCKFT692JH). */
+/**
+ * The event types vola writes. The `VOLA_KEYRING_*` events (6.2) carry ids and counts
+ * only — never a PIN, a recovery key, a token or a master key.
+ */
 export const AUDIT_EVENT_TYPES = [
   "VOLA_FILE_DELETED",
   "VOLA_FILE_PURGED",
@@ -21,11 +25,22 @@ export const AUDIT_EVENT_TYPES = [
   "VOLA_KEY_CREATED",
   "VOLA_KEY_REVOKED",
   "VOLA_INSTANCES_TRANSFERRED",
+  "VOLA_KEYRING_CREATED",
+  "VOLA_KEYRING_PIN_CHANGED",
+  "VOLA_KEYRING_RECOVERED",
+  "VOLA_KEYRING_RESET",
+  "VOLA_KEYRING_LOCKED_OUT",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
 /** The memento `instance_type` of an event: what kind of thing it happened to. */
-export const AUDIT_INSTANCE_TYPES = ["vola_file", "vola_share", "vola_key", "vola_tenant"] as const;
+export const AUDIT_INSTANCE_TYPES = [
+  "vola_file",
+  "vola_share",
+  "vola_key",
+  "vola_tenant",
+  "vola_keyring",
+] as const;
 export type AuditInstanceType = (typeof AUDIT_INSTANCE_TYPES)[number];
 
 /** Who did it: a principal of the host application (`X-User-Id`), an API key, the CLI. */

@@ -224,6 +224,8 @@ export interface EncryptedStage {
   fileId: string;
   /** The random file key; wrapped into `fk_ct` by `finalizeUpload`, never stored in the clear. */
   fk: Buffer;
+  /** For `keyring`: the keyring the key will be wrapped under (checked against the unlock at staging). */
+  keyringId: string | null;
   plaintextLength: number;
   format: number;
 }
@@ -254,8 +256,10 @@ function plaintextMeter(maxBytes: number): Transform {
 
 export interface StageOptions {
   maxBytes?: number | undefined;
-  /** `none` (default): the bytes as they are; `tenant`: a `JSV` blob under a fresh file key. */
+  /** `none` (default): the bytes as they are; `tenant` / `keyring`: a `JSV` blob under a fresh file key. */
   encryption?: FileEncryption | undefined;
+  /** For `keyring`: the keyring a folder policy demands (the request's unlock must be its); absent: the request's. */
+  keyringId?: string | null | undefined;
   /** The plaintext length when it is known up front (a resumable upload): written into the header. */
   plaintextLength?: number | undefined;
 }
@@ -285,7 +289,8 @@ export function headSniffer(): { transform: Transform; head: () => Buffer } {
  * blob is a `JSV` ciphertext under a fresh file key, its hash is the hash of the CIPHERTEXT
  * (so two uploads of the same bytes are two blobs — there is no deduplication of encrypted
  * files, by design), and `maxBytes` is measured on the plaintext. The mode's key material is
- * checked FIRST (`503 encryption_unavailable` before a byte is read).
+ * checked FIRST (`503 encryption_unavailable` before a byte is read; for `keyring` also the
+ * request's unlock — `423 vola_locked` — and, with a folder policy, that it is that keyring's).
  */
 export async function stageUpload(
   deps: FilesDeps,
@@ -301,7 +306,7 @@ export async function stageUpload(
   let encrypt: ReturnType<typeof createEncryptStream> | undefined;
   if (mode !== "none") {
     if (!deps.crypto) throw encryptionUnavailable(mode);
-    await deps.crypto.assertAvailable(mode);
+    const keyringId = await deps.crypto.assertUploadable(mode, options.keyringId);
     const fileId = uuidv7();
     const fk = newFileKey();
     encrypt = createEncryptStream(fk, fileId, {
@@ -316,7 +321,7 @@ export async function stageUpload(
       piped = piped.pipe(meter);
     }
     piped = piped.pipe(encrypt);
-    encrypted = { mode, fileId, fk, plaintextLength: 0, format: JSV_VERSION };
+    encrypted = { mode, fileId, fk, keyringId, plaintextLength: 0, format: JSV_VERSION };
   }
   try {
     const staged = await deps.storage.stage(piped, {
@@ -411,7 +416,8 @@ export async function finalizeUpload(
   // An encrypted file: the row shows nothing but the id, the real values are sealed under the
   // file key, and the key is wrapped by the mode's provider BEFORE anything is committed.
   const enc = upload.encrypted;
-  let sealed: { fkCt: Buffer; metaCt: Buffer; meta: FileMeta } | null = null;
+  let sealed: { fkCt: Buffer; keyringId: string | null; metaCt: Buffer; meta: FileMeta } | null =
+    null;
   if (enc) {
     if (!deps.crypto) {
       await deps.storage.discard(upload.staged);
@@ -424,11 +430,12 @@ export async function finalizeUpload(
       sniffed: detected.source === "magic",
     };
     try {
-      const fkCt = await deps.crypto.wrapNewKey(enc.mode, enc.fk, {
+      const { fkCt, keyringId } = await deps.crypto.wrapNewKey(enc.mode, enc.fk, {
         fileId: enc.fileId,
         tenantId: scope.tenantId,
+        keyringId: enc.keyringId,
       });
-      sealed = { fkCt, metaCt: sealMeta(enc.fk, enc.fileId, meta), meta };
+      sealed = { fkCt, keyringId, metaCt: sealMeta(enc.fk, enc.fileId, meta), meta };
     } catch (error) {
       await deps.storage.discard(upload.staged);
       throw error;
@@ -489,6 +496,7 @@ export async function finalizeUpload(
                     parentId: parent?.id ?? null,
                     encryption: enc.mode,
                     encFormat: enc.format,
+                    keyringId: sealed.keyringId,
                     fkCt: sealed.fkCt,
                     metaCt: sealed.metaCt,
                     createdBy: input.userId,

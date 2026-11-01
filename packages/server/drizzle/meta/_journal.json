@@ -57,6 +57,13 @@
       "when": 1793561400603,
       "tag": "0007_encryption",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793563708160,
+      "tag": "0008_keyrings",
+      "breakpoints": true
     }
   ]
 }

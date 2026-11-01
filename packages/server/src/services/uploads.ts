@@ -24,7 +24,13 @@ import {
   type StagedUpload,
   stageUpload,
 } from "./files.js";
-import { type FoldersDeps, parsePath, resolveFolderId } from "./folders.js";
+import {
+  effectiveKeyringId,
+  effectiveKeyringIdOfPath,
+  type FoldersDeps,
+  parsePath,
+  resolveFolderId,
+} from "./folders.js";
 
 export interface UploadsDeps {
   db: Database;
@@ -113,7 +119,7 @@ export interface CreateUploadInput {
   contentType?: string | undefined;
   /** The `metadata` pair: a JSON object as text. */
   metadata?: string | undefined;
-  /** The `encryption` pair or `X-Vola-Encryption`: `none` | `tenant`; absent: the tenant default. */
+  /** The `encryption` pair or `X-Vola-Encryption`: `none` | `tenant` | `keyring`; absent: the folder policy, else the tenant default. */
   encryption?: string | undefined;
 }
 
@@ -151,25 +157,32 @@ export async function createUpload(
     input.folderPath === undefined ? null : parsePath(input.folderPath, "folder_path");
   const slug = input.slug === undefined ? null : parseSlug(input.slug);
   const metadata = parseMetadata(input.metadata);
-  // Decided at creation (and checked to be servable), so a client knows before it sends a byte.
+  let parent: FileRow | null = null;
+  if (input.parentId !== undefined) {
+    if (!UUID_RE.test(input.parentId)) throw validation("parent_id: must be a UUID");
+    parent = await findFile(filesDeps(deps), scope, input.parentId);
+  }
+  // Decided at creation (and checked to be servable), so a client knows before it sends a
+  // byte: a folder policy (6.2) outranks the explicit mode; `keyring` needs the unlock NOW
+  // (and again at completion, when the key is wrapped).
   let encryption: FileEncryption = "none";
   if (deps.crypto) {
+    const policy =
+      folderPath === null
+        ? await effectiveKeyringId(foldersDeps(deps), scope, parent?.folderId ?? null)
+        : await effectiveKeyringIdOfPath(foldersDeps(deps), scope, folderPath);
     encryption = await deps.crypto.resolveMode(
       scope.tenantId,
       deps.crypto.parseMode(input.encryption),
+      policy,
     );
-    if (encryption !== "none") await deps.crypto.assertAvailable(encryption);
+    if (encryption !== "none") await deps.crypto.assertUploadable(encryption, policy);
   } else if (
     input.encryption !== undefined &&
     input.encryption !== "" &&
     input.encryption !== "none"
   ) {
     throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
-  }
-  let parent: FileRow | null = null;
-  if (input.parentId !== undefined) {
-    if (!UUID_RE.test(input.parentId)) throw validation("parent_id: must be a UUID");
-    parent = await findFile(filesDeps(deps), scope, input.parentId);
   }
   const now = clock(deps);
   const [row] = await deps.db
@@ -368,8 +381,9 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
  * Runs with the upload row locked. The folder path is resolved (created when missing) and
  * the parent looked up again HERE, since either may have changed since creation.
  *
- * An upload created with `encryption != none` is encrypted NOW: the (plaintext) part file is
- * streamed through the same `stageUpload` as a multipart body — with the length the header
+ * An upload created with `encryption != none` (or whose folder has a keyring policy by now)
+ * is encrypted NOW: the (plaintext) part file is streamed through the same `stageUpload` as
+ * a multipart body — with the length the header
  * can carry, since it is known — and removed once the ciphertext is committed. Until phase
  * 6.3 cuts the incoming stream into segments, the part file is plaintext on disk for the
  * life of the upload (`docs/CRYPTO.md` § What is not covered).
@@ -397,13 +411,21 @@ async function completeLocked(
       `the part file holds ${partSize} bytes, the upload expects ${row.length}`,
     );
   }
-  const encryption = (row.encryption ?? "none") as FileEncryption;
+  let encryption = (row.encryption ?? "none") as FileEncryption;
+  // The folder's policy as it stands NOW (it may have been set since the upload was created).
+  const policy = await effectiveKeyringId(
+    foldersDeps(deps),
+    scope,
+    folderId === undefined ? (parent?.folderId ?? null) : folderId,
+  );
+  if (policy) encryption = "keyring";
   let upload: StagedUpload;
   if (encryption === "none") {
     upload = await deps.parts.stage(row.id);
   } else {
     upload = await stageUpload(filesDeps(deps), createReadStream(deps.parts.path(row.id)), {
       encryption,
+      keyringId: policy,
       plaintextLength: row.length,
       maxBytes: deps.maxUploadBytes,
     });

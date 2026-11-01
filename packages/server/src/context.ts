@@ -17,6 +17,11 @@ export interface TenantContext {
   isAdmin: boolean;
   /** The `X-User-Id` of the request (the host application's principal), if any. */
   userId: string | null;
+  /**
+   * The `X-Vola-Unlock` of the request (plan 6.2): an unlock token of the principal's
+   * keyring, or `null`. Resolved only when a `keyring` file is touched; never logged.
+   */
+  unlockToken: string | null;
 }
 
 /** A context with a tenant selected: what `requireTenant()` returns. */

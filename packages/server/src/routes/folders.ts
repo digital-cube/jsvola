@@ -20,7 +20,9 @@ import {
   parsePath,
   relocateFolder,
   serializeFolder,
+  setFolderKeyring,
 } from "../services/folders.js";
+import { findKeyring, keyringNotFound, requirePrincipal } from "../services/keyrings.js";
 import { flag } from "./send-file.js";
 
 export interface FolderRoutesDeps {
@@ -59,6 +61,9 @@ interface DeleteQuery {
  *   subfolders, files}`;
  * - `PATCH …/*path` — `folders:write`: `{name}` renames (descendants follow),
  *   `{parent_path}` moves (`""`: the root); `409 folder_exists` on a collision;
+ *   `{default_keyring: "me" | null}` sets or clears the folder's encryption policy (6.2:
+ *   `"me"` is the keyring of the request's `X-User-Id` — `400` without one, `404
+ *   keyring_not_found` without a keyring);
  * - `DELETE …/*path[?recursive=1]` — `folders:write`: soft delete; a non-empty folder
  *   without `recursive` is `409 folder_not_empty`.
  */
@@ -117,11 +122,32 @@ export const folderRoutes: FastifyPluginAsync<FolderRoutesDeps> = async (app, de
           `${issue?.path.join(".") || "body"}: ${issue?.message ?? "invalid"}`,
         );
       }
-      return relocateFolder(service, scopeOf(request), folderPathOf(request), {
-        name: parsed.data.name,
-        parentPath: parsed.data.parent_path,
-        userId: requireTenant().userId,
-      });
+      const tenant = requireTenant();
+      const scope = scopeOf(request);
+      const path = folderPathOf(request);
+      const patch = parsed.data;
+      let info: FolderInfo | undefined;
+      if (patch.default_keyring !== undefined) {
+        let keyringId: string | null = null;
+        if (patch.default_keyring === "me") {
+          const principal = requirePrincipal(tenant);
+          const keyring = await findKeyring(
+            { db: deps.db },
+            { tenantId: tenant.tenantId, principal },
+          );
+          if (!keyring) throw keyringNotFound();
+          keyringId = keyring.id;
+        }
+        info = await setFolderKeyring(service, scope, path, keyringId);
+      }
+      if (patch.name !== undefined || patch.parent_path !== undefined) {
+        info = await relocateFolder(service, scope, path, {
+          name: patch.name,
+          parentPath: patch.parent_path,
+          userId: tenant.userId,
+        });
+      }
+      return info as FolderInfo;
     },
   );
 

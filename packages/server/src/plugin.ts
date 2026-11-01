@@ -8,7 +8,12 @@ import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify"
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
 import type { Config } from "./config.js";
-import { EncryptionUnavailableError, IntegrityError } from "./crypto/index.js";
+import {
+  EncryptionUnavailableError,
+  IntegrityError,
+  KeyFile,
+  LockedError,
+} from "./crypto/index.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
@@ -21,6 +26,7 @@ import { adminRoutes } from "./routes/admin.js";
 import { fileRoutes } from "./routes/files.js";
 import { folderRoutes } from "./routes/folders.js";
 import { healthRoutes } from "./routes/health.js";
+import { keyringRoutes } from "./routes/keyrings.js";
 import { keyRoutes } from "./routes/keys.js";
 import { lookupRoutes } from "./routes/lookups.js";
 import { publicRoutes } from "./routes/public.js";
@@ -35,13 +41,16 @@ import {
   type EncryptionService,
   encryptionUnavailable,
   integrityFailure,
+  keyringLocked,
 } from "./services/encryption.js";
+import type { KeyringsDeps } from "./services/keyrings.js";
 import {
   isLimiterRedis,
   MemorySharePasswordLimiter,
   RedisSharePasswordLimiter,
   type SharePasswordLimiter,
 } from "./services/share-password.js";
+import { isUnlockRedis, UnlockStore } from "./services/unlock.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 import { filesCollections } from "./udc/collections.js";
 import type { DecorateRow } from "./udc/files-source.js";
@@ -107,12 +116,25 @@ export interface VolaPluginOptions {
   /** Hook of the `files` collection: decorates every row after the built-in masking and decryption. */
   decorateRow?: DecorateRow | undefined;
   /**
-   * Encryption (plan 6.1, `docs/CRYPTO.md`). Default: the `tenant` provider on
-   * `config.keyFile` (`VOLA_KEY_FILE`); a missing file is `503 encryption_unavailable` on
-   * encrypted uploads and downloads, nothing else. An `EncryptionService` given here is used as
-   * is (tests: in-memory keys, a small segment size); `false`: no encryption at all.
+   * Encryption (plans 6.1 / 6.2, `docs/CRYPTO.md`). Default: the `tenant` provider on
+   * `config.keyFile` (`VOLA_KEY_FILE`) and the `keyring` provider over `unlocks`; a missing
+   * file is `503 encryption_unavailable` on encrypted uploads and downloads, nothing else. An
+   * `EncryptionService` given here is used as is (tests: in-memory keys, a small segment
+   * size); `false`: no encryption at all.
    */
   encryption?: EncryptionService | false | undefined;
+  /**
+   * The unlock-token store of the `keyring` provider (plan 6.2). Default: on `redis` when
+   * that client is an ioredis one, with `config.unlockTtlS`; without Redis there is no
+   * keyring provider (every keyring route and `keyring` file is `503`). `false`: none.
+   */
+  unlocks?: UnlockStore | false | undefined;
+  /**
+   * The keyring routes' dependencies (plan 6.2). Default: built here from `unlocks`, the
+   * pepper file (`config.pepperFile`) and the storage. Tests give their own (an in-memory
+   * pepper source, a lower Argon2 cost, a clock); `false`: no keyring routes.
+   */
+  keyrings?: Partial<KeyringsDeps> | false | undefined;
   /**
    * The bus every file change is announced on and the `files` collection's `subscribe`
    * listens to. Default: Redis pub/sub on `config.redisUrl` when set, in-process otherwise
@@ -255,6 +277,9 @@ export function installErrorHandling(app: FastifyInstance): void {
     } else if (error instanceof EncryptionUnavailableError) {
       request.log.warn({ reason: error.message }, "encryption unavailable");
       error = encryptionUnavailable("tenant");
+    } else if (error instanceof LockedError) {
+      request.log.info({ reason: error.reason }, "keyring locked");
+      error = keyringLocked();
     }
     if (error instanceof VolaError) {
       if (error.status >= 500) request.log.error({ err: error }, error.message);
@@ -340,6 +365,19 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     });
   }
   const uploadsPath = options.uploadsPath ?? join(options.config.storagePath, "uploads");
+  const keyFile = new KeyFile(options.config.keyFile, app.log);
+  let unlocks: UnlockStore | null = null;
+  if (options.unlocks !== false) {
+    if (options.unlocks) unlocks = options.unlocks;
+    else if (isUnlockRedis(options.redis)) {
+      unlocks = new UnlockStore({
+        redis: options.redis,
+        keys: keyFile,
+        ttlS: options.config.unlockTtlS,
+        logger: app.log,
+      });
+    }
+  }
   const crypto =
     options.encryption === false
       ? undefined
@@ -347,10 +385,22 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
         createEncryptionService({
           db: options.db,
           keyFile: options.config.keyFile,
+          keys: keyFile,
+          unlocks,
           logger: app.log,
         }));
   if (crypto && options.encryption === undefined) {
-    app.log.info({ key_file: options.config.keyFile }, "encryption: tenant provider");
+    app.log.info(
+      {
+        key_file: options.config.keyFile,
+        keyring: unlocks
+          ? { pepper_file: options.config.pepperFile, unlock_ttl_s: unlocks.ttlS }
+          : null,
+      },
+      unlocks
+        ? "encryption: tenant and keyring providers"
+        : "encryption: tenant provider (no Redis: no keyring provider)",
+    );
   }
   const audit =
     options.audit === false
@@ -369,6 +419,19 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db, audit });
+  if (options.keyrings !== false && crypto) {
+    const keyrings: KeyringsDeps = {
+      db: options.db,
+      unlocks,
+      peppers: new KeyFile(options.config.pepperFile, app.log),
+      storage,
+      events,
+      audit,
+      logger: app.log,
+      ...(options.keyrings ?? {}),
+    };
+    await app.register(keyringRoutes, { keyrings });
+  }
   await app.register(adminRoutes, { db: options.db, events, audit, crypto });
   await app.register(lookupRoutes, { db: options.db, lookups });
   await app.register(fileRoutes, {

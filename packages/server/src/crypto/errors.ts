@@ -1,8 +1,8 @@
 /**
- * The two failures of the crypto layer. Both are mapped to HTTP by the services, never
- * here: `IntegrityError` → `409 vola_integrity` with the FIXED sentence below (a response
- * never carries a reason, a ciphertext or a key), `EncryptionUnavailableError` →
- * `503 encryption_unavailable`.
+ * The failures of the crypto layer. All are mapped to HTTP by the services, never here:
+ * `IntegrityError` → `409 vola_integrity` with the FIXED sentence below (a response never
+ * carries a reason, a ciphertext or a key), `EncryptionUnavailableError` →
+ * `503 encryption_unavailable`, `LockedError` → `423 vola_locked`.
  */
 
 /** The one sentence every integrity failure answers with. */
@@ -25,5 +25,17 @@ export class EncryptionUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "EncryptionUnavailableError";
+  }
+}
+
+/**
+ * The `keyring` provider has no master key for this file: the request carried no unlock
+ * token, or one of another principal, tenant or keyring. One answer for every case
+ * (`423 vola_locked`); `reason` is for the server log only.
+ */
+export class LockedError extends Error {
+  constructor(readonly reason: string) {
+    super("the keyring is locked");
+    this.name = "LockedError";
   }
 }

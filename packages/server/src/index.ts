@@ -190,6 +190,7 @@ export { type AdminRoutesDeps, adminRoutes } from "./routes/admin.js";
 export { type FileRoutesDeps, fileRoutes } from "./routes/files.js";
 export { type FolderRoutesDeps, folderRoutes } from "./routes/folders.js";
 export { type HealthDeps, healthRoutes } from "./routes/health.js";
+export { keyringRoutes } from "./routes/keyrings.js";
 export { type KeyRoutesDeps, keyRoutes } from "./routes/keys.js";
 export { type LookupRoutesDeps, lookupRoutes } from "./routes/lookups.js";
 export { PUBLIC_MAX_AGE_SECONDS, type PublicRoutesDeps, publicRoutes } from "./routes/public.js";
@@ -252,8 +253,10 @@ export {
   encryptionUnavailable,
   integrityFailure,
   type KeyUsage,
+  keyringLocked,
   type OpenedFile,
   tenantKeyUsage,
+  type WrappedKey,
 } from "./services/encryption.js";
 export {
   describeFile,
@@ -297,6 +300,8 @@ export {
 export {
   deleteFolder,
   type EnsureResult,
+  effectiveKeyringId,
+  effectiveKeyringIdOfPath,
   ensureFolder,
   type FoldersDeps,
   findFolder,
@@ -310,7 +315,26 @@ export {
   relocateFolder,
   resolveFolderId,
   serializeFolder,
+  setFolderKeyring,
 } from "./services/folders.js";
+export {
+  assertPinAcceptable,
+  changePin,
+  createKeyring,
+  findKeyring,
+  findKeyringById,
+  type KeyringsDeps,
+  keyringDeletePreview,
+  keyringNotFound,
+  keyringPepperUsage,
+  keyringStatus,
+  lockKeyring,
+  type PepperUsage,
+  recoverKeyring,
+  requirePrincipal,
+  resetKeyring,
+  unlockKeyring,
+} from "./services/keyrings.js";
 export {
   DEFAULT_PDFTOPPM,
   DEFAULT_TESSERACT,
@@ -445,6 +469,23 @@ export {
   type TransferDeps,
   transferInstances,
 } from "./services/transfer.js";
+export {
+  ATTEMPT_LOCK_PREFIX,
+  ATTEMPT_LOCK_S,
+  isTokenShaped,
+  isUnlockRedis,
+  type OpenedUnlock,
+  type OpenUnlockInput,
+  type ResolvedUnlock,
+  TOKEN_BYTES,
+  UNLOCK_INDEX_PREFIX,
+  UNLOCK_INDEX_TTL_S,
+  UNLOCK_KEY_PREFIX,
+  type UnlockPrincipal,
+  type UnlockRedis,
+  UnlockStore,
+  type UnlockStoreOptions,
+} from "./services/unlock.js";
 export {
   type AppendInput,
   type AppendResult,

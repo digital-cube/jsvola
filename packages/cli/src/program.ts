@@ -32,8 +32,10 @@ import {
   KeyFile,
   type KeyUsage,
   keyAuditPayload,
+  keyringPepperUsage,
   listApiKeys,
   loadConfig,
+  type PepperUsage,
   revokeApiKey,
   runMigrations,
   schema,
@@ -172,6 +174,30 @@ export function keyStatusLines(path: string, lines: number, usage: KeyUsage[]): 
   ];
 }
 
+/** The lines of `pepper-status`. */
+export function pepperStatusLines(path: string, lines: number, usage: PepperUsage[]): string[] {
+  const total = usage.reduce((sum, u) => sum + u.keyrings, 0);
+  const orphaned = usage.filter((u) => u.line === null);
+  return [
+    `${path}: ${lines} pepper line(s), line 0 active; ${total} keyring(s)`,
+    ...usage.map((u) =>
+      u.line === null
+        ? `  kid ${u.kid}  NO LINE  ${u.keyrings} keyring(s) — no PIN and no recovery key opens these; restore the pepper line`
+        : `  kid ${u.kid}  line ${u.line}${u.line === 0 ? " (active)" : ""}  ${u.keyrings} keyring(s)`,
+    ),
+    ...(orphaned.length > 0
+      ? [
+          `WARNING: ${orphaned.reduce((s, u) => s + u.keyrings, 0)} keyring(s) depend on a pepper that is not in the file`,
+        ]
+      : []),
+    ...(usage.some((u) => u.line !== null && u.line > 0)
+      ? [
+          "older lines are still in use: a keyring moves to the active line at its next unlock; keep them",
+        ]
+      : []),
+  ];
+}
+
 function dateArgument(value: string): Date {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -212,9 +238,9 @@ export function plaintextLines(key: string): string[] {
 
 /**
  * The `vola` command tree: `migrate`, `create-tenant`, `tenant-set`, `create-key`,
- * `create-admin-key`, `list-keys`, `revoke-key`, `transfer`, `keys-status` (every one reads
- * `VOLA_DATABASE_URL` and connects only when it runs), `keys-generate` (the encryption key
- * file only) and the vocabulary commands `lookup-promote`, `lookups validate`, `lookups
+ * `create-admin-key`, `list-keys`, `revoke-key`, `transfer`, `keys-status`, `pepper-status`
+ * (every one reads `VOLA_DATABASE_URL` and connects only when it runs), `keys-generate` and
+ * `pepper-generate` (the secret files only) and the vocabulary commands `lookup-promote`, `lookups validate`, `lookups
  * candidates` (files only, no database).
  */
 export function buildProgram(io: CliIo, options: CliOptions = {}): Command {
@@ -241,6 +267,8 @@ Examples:
   $ vola tenant-set --slug acme --default-encryption tenant
   $ vola keys-generate
   $ vola keys-status
+  $ vola pepper-generate
+  $ vola pepper-status
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --instance tickets:9e2f… --dry-run
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --user-map users.json
   $ vola lookups validate
@@ -252,6 +280,7 @@ Environment:
   VOLA_REDIS_URL        with it, transfer announces the move to live subscribers
   VOLA_MEMENTO_URL      with VOLA_MEMENTO_API_KEY: key and transfer commands write audit events to memento
   VOLA_KEY_FILE         the tenant encryption key file (default /run/secrets/vola.key); keys-generate / keys-status / transfer
+  VOLA_PEPPER_FILE      the keyring (PIN) pepper file (default /run/secrets/vola.pepper); pepper-generate / pepper-status
   VOLA_LOOKUPS_PATH     lookups.yaml the vocabulary commands work on (default: the repository's)
 
 Scopes: ${SCOPES.join(", ")}`,
@@ -403,6 +432,66 @@ Old lines must stay: they still open what they wrapped (keys-status shows how ma
             orphaned_files: usage.filter((u) => u.line === null).reduce((s, u) => s + u.files, 0),
           },
           keyStatusLines(path, lines.length, usage),
+        );
+      });
+    });
+
+  const pepperFilePath = (given: string | undefined) => given ?? config().pepperFile;
+
+  program
+    .command("pepper-generate")
+    .description(
+      "write a new keyring pepper file (one random 32-byte line, mode 0600); refuses to overwrite",
+    )
+    .option("--path <file>", "where (default: VOLA_PEPPER_FILE, /run/secrets/vola.pepper)")
+    .addHelpText(
+      "after",
+      `
+The pepper is the Argon2 secret of every PIN and recovery key: without this file no keyring
+can be unlocked or recovered. Back it up with the key file.
+To ROTATE, prepend a fresh line — old lines must stay (pepper-status shows how many keyrings
+still depend on each; a keyring moves to the active line at its next unlock).`,
+    )
+    .action(async (opts: { path?: string }) => {
+      const path = pepperFilePath(opts.path);
+      await mkdir(dirname(path), { recursive: true }).catch(() => undefined);
+      try {
+        await writeFile(path, `${generateKeyLine()}\n`, { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new VolaError(
+            "conflict",
+            409,
+            `${path} exists; refusing to overwrite a pepper file (rotation = prepend a line, see --help)`,
+          );
+        }
+        throw error;
+      }
+      print({ path, lines: 1 }, [
+        `wrote ${path} (mode 0600, 1 pepper line)`,
+        "Back it up somewhere safe: without this file no keyring can be unlocked or recovered.",
+      ]);
+    });
+
+  program
+    .command("pepper-status")
+    .description("how many keyrings depend on which line of the pepper file (never prints a line)")
+    .option("--path <file>", "the pepper file (default: VOLA_PEPPER_FILE)")
+    .action(async (opts: { path?: string }) => {
+      const path = pepperFilePath(opts.path);
+      const lines = await new KeyFile(path).lines();
+      await withDb(async ({ db }) => {
+        const usage = await keyringPepperUsage(db, lines);
+        print(
+          {
+            path,
+            lines: lines.length,
+            usage,
+            orphaned_keyrings: usage
+              .filter((u) => u.line === null)
+              .reduce((s, u) => s + u.keyrings, 0),
+          },
+          pepperStatusLines(path, lines.length, usage),
         );
       });
     });
