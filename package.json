@@ -18,6 +18,8 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "dev": "pnpm --filter @vola/server dev",
+    "dev:worker": "pnpm --filter @vola/server dev:worker",
+    "start:worker": "pnpm --filter @vola/server start:worker",
     "db:up": "docker compose up -d postgres redis",
     "db:generate": "pnpm --filter @vola/server db:generate",
     "db:migrate": "pnpm --filter @vola/server db:migrate",

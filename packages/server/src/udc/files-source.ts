@@ -11,13 +11,14 @@ import {
   UdcError,
 } from "@jsudc/core";
 import type { SourceListRequest } from "@jsudc/server";
-import { LOOKUP_SECTIONS } from "@vola/core";
+import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vola/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
+import { processingStatusByFile } from "../services/processing.js";
 import { decodePageCursor, encodePageCursor, type PageCursor } from "./cursor.js";
 import {
   coerce,
@@ -46,6 +47,8 @@ export const FILES_DEFAULT_SORT: SortKey = { field: "created_at", dir: "desc" };
 export interface FileRecord {
   file: FileRow;
   folderPath: string | null;
+  /** The aggregate of the file's processing jobs, attached by `toRows` (one query per page). */
+  processingStatus?: ProcessingStatus | null | undefined;
 }
 
 /**
@@ -266,16 +269,18 @@ export function filesFields(prefix: string): Record<string, FileField> {
       def: {
         type: "lookup",
         ref: LOOKUP_SECTIONS.processingStatuses,
-        description: "Aggregate state of the processing jobs (plan 4.1); null until then",
+        description:
+          "Aggregate of the file's processing jobs, worst first (FAILED > RUNNING > PENDING > DONE); null when none was created",
       },
       kind: "text",
-      value: () => null,
+      value: (r) => r.processingStatus ?? null,
       sortable: false,
     },
     thumb_url: {
       def: {
         type: "image",
-        description: "256px thumbnail (plan 4.1; 404 until then); null for an encrypted file",
+        description:
+          "256px WebP thumbnail (GET …/thumb/256: 200 ready, 202 generating, 404 no_thumbnail); null for an encrypted file",
       },
       kind: "text",
       value: (r) => (encrypted(r.file) ? null : `${base(r.file)}/thumb/256`),
@@ -641,7 +646,13 @@ export class FilesCollectionSource implements SubscribableSource {
 
   private async toRows(records: FileRecord[], tenant: BoundTenantContext): Promise<Row[]> {
     const rows: Row[] = [];
+    // One query for the page: the aggregate `processing_status` of every file in it.
+    const statuses = await processingStatusByFile(
+      this.db,
+      records.map((r) => r.file.id),
+    );
     for (const record of records) {
+      record.processingStatus = statuses.get(record.file.id) ?? null;
       const row: Row = { __meta: { id: record.file.id, version: 1 } };
       for (const [name, field] of Object.entries(this.fields)) row[name] = field.value(record);
       rows.push(this.decorateRow ? await this.decorateRow(row, record.file, tenant) : row);

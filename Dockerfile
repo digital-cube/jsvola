@@ -2,7 +2,8 @@
 # JSVola server image.
 #   docker build -t jsvola .
 #   docker run -p 8300:8300 -e VOLA_DATABASE_URL=… -e VOLA_REDIS_URL=… jsvola
-# The same image runs the worker later (`node dist/worker.js`, plan 4.1).
+# The same image runs the worker: `docker run … jsvola node dist/worker.js` (the `vola-worker`
+# service of docker-compose.yaml).
 
 ARG NODE_VERSION=24
 
@@ -29,8 +30,9 @@ LABEL org.opencontainers.image.title="jsvola" \
       org.opencontainers.image.source="https://github.com/digital-cube/jsvola" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
-# System tools the processing worker needs: libvips (sharp thumbnails), pdftoppm (first PDF
-# page), tesseract with English, Serbian and German (OCR).
+# System tools the processing worker needs: libvips (sharp ships its own, this one is for
+# `vips` on the command line), pdftoppm (first PDF page), tesseract with English, Serbian and
+# German (OCR, plan 4.2).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libvips42 \
@@ -62,4 +64,5 @@ EXPOSE 8300
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
   CMD ["vola-healthcheck"]
 # Applies pending migrations, then listens; SIGTERM closes connections and exits.
+# The worker process of the same image: `node dist/worker.js` (needs VOLA_REDIS_URL).
 CMD ["node", "dist/server.js"]

@@ -241,8 +241,53 @@ export const uploads = pgTable(
   ],
 );
 
+/**
+ * One unit of background work on a file (plan 4.1): a thumbnail of one size and crop, an
+ * OCR pass (4.2). `params` tells the jobs of one `kind` apart (`{size, crop}` for a
+ * thumbnail) and `(file, kind, params)` is unique: asking for the same thumbnail twice
+ * refreshes the row instead of adding one. `status` walks PENDING → RUNNING → DONE | FAILED
+ * (after `attempts` tries); `SKIPPED` is reserved for a job that was deliberately not run.
+ * `error` is a short reason without the file name. The aggregate of a file's rows is its
+ * `processing_status` (`aggregateProcessingStatus` in `@vola/core`). Rows go with the file.
+ */
+export const processingJobs = pgTable(
+  "vola_processing_job",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    /** `THUMBNAIL` | `OCR` (ProcessingKinds). */
+    kind: varchar("kind", { length: 20 }).notNull(),
+    params: jsonb("params").$type<Record<string, unknown>>().notNull().default({}),
+    /** `PENDING` | `RUNNING` | `DONE` | `FAILED` | `SKIPPED` (ProcessingStatuses). */
+    status: varchar("status", { length: 20 }).notNull().default("PENDING"),
+    /** Tries so far (the worker gives up after 3). */
+    attempts: smallint("attempts").notNull().default(0),
+    /** Why the last try failed, briefly; never the file name. */
+    error: varchar("error", { length: 500 }),
+    createdAt: createdAt(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("vola_processing_job_identity_uq").on(t.fileId, t.kind, t.params),
+    index("vola_processing_job_tenant_status_idx").on(t.tenantId, t.status),
+    check("vola_processing_job_kind_check", sql`${t.kind} in ('THUMBNAIL', 'OCR')`),
+    check(
+      "vola_processing_job_status_check",
+      sql`${t.status} in ('PENDING', 'RUNNING', 'DONE', 'FAILED', 'SKIPPED')`,
+    ),
+    check("vola_processing_job_attempts_check", sql`${t.attempts} >= 0`),
+  ],
+);
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type FolderRow = typeof folders.$inferSelect;
 export type UploadRow = typeof uploads.$inferSelect;
+export type ProcessingJobRow = typeof processingJobs.$inferSelect;

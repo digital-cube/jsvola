@@ -2,7 +2,8 @@
 # table of a tenant's files is drawn. The schema (fields, filters, sorts) is in
 # src/udc/files-source.ts; this file is only the view. Renderer names are @jsudc/react's:
 # `lookup` labels a term through GET /vola/lookups, `bytes` prints a human size,
-# `image_thumb` shows the 256px thumbnail (a 404 until plan 4.1 — the cell stays empty).
+# `image_thumb` shows the 256px thumbnail (`thumb_url`: 200 when ready, 202 with a grey
+# placeholder while the worker renders it, 404 for a file that has none).
 default_renderer: table
 available_renderers: [table, cards]
 pagination: infinite

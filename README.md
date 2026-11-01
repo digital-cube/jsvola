@@ -91,12 +91,80 @@ curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets
 | `GET /vola/files/:type/:id` | `files:read` | `created_at desc, id desc`, `?cursor`, `?limit` ≤ 200, `?include_deleted=1` |
 | `PATCH …/:fileId` | `files:write` | `{folder_path}` moves (`""` = root), `{filename}` renames (`409 file_exists`), `{is_public}`, `{is_global_public}` (`409 encrypted_not_public` on an encrypted file) |
 | `DELETE …/:fileId` | `files:write` | soft delete (`deleted_at`, `deleted_by`), idempotent |
-| `DELETE …/:fileId/purge` | `files:write` | removes the row and its whole version chain; the blob and its derived files leave the disk only when no row of any tenant references them |
+| `DELETE …/:fileId/purge` | `files:write` | removes the row and its whole version chain; the blob and its derived files (thumbnails) leave the disk only when no row of any tenant references them |
+| `GET\|HEAD …/:fileId/thumb/:size?crop=` | `files:read` | WebP thumbnail, `size` 64 / 128 / 256 / 512 (`400 invalid_size`), `crop` `cover` (default) / `fit` / `attention` (`400 invalid_crop`); **`200` ready or `202` generating** — see [Thumbnails](#thumbnails--get-thumbsize-answers-202-too); `404 no_thumbnail` for anything but a raster image or PDF, and for an encrypted file |
 | `GET\|HEAD /vola/public/:fileId` | — | anonymous download of an `is_global_public` file (`Cache-Control: public, max-age=300`); anything else is `404` |
 
 MIME is detected from the magic bytes (`file-type`), then the extension, then the declared type;
 `kind` (`image`, `video`, `audio`, `document`, `spreadsheet`, `presentation`, `archive`, `text`,
-`code`, `other`) follows from it.
+`code`, `other`) follows from it. Every file info carries `processing_status`: the aggregate of
+the file's background jobs (`vola_processing_job`), worst first — `FAILED` > `RUNNING` >
+`PENDING` > `DONE`, `SKIPPED` ignored — and `null` when no job was ever created for it (a text
+file, or a deployment without a worker).
+
+### Thumbnails — `GET …/thumb/:size` answers **202** too
+
+An upload of a raster image (not SVG) or a PDF queues four `THUMBNAIL` jobs (64, 128, 256,
+512, crop `cover`) for the worker, which renders them with [sharp](https://sharp.pixelplumbing.com/)
+— EXIF orientation applied, WebP quality 80, the first page of a PDF through `pdftoppm -r 72`
+— and stores each next to the blob as `thumb-<size>-<crop>.webp`: shared by every file of every
+tenant with that content, gone with the blob on purge. `/thumb/:size` takes the rendering off the
+request path, so there are two outcomes a client MUST tell apart:
+
+| status | body | headers | meaning |
+|---|---|---|---|
+| `200` | the WebP thumbnail | `X-Thumbnail-Status: ready`, `Cache-Control: private, max-age=86400`, `ETag` (`304` on `If-None-Match`) | cache hit |
+| `202` | a **grey placeholder** (~50 B) | `X-Thumbnail-Status: generating`, `Cache-Control: no-cache` | cache miss; the job is queued (or refreshed) for the worker — retry |
+
+> **Trap:** `202` is a *success* status. It passes `raise_for_status()` (httpx/requests) and
+> `response.ok` (fetch), so the placeholder looks like a valid thumbnail unless you check for it
+> explicitly.
+
+Rules for consumers:
+
+1. **Branch on the status code, not on an exception** — `status !== 202` is the only reliable
+   test that the bytes are a real thumbnail (`X-Thumbnail-Status: generating` is the equivalent
+   signal).
+2. **Never cache a 202 body under a key derived from the content** (hash, checksum, ETag). Such a
+   key never invalidates, so the grey square outlives the real thumbnail — in the browser's HTTP
+   cache and in any in-memory / object-URL cache alike. A `202` carries no `ETag` for that reason.
+3. **If you proxy a thumbnail onwards**, pass the status and `no-cache` through; do not repackage
+   a 202 body into your own `max-age` + `ETag` answer.
+4. **Retry** — the worker usually fills the cache within about a second; the next request is a
+   `200`.
+
+Two more answers: a file that cannot be rendered (broken bytes, `pdftoppm` missing) is `200` with
+the grey placeholder, `X-Thumbnail-Status: failed` and `no-cache` — its jobs are `FAILED` after 3
+tries and `processing_status` says so; a file that has no thumbnail by nature (text, video, SVG, an
+encrypted file until phase 6.3) is `404 no_thumbnail`. If the queue cannot be reached, the server
+renders inline and answers `200` — the worker is an optimisation, not a requirement. The same
+rules hold for every size: `[64, 128, 256, 512]`, anything else is `400`.
+
+The worker publishes a `processing` event after every job, so a live `files` list (see
+[Real-time](#real-time-get-volaudcsubscribe)) sees `processing_status` move without polling.
+
+#### Deployment without a worker (`VOLA_WORKER_ENABLED`)
+
+The worker is a second process of the same image (`node dist/worker.js`, `pnpm start:worker`);
+a deployment that does not run one is supported: thumbnails are rendered lazily on `/thumb`
+(`200`, the real WebP), nothing is recorded in `vola_processing_job`, OCR (phase 4.2) does not
+run. That is **not logged as an error** — one INFO line per process, `background jobs disabled`.
+
+| `VOLA_WORKER_ENABLED` | behaviour |
+|---|---|
+| `auto` *(default)* | async when `VOLA_REDIS_URL` is set, synchronous otherwise |
+| `1` / `true` | insist on async; without `VOLA_REDIS_URL` one ERROR line, then synchronous |
+| `0` / `false` | always synchronous, even with Redis configured |
+
+> **When `0` is necessary:** a deployment with Redis but without a worker process consuming the
+> queue. Auto mode would queue a job nobody picks up and `/thumb` would answer `202` + grey
+> placeholder forever — Redis being reachable does not mean a worker is running.
+
+`VOLA_WORKER_CONCURRENCY` (default 2) is how many jobs one worker process runs at once;
+`VOLA_QUEUE_PREFIX` (default `vola`) is the Redis key prefix server and worker must share. Every
+job has 30 s, 3 tries with exponential backoff, then `FAILED` with a short `error` (never the
+file name). The expired-upload sweep is a repeatable job of the same queue in async mode (the
+server schedules it, the worker runs it); without a worker the server sweeps in-process.
 
 ### Resumable uploads (tus 1.0)
 
@@ -132,8 +200,8 @@ upload.start();
 Every request but `OPTIONS` must carry `Tus-Resumable: 1.0.0` (`412` with `Tus-Version`
 otherwise). Partial bytes live in `VOLA_STORAGE_PATH/uploads/<id>.part`, as they arrive — no
 assumption about chunk sizes, so 6.3 can cut them into fixed 1 MiB segments. An upload not
-finished within `VOLA_UPLOAD_TTL_HOURS` (24) is swept, part file and row, by a periodic job in
-the server process (every 15 minutes; a BullMQ repeatable job once phase 4.1 brings the worker).
+finished within `VOLA_UPLOAD_TTL_HOURS` (24) is swept, part file and row, every 15 minutes — a
+BullMQ repeatable job the worker runs, or a timer in the server process when there is no worker.
 
 ### Folders, versions, visibility
 
@@ -224,8 +292,8 @@ The `files` collection (`packages/server/udc/files/view.yaml` is its view) needs
 `filename`, `mime_type`, `extension`, `kind`, `size`, `created_at` (`between`, `gt`, …) and
 `include_deleted`; it sorts by `created_at`, `filename` or `size` and pages by an opaque cursor
 (`next_cursor` → `page.cursor`), with an exact `total`. Rows carry `download_url` and
-`thumb_url` (`…/thumb/256`, a 404 until thumbnails arrive), `kind` / `encryption` /
-`processing_status` as lookup values. An encrypted file shows `filename: "<encrypted>"` and no
+`thumb_url` (`…/thumb/256`: `200` ready, `202` while the worker renders, `404 no_thumbnail`),
+`kind` / `encryption` / `processing_status` as lookup values. An encrypted file shows `filename: "<encrypted>"` and no
 MIME type or extension — in rows, filters, sorts and cursors alike — until the phase-6 unlock
 puts the real ones back through the `decorateRow` hook of `volaPlugin`. `menu.yaml` is served
 as the `menu` collection (the sidebar of the examples site).
@@ -263,11 +331,16 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data)); // udc.welcome, udc.subsc
 docker compose -f docker-compose.yaml up -d --build
 curl localhost:8300/vola/health/live    # {"status":"ok"}
 curl localhost:8300/vola/health/ready   # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
+docker compose -f docker-compose.yaml logs vola-worker   # "vola worker ready"
 ```
 
 Configuration is environment only, every variable prefixed `VOLA_` — see `.env.example`. The
 image carries `lookups.yaml`, `i18n/` and `menu.yaml` under `/app/config` (mount your own over
-it) and records lookup candidates under `/data/candidates`.
+it) and records lookup candidates under `/data/candidates`. The stack runs two containers from
+the image: `vola` (`node dist/server.js`, applies migrations, listens) and `vola-worker`
+(`node dist/worker.js`, consumes the BullMQ queue); both mount the same `/data` volume, since
+thumbnails are written next to the blobs. The image ships `libvips`, `poppler-utils`
+(`pdftoppm`) and `tesseract-ocr` for the worker. Locally: `pnpm dev` and `pnpm dev:worker`.
 
 ## License
 

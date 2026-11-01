@@ -10,6 +10,9 @@ import type { Config } from "./config.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
+import { type JobsMode, resolveJobsMode } from "./jobs/availability.js";
+import { type JobDispatcher, QueuedJobDispatcher } from "./jobs/dispatcher.js";
+import { ProcessingQueue } from "./jobs/queue.js";
 import { emptyLookups, initLookups, type Lookups } from "./lookups.js";
 import type { RedisLike } from "./redis.js";
 import { fileRoutes } from "./routes/files.js";
@@ -18,6 +21,7 @@ import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
 import { lookupRoutes } from "./routes/lookups.js";
 import { publicRoutes } from "./routes/public.js";
+import { thumbnailRoutes } from "./routes/thumbnails.js";
 import { uploadRoutes } from "./routes/uploads.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
@@ -41,8 +45,21 @@ export interface VolaPluginOptions {
   accessThrottle?: LastUsedThrottle | undefined;
   /** Directory of resumable-upload part files; default `<config.storagePath>/uploads`. */
   uploadsPath?: string | undefined;
-  /** Period of the expired-upload sweep in ms; `0` disables it (tests). Default 15 minutes. */
+  /**
+   * Period of the expired-upload sweep in ms; `0` disables it (tests). Default 15 minutes.
+   * In `async` mode the sweep is a repeatable job the worker runs, scheduled by this plugin.
+   */
   uploadSweepIntervalMs?: number | undefined;
+  /**
+   * Background jobs. Default: decided by `config.worker.enabled` and `config.redisUrl`
+   * (`resolveJobsMode`) — in `async` mode a `ProcessingQueue` on `config.redisUrl` is opened
+   * (and closed with the app) and thumbnails are queued for the worker; in `sync` mode `/thumb`
+   * renders inline. A `ProcessingQueue` given here is used as is (tests: a private prefix);
+   * `false` forces `sync` mode.
+   */
+  jobs?: ProcessingQueue | false | undefined;
+  /** Wall-clock limit of an inline thumbnail rendition in ms (tests). Default 30 s. */
+  thumbnailTimeoutMs?: number | undefined;
   /**
    * The controlled vocabulary (`GET /lookups`, candidate recording). Default: loaded from
    * `config.lookups` — an absent `lookups.yaml` gives an empty vocabulary, with a warning.
@@ -112,6 +129,47 @@ async function loadLookups(app: FastifyInstance, config: Config): Promise<Lookup
     "lookups loaded",
   );
   return lookups;
+}
+
+/** Default period of the expired-upload sweep (the same the upload routes use). */
+const DEFAULT_SWEEP_INTERVAL_MS = 15 * 60_000;
+
+interface Jobs {
+  queue: ProcessingQueue;
+  dispatcher: JobDispatcher;
+}
+
+/**
+ * The background-jobs side of the plugin: `sync` → nothing; `async` → the queue (opened here
+ * unless given, closed with the app) and the dispatcher the upload and thumbnail routes use.
+ */
+async function setupJobs(
+  app: FastifyInstance,
+  options: VolaPluginOptions,
+): Promise<{ jobs: Jobs | null; jobsMode: JobsMode }> {
+  if (options.jobs === false) return { jobs: null, jobsMode: "sync" };
+  let queue = options.jobs;
+  if (!queue) {
+    const mode = resolveJobsMode({
+      enabled: options.config.worker.enabled,
+      redisUrl: options.config.redisUrl,
+      log: app.log,
+    });
+    if (mode === "sync" || !options.config.redisUrl) return { jobs: null, jobsMode: "sync" };
+    const owned = new ProcessingQueue({
+      redisUrl: options.config.redisUrl,
+      prefix: options.config.worker.queuePrefix,
+      log: app.log,
+    });
+    app.addHook("onClose", async () => owned.close());
+    queue = owned;
+  }
+  const dispatcher = new QueuedJobDispatcher({ db: options.db, queue, logger: app.log });
+  app.log.info(
+    { queue: queue.queue.name, prefix: queue.prefix },
+    "background jobs: async (worker)",
+  );
+  return { jobs: { queue, dispatcher }, jobsMode: "async" };
 }
 
 export interface SubscribeOptions {
@@ -201,6 +259,17 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   installAuth(app, options.db, { lastUsed: options.lastUsed });
   const storage = options.storage ?? new FilesystemBackend(options.config.storagePath);
   const lookups = options.lookups ?? (await loadLookups(app, options.config));
+  const { jobs, jobsMode } = await setupJobs(app, options);
+  const sweepIntervalMs = jobsMode === "async" ? 0 : options.uploadSweepIntervalMs; // the worker sweeps in async mode
+  if (jobs && (options.uploadSweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS) > 0) {
+    const every = options.uploadSweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
+    const queue = jobs.queue;
+    app.addHook("onReady", async () => {
+      await queue
+        .scheduleUploadSweep(every)
+        .catch((error: unknown) => app.log.warn({ err: error }, "upload sweep not scheduled"));
+    });
+  }
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db });
   await app.register(lookupRoutes, { db: options.db, lookups });
@@ -211,6 +280,13 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     accessThrottle: options.accessThrottle,
     lookups,
     events,
+    jobs: jobs?.dispatcher,
+  });
+  await app.register(thumbnailRoutes, {
+    db: options.db,
+    storage,
+    jobs: jobs?.dispatcher ?? null,
+    renderTimeoutMs: options.thumbnailTimeoutMs,
   });
   await app.register(uploadRoutes, {
     db: options.db,
@@ -218,9 +294,10 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     uploadsPath: options.uploadsPath ?? join(options.config.storagePath, "uploads"),
     maxUploadBytes: options.config.maxUploadBytes,
     uploadTtlHours: options.config.uploadTtlHours,
-    sweepIntervalMs: options.uploadSweepIntervalMs,
+    sweepIntervalMs,
     lookups,
     events,
+    jobs: jobs?.dispatcher,
   });
   await app.register(folderRoutes, { db: options.db, events });
   await app.register(publicRoutes, {

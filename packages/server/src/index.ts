@@ -21,6 +21,7 @@ export {
   type LogLevel,
   loadConfig,
   type SubscribeConfig,
+  type WorkerConfig,
 } from "./config.js";
 export {
   type BoundTenantContext,
@@ -38,7 +39,14 @@ export {
   MIGRATIONS_FOLDER,
   runMigrations,
 } from "./db/index.js";
-export type { ApiKeyRow, FileRow, FolderRow, TenantRow, UploadRow } from "./db/schema.js";
+export type {
+  ApiKeyRow,
+  FileRow,
+  FolderRow,
+  ProcessingJobRow,
+  TenantRow,
+  UploadRow,
+} from "./db/schema.js";
 export * as schema from "./db/schema.js";
 export { uuidv7 } from "./db/uuid.js";
 export { codeForStatus, STATUS_CODES, VolaError } from "./errors.js";
@@ -88,6 +96,36 @@ export {
   SNIFF_BYTES,
 } from "./files/mime.js";
 export {
+  type JobsMode,
+  type ResolveJobsModeInput,
+  resolveJobsMode,
+  type WorkerEnabled,
+} from "./jobs/availability.js";
+export {
+  type DispatchableFile,
+  type JobDispatcher,
+  QueuedJobDispatcher,
+  type QueuedJobDispatcherOptions,
+  thumbnailable,
+} from "./jobs/dispatcher.js";
+export {
+  DEFAULT_BACKOFF_MS,
+  DEFAULT_QUEUE_PREFIX,
+  PROCESSING_QUEUE,
+  type ProcessingJobData,
+  ProcessingQueue,
+  type ProcessingQueueOptions,
+  queueConnection,
+  SWEEP_UPLOADS_JOB,
+  THUMBNAIL_JOB,
+  type ThumbnailJobData,
+} from "./jobs/queue.js";
+export {
+  DEFAULT_WORKER_CONCURRENCY,
+  ProcessingWorker,
+  type ProcessingWorkerOptions,
+} from "./jobs/worker.js";
+export {
   DEFAULT_LOOKUPS_PATH,
   emptyLookups,
   type FileLookupValues,
@@ -120,6 +158,14 @@ export {
   type SendFileOptions,
   sendFile,
 } from "./routes/send-file.js";
+export {
+  noThumbnail,
+  THUMBNAIL_PLACEHOLDER_CACHE_CONTROL,
+  THUMBNAIL_READY_CACHE_CONTROL,
+  type ThumbnailRoutesDeps,
+  thumbnailEtag,
+  thumbnailRoutes,
+} from "./routes/thumbnails.js";
 export { type UploadRoutesDeps, uploadRoutes } from "./routes/uploads.js";
 export {
   type AuthenticatedKey,
@@ -170,6 +216,7 @@ export {
   type UploadInput,
   uploadFile,
   versionFamily,
+  withProcessingStatus,
 } from "./services/files.js";
 export {
   deleteFolder,
@@ -189,6 +236,26 @@ export {
   serializeFolder,
 } from "./services/folders.js";
 export {
+  attachProcessingStatus,
+  findJob,
+  JobGoneError,
+  type JobIdentity,
+  listProcessingJobs,
+  markDone,
+  markFailed,
+  markRunning,
+  markSkipped,
+  PROCESSING_ERROR_MAX_LENGTH,
+  PROCESSING_MAX_ATTEMPTS,
+  type ProcessingDeps,
+  processingStatusByFile,
+  processingStatusOf,
+  type RequestedJob,
+  requestJob,
+  shortError,
+  type ThumbnailJobParams,
+} from "./services/processing.js";
+export {
   type CreateTenantInput,
   createTenant,
   findTenantBySlug,
@@ -198,6 +265,19 @@ export {
   setTenantActive,
   titleCase,
 } from "./services/tenants.js";
+export {
+  DEFAULT_THUMBNAIL_TIMEOUT_MS,
+  generateThumbnail,
+  parseThumbnailCrop,
+  parseThumbnailSize,
+  type RenderOptions,
+  renderThumbnail,
+  statThumbnail,
+  ThumbnailError,
+  type ThumbnailErrorCode,
+  type ThumbnailSource,
+  thumbnailPlaceholder,
+} from "./services/thumbnails.js";
 export {
   type AppendInput,
   type AppendResult,

@@ -23,6 +23,7 @@ import type { Database } from "../db/index.js";
 import type { UploadRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
+import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import {
   appendUpload,
@@ -46,9 +47,12 @@ export interface UploadRoutesDeps {
   uploadTtlHours: number;
   /**
    * How often expired uploads are swept, in milliseconds; `0` disables the periodic sweep
-   * (tests call `sweepExpiredUploads` themselves). Default: every 15 minutes.
+   * (tests call `sweepExpiredUploads` themselves, and in `async` mode the worker runs it as a
+   * repeatable BullMQ job). Default: every 15 minutes.
    */
   sweepIntervalMs?: number | undefined;
+  /** Background jobs of a file completed by a resumable upload (`async` mode). */
+  jobs?: JobDispatcher | undefined;
   logger?: FastifyBaseLogger | undefined;
   /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
   lookups?: Lookups | undefined;
@@ -108,6 +112,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
     logger,
     lookups: deps.lookups,
     events: deps.events,
+    jobs: deps.jobs,
     now: deps.now,
   };
 
@@ -268,8 +273,8 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
     },
   );
 
-  // Expired uploads are swept from inside the server process for now.
-  // TODO(TCKXQCJ2YY): move this to a BullMQ repeatable job once phase 4.1 brings the worker.
+  // Without a worker, expired uploads are swept from inside the server process; in `async`
+  // mode the plugin passes `0` here and schedules the sweep as a repeatable BullMQ job.
   const interval = deps.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
   if (interval > 0) {
     const sweep = () =>

@@ -52,6 +52,23 @@ const ConfigSchema = z.object({
   VOLA_RECORD_CANDIDATES: boolean(true),
   VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
   VOLA_MENU_PATH: z.string().min(1).optional(),
+  VOLA_WORKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((value, ctx): "auto" | boolean => {
+      if (value === undefined) return "auto";
+      const v = value.trim().toLowerCase();
+      if (v === "auto") return "auto";
+      if (["true", "1", "yes", "on"].includes(v)) return true;
+      if (["false", "0", "no", "off"].includes(v)) return false;
+      ctx.addIssue({ code: "custom", message: "must be auto, true or false" });
+      return z.NEVER;
+    }),
+  VOLA_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+  VOLA_QUEUE_PREFIX: z
+    .string()
+    .regex(/^[\w:-]{1,64}$/, "letters, digits, _ - : only")
+    .default("vola"),
   VOLA_WS_HEARTBEAT_MS: z.coerce.number().int().min(1000).default(30_000),
   VOLA_WS_MAX_BUFFERED: z.coerce.number().int().min(1).default(1000),
   VOLA_LOG_LEVEL: z
@@ -94,7 +111,25 @@ export interface Config {
   menuPath: string;
   /** The real-time `subscribe` WebSocket (`/udc/subscribe`). */
   subscribe: SubscribeConfig;
+  /** Background jobs: the BullMQ queue and the worker process. */
+  worker: WorkerConfig;
   logLevel: LogLevel;
+}
+
+export interface WorkerConfig {
+  /**
+   * `VOLA_WORKER_ENABLED`: `auto` (default) — jobs go to the worker when `VOLA_REDIS_URL` is
+   * set; `true` — always (one ERROR line and synchronous work when Redis is missing);
+   * `false` — never: thumbnails are rendered inline on `/thumb`, OCR does not run.
+   */
+  enabled: "auto" | boolean;
+  /** `VOLA_WORKER_CONCURRENCY`: jobs one worker process runs at once. Default 2. */
+  concurrency: number;
+  /**
+   * `VOLA_QUEUE_PREFIX`: the Redis key prefix of the job queue (`<prefix>:vola-processing:*`);
+   * server and worker must agree. Default `vola`. Lets several deployments share one Redis.
+   */
+  queuePrefix: string;
 }
 
 export interface SubscribeConfig {
@@ -146,6 +181,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     subscribe: {
       heartbeatIntervalMs: c.VOLA_WS_HEARTBEAT_MS,
       maxBufferedMessages: c.VOLA_WS_MAX_BUFFERED,
+    },
+    worker: {
+      enabled: c.VOLA_WORKER_ENABLED,
+      concurrency: c.VOLA_WORKER_CONCURRENCY,
+      queuePrefix: c.VOLA_QUEUE_PREFIX,
     },
     logLevel: c.VOLA_LOG_LEVEL,
   };

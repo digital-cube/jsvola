@@ -10,6 +10,7 @@ import {
   FileSlugSchema,
   type FileVersions,
   InstanceTypeSchema,
+  type ProcessingStatus,
   type PurgeResult,
 } from "@vola/core";
 import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
@@ -25,6 +26,7 @@ import {
   splitFilename,
 } from "../files/filename.js";
 import { detectMime, kindForMime, SNIFF_BYTES } from "../files/mime.js";
+import type { JobDispatcher } from "../jobs/dispatcher.js";
 import { type Lookups, recordFileCandidates } from "../lookups.js";
 import {
   BlobNotFoundError,
@@ -33,6 +35,7 @@ import {
   type StorageBackend,
 } from "../storage/index.js";
 import { LastUsedThrottle } from "./apikeys.js";
+import { attachProcessingStatus, processingStatusOf } from "./processing.js";
 
 export interface FilesDeps {
   db: Database;
@@ -44,6 +47,11 @@ export interface FilesDeps {
   lookups?: Lookups | undefined;
   /** Where every change is announced after its commit (real-time `subscribe`); absent: nowhere. */
   events?: FileEventBus | undefined;
+  /**
+   * Background jobs (`async` mode): `finalizeUpload` asks it for the thumbnails of a new file.
+   * Absent (`sync` mode): nothing is queued, `/thumb` renders inline.
+   */
+  jobs?: JobDispatcher | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -99,7 +107,14 @@ export function parseMetadata(raw: string | undefined | null): Record<string, un
   return parsed.data;
 }
 
-export function serializeFile(row: FileRow): FileInfo {
+/**
+ * The public view of a row. `processingStatus` is the aggregate of its jobs, which lives in
+ * another table: callers that know it pass it, `withProcessingStatus` looks it up.
+ */
+export function serializeFile(
+  row: FileRow,
+  processingStatus: ProcessingStatus | null = null,
+): FileInfo {
   return {
     id: row.id,
     tenant_id: row.tenantId,
@@ -127,7 +142,13 @@ export function serializeFile(row: FileRow): FileInfo {
     deleted_by: row.deletedBy,
     last_accessed_at: row.lastAccessedAt?.toISOString() ?? null,
     last_accessed_by: row.lastAccessedBy,
+    processing_status: processingStatus,
   };
+}
+
+/** `serializeFile` with the file's current `processing_status` read from its jobs (one query). */
+export async function withProcessingStatus(deps: FilesDeps, row: FileRow): Promise<FileInfo> {
+  return serializeFile(row, await processingStatusOf(deps.db, row.id));
 }
 
 // --- upload -----------------------------------------------------------------------------
@@ -307,6 +328,15 @@ export async function finalizeUpload(
           fileId: info.id,
           kind: "created",
         });
+        // Background work (thumbnails) for the new file; `afterUpload` never throws.
+        if (deps.jobs) {
+          info.processing_status = await deps.jobs.afterUpload({
+            id: info.id,
+            tenantId: scope.tenantId,
+            mimeType: info.mime_type,
+            encryption: info.encryption,
+          });
+        }
         return info;
       } catch (error) {
         if (slug && attempt < 3 && pgCode(error) === UNIQUE_VIOLATION) continue;
@@ -571,7 +601,7 @@ export async function patchFile(
     fileId: updated.id,
     kind: "updated",
   });
-  return serializeFile(updated);
+  return withProcessingStatus(deps, updated);
 }
 
 // --- versions ----------------------------------------------------------------------------
@@ -590,7 +620,12 @@ export async function listVersions(
   const family = (await versionFamily(deps.db, row))
     .filter((f) => options.includeDeleted || f.deletedAt === null)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
-  return { versions: family.map(serializeFile) };
+  return {
+    versions: await attachProcessingStatus(
+      deps.db,
+      family.map((f) => serializeFile(f)),
+    ),
+  };
 }
 
 // --- list --------------------------------------------------------------------------------
@@ -657,7 +692,10 @@ export async function listFiles(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    files: page.map(serializeFile),
+    files: await attachProcessingStatus(
+      deps.db,
+      page.map((row) => serializeFile(row)),
+    ),
     next_cursor: rows.length > limit && last ? encodeCursor(last) : null,
   };
 }
@@ -691,7 +729,7 @@ export async function softDeleteFile(
   userId: string | null,
 ): Promise<FileInfo> {
   const row = await findFile(deps, scope, fileId, { includeDeleted: true });
-  if (row.deletedAt) return serializeFile(row);
+  if (row.deletedAt) return withProcessingStatus(deps, row);
   const now = (deps.now ?? (() => new Date()))();
   const [updated] = await deps.db
     .update(files)
@@ -704,7 +742,10 @@ export async function softDeleteFile(
     fileId: row.id,
     kind: "deleted",
   });
-  return serializeFile(updated ?? { ...row, deletedAt: now, deletedBy: userId, updatedAt: now });
+  return withProcessingStatus(
+    deps,
+    updated ?? { ...row, deletedAt: now, deletedBy: userId, updatedAt: now },
+  );
 }
 
 /**

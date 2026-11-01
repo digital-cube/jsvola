@@ -3,15 +3,18 @@ import type { FastifyInstance } from "fastify";
 import { type BuildAppOptions, buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { connect, type DatabaseHandle } from "../src/db/index.js";
-import { apiKeys, files, folders, tenants, uploads } from "../src/db/schema.js";
+import { apiKeys, files, folders, processingJobs, tenants, uploads } from "../src/db/schema.js";
 import { createApiKey } from "../src/services/apikeys.js";
 import { createTenant } from "../src/services/tenants.js";
 
 // The vocabulary of the repository, without recording candidates into its var/ directory.
+// Background jobs are OFF (`sync` mode: thumbnails render inline, nothing is queued) so the
+// suites never touch the shared Redis queue; the worker suite opens its own queue explicitly.
 export const config = loadConfig({
   ...process.env,
   VOLA_PREFIX: "/vola",
   VOLA_RECORD_CANDIDATES: "false",
+  VOLA_WORKER_ENABLED: "0",
 });
 
 /** A pool on the test database. */
@@ -21,6 +24,7 @@ export function testDatabase(max = 3): DatabaseHandle {
 
 /** Empties the tables (files and keys cascade from tenants; admin keys explicitly). */
 export async function truncate(handle: DatabaseHandle): Promise<void> {
+  await handle.db.delete(processingJobs);
   await handle.db.delete(uploads);
   await handle.db.delete(files);
   await handle.db.delete(folders);

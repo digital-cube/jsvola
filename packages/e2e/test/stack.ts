@@ -1,10 +1,12 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@vola/server";
+import { Redis } from "ioredis";
 import type { TestProject } from "vitest/node";
 
 /**
@@ -13,15 +15,20 @@ import type { TestProject } from "vitest/node";
  * - `VOLA_E2E_URL` set (e.g. `http://localhost:8300/vola`, the docker-compose stack):
  *   nothing is started, the suite talks to that server.
  * - otherwise the built server (`packages/server/dist/server.js`) is started on a free port
- *   against the test database (`VOLA_DATABASE_URL_TEST`) and `VOLA_REDIS_URL`.
+ *   against the test database (`VOLA_DATABASE_URL_TEST`) and `VOLA_REDIS_URL` — and, with
+ *   Redis, the built worker (`dist/worker.js`) next to it on a private queue prefix, so the
+ *   thumbnail suite exercises the real two-process path.
  */
 
 const SERVER_ENTRY = fileURLToPath(new URL("../../server/dist/server.js", import.meta.url));
+const WORKER_ENTRY = fileURLToPath(new URL("../../server/dist/worker.js", import.meta.url));
 
 declare module "vitest" {
   export interface ProvidedContext {
     /** API base URL (`…/vola`). */
     server: string;
+    /** `true` when the stack runs a worker process (Redis configured, own stack). */
+    worker: boolean;
   }
 }
 
@@ -53,22 +60,25 @@ async function waitLive(base: string, child: ChildProcess, output: string[]): Pr
   throw new Error(`server at ${base} not live after 30 s:\n${output.join("")}`);
 }
 
-async function startServer(
-  databaseUrl: string,
-  redisUrl: string | null,
-  storagePath: string,
-): Promise<[string, ChildProcess]> {
-  const port = await freePort();
+interface StackEnv {
+  databaseUrl: string;
+  redisUrl: string | null;
+  storagePath: string;
+  /** Private BullMQ prefix of this run (server and worker share it). */
+  queuePrefix: string;
+}
+
+function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string>) {
   const output: string[] = [];
-  const child = spawn(process.execPath, [SERVER_ENTRY], {
+  const child = spawn(process.execPath, [entry], {
     env: {
       ...process.env,
-      VOLA_DATABASE_URL: databaseUrl,
-      ...(redisUrl ? { VOLA_REDIS_URL: redisUrl } : {}),
-      VOLA_HOST: "127.0.0.1",
-      VOLA_PORT: String(port),
-      VOLA_STORAGE_PATH: storagePath,
+      VOLA_DATABASE_URL: env.databaseUrl,
+      ...(env.redisUrl ? { VOLA_REDIS_URL: env.redisUrl } : {}),
+      VOLA_STORAGE_PATH: env.storagePath,
+      VOLA_QUEUE_PREFIX: env.queuePrefix,
       VOLA_LOG_LEVEL: process.env.VOLA_E2E_LOG_LEVEL ?? "warn",
+      ...extra,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -78,9 +88,33 @@ async function startServer(
       if (process.env.VOLA_E2E_LOG_LEVEL) process.stderr.write(chunk);
     });
   }
+  return { child, output };
+}
+
+async function startServer(env: StackEnv): Promise<[string, ChildProcess]> {
+  const port = await freePort();
+  const { child, output } = spawnProcess(SERVER_ENTRY, env, {
+    VOLA_HOST: "127.0.0.1",
+    VOLA_PORT: String(port),
+  });
   const base = `http://127.0.0.1:${port}/vola`;
   await waitLive(base, child, output);
   return [base, child];
+}
+
+/** The worker (only with Redis): `node dist/worker.js`, the same build as the server. */
+function startWorker(env: StackEnv): ChildProcess | null {
+  if (!env.redisUrl) return null;
+  const { child } = spawnProcess(WORKER_ENTRY, env, {});
+  return child;
+}
+
+function stop(child: ChildProcess | null): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (!child || child.exitCode !== null) return resolve();
+    child.once("exit", () => resolve());
+    child.kill("SIGTERM");
+  });
 }
 
 export default async function setup({ provide }: TestProject) {
@@ -92,20 +126,34 @@ export default async function setup({ provide }: TestProject) {
     });
     if (!response.ok) throw new Error(`${base}/health/live answered ${response.status}`);
     provide("server", base);
+    provide("worker", false);
     return;
   }
 
   const config = loadConfig();
-  // The suite's own server stores blobs in a throw-away directory.
-  const storagePath = await mkdtemp(join(tmpdir(), "vola-e2e-storage-"));
-  const [base, child] = await startServer(config.testDatabaseUrl, config.redisUrl, storagePath);
+  // The suite's own server (and worker) store blobs in a throw-away directory.
+  const env: StackEnv = {
+    databaseUrl: config.testDatabaseUrl,
+    redisUrl: config.redisUrl,
+    storagePath: await mkdtemp(join(tmpdir(), "vola-e2e-storage-")),
+    queuePrefix: `vola-e2e-${randomUUID().slice(0, 8)}`,
+  };
+  const [base, server] = await startServer(env);
+  const worker = startWorker(env);
   provide("server", base);
+  provide("worker", worker !== null);
   return async () => {
-    await new Promise<void>((resolve) => {
-      if (child.exitCode !== null) return resolve();
-      child.once("exit", () => resolve());
-      child.kill("SIGTERM");
-    });
-    await rm(storagePath, { recursive: true, force: true });
+    await Promise.all([stop(server), stop(worker)]);
+    if (env.redisUrl) {
+      // The private queue keys of this run.
+      const redis = new Redis(env.redisUrl, { maxRetriesPerRequest: null });
+      try {
+        const keys = await redis.keys(`${env.queuePrefix}:*`);
+        if (keys.length > 0) await redis.del(...keys);
+      } finally {
+        await redis.quit().catch(() => undefined);
+      }
+    }
+    await rm(env.storagePath, { recursive: true, force: true });
   };
 }

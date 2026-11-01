@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TimestampSchema } from "./apikey.js";
+import { ProcessingStatusSchema } from "./processing.js";
 
 /** What a file is, derived from its MIME type (the `FileKinds` vocabulary). */
 export const FILE_KINDS = [
@@ -74,6 +75,11 @@ export const FileInfoSchema = z.object({
   deleted_by: z.string().nullable(),
   last_accessed_at: TimestampSchema.nullable(),
   last_accessed_by: z.string().nullable(),
+  /**
+   * The aggregate of the file's processing jobs (thumbnails, OCR): the worst status wins
+   * (`FAILED` > `RUNNING` > `PENDING` > `DONE`); `null` when no job was ever created for it.
+   */
+  processing_status: ProcessingStatusSchema.nullable(),
 });
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 

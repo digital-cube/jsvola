@@ -7,6 +7,7 @@ import { type FileRow, type UploadRow, uploads } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import { sanitizeFilename } from "../files/filename.js";
+import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import type { StorageBackend } from "../storage/index.js";
 import { PartOverflowError, type PartStore } from "../uploads/part-store.js";
@@ -34,6 +35,8 @@ export interface UploadsDeps {
   lookups?: Lookups | undefined;
   /** Where the completed file is announced (real-time `subscribe`); absent: nowhere. */
   events?: FileEventBus | undefined;
+  /** Background jobs of the completed file (`async` mode). */
+  jobs?: JobDispatcher | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -54,6 +57,7 @@ function filesDeps(deps: UploadsDeps): FilesDeps {
     logger: deps.logger,
     lookups: deps.lookups,
     events: deps.events,
+    jobs: deps.jobs,
     now: deps.now,
   };
 }

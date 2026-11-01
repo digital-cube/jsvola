@@ -77,8 +77,13 @@ describe("file schemas", () => {
       deleted_by: null,
       last_accessed_at: null,
       last_accessed_by: null,
+      processing_status: null,
     };
     expect(FileInfoSchema.parse(info)).toEqual(info);
+    expect(FileInfoSchema.parse({ ...info, processing_status: "PENDING" }).processing_status).toBe(
+      "PENDING",
+    );
+    expect(FileInfoSchema.safeParse({ ...info, processing_status: "QUEUED" }).success).toBe(false);
     expect(FileInfoSchema.safeParse({ ...info, kind: "picture" }).success).toBe(false);
     expect(FileInfoSchema.safeParse({ ...info, hash: "xyz" }).success).toBe(false);
     expect(FILE_KINDS).toContain("other");

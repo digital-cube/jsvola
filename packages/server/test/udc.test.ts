@@ -1,9 +1,10 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type FilterNode, UdcError } from "@jsudc/core";
 import type { FastifyInstance } from "fastify";
+import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { files } from "../src/db/schema.js";
@@ -35,10 +36,12 @@ const TYPE = "tickets";
 const TICKET_A = randomUUID();
 const TICKET_B = randomUUID();
 const USER = randomUUID();
-const PNG = Buffer.concat([
-  Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"),
-  randomBytes(40),
-]);
+// A real, decodable 4×4 PNG: `thumb_url` renders it inline in this (sync-mode) suite.
+const PNG = await sharp({
+  create: { width: 4, height: 4, channels: 3, background: { r: 10, g: 20, b: 30 } },
+})
+  .png()
+  .toBuffer();
 
 /** The files seeded in TICKET_A, in upload order (`created_at` ascending). */
 const SEED_A = [
@@ -359,10 +362,11 @@ describe("UDC list: scope and filters", () => {
       deleted_at: null,
       include_deleted: false,
     });
-    // The thumbnail route is not there yet: the URL answers a clean 404, nothing breaks.
+    // `thumb_url` is live: in sync mode (the fixture) the 256px WebP is rendered inline.
     const thumb = await http.get(photo.thumb_url, {}, fx.readOnly.key);
-    expect(thumb.statusCode).toBe(404);
-    expect(thumb.json().error.code).toBe("not_found");
+    expect(thumb.statusCode).toBe(200);
+    expect(thumb.headers["content-type"]).toBe("image/webp");
+    expect(thumb.headers["x-thumbnail-status"]).toBe("ready");
   });
 
   it("narrows to one instance with instance_id", async () => {

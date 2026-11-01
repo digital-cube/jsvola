@@ -13,6 +13,7 @@ import { type FolderRow, files, folders } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { type FileEventBus, publishFileEvents } from "../events/bus.js";
 import { type InstanceScope, serializeFile } from "./files.js";
+import { attachProcessingStatus } from "./processing.js";
 
 export interface FoldersDeps {
   db: Database;
@@ -273,7 +274,10 @@ export async function listFolder(
   return {
     folder: folder ? serializeFolder(folder) : null,
     subfolders: subfolders.map(serializeFolder),
-    files: rows.map(serializeFile),
+    files: await attachProcessingStatus(
+      deps.db,
+      rows.map((row) => serializeFile(row)),
+    ),
   };
 }
 

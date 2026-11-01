@@ -9,6 +9,38 @@ share one version.
 
 ### Added
 
+- Background jobs and thumbnails (plan 4.1). `@vola/server` gains a second process, the
+  **worker** (`node dist/worker.js`, `pnpm start:worker`, the `vola-worker` compose service on
+  the same image), consuming the BullMQ queue `vola-processing` on `VOLA_REDIS_URL` with
+  `VOLA_WORKER_CONCURRENCY` (2) jobs at once and a graceful SIGTERM; `VOLA_QUEUE_PREFIX` (`vola`)
+  namespaces the Redis keys. `VOLA_WORKER_ENABLED` = `auto` (default: async when Redis is set) /
+  `1` (insist; one ERROR line and synchronous work without Redis) / `0` (always synchronous —
+  thumbnails render inline on `/thumb`, OCR will not run; one INFO line per process, never an
+  error). New table `vola_processing_job` (migration `0004_processing_jobs`: `id`, `tenant_id`,
+  `file_id`, `kind`, `params`, `status`, `attempts`, `error`, `created_at`, `started_at`,
+  `finished_at`; `(file_id, kind, params)` unique) and `processing_status` on every file info,
+  the UDC `files` row and `…/info`: the worst status of the file's jobs wins (`FAILED` >
+  `RUNNING` > `PENDING` > `DONE`, `SKIPPED` ignored, `null` without jobs). After every upload
+  (plain, slug, version, resumable) of a raster image (not SVG) or PDF with `encryption = none`,
+  four `THUMBNAIL` jobs (64 / 128 / 256 / 512, crop `cover`) are queued; the worker renders them
+  with `sharp` (`rotate()` for EXIF, `cover` = centre crop, `fit` = contain, `attention`, WebP
+  quality 80; a PDF's first page through `pdftoppm -f 1 -l 1 -r 72 -png`), 30 s per job, 3 tries
+  then `FAILED` with a short `error`, and stores each as the derived file
+  `thumb-<size>-<crop>.webp` next to the blob (shared across tenants, purged with it); after
+  every job a `processing` event goes out, so a live `files` list updates.
+  `GET|HEAD /files/:type/:id/:fileId/thumb/:size?crop=` (`files:read`): `400 invalid_size` /
+  `invalid_crop`; `200` + `X-Thumbnail-Status: ready` + `Cache-Control: private, max-age=86400`
+  + `ETag`/`304` when the rendition exists; **`202`** + a grey WebP placeholder (~50 B) +
+  `X-Thumbnail-Status: generating` + `Cache-Control: no-cache` when it does not and the worker
+  is on (the job row is written or refreshed); inline rendering and `200` without a worker (or
+  when the queue cannot be reached); `200` placeholder + `X-Thumbnail-Status: failed` for a file
+  that cannot be rendered; `404 no_thumbnail` for an unsupported type or an encrypted file. The
+  expired-upload sweep moved to a repeatable BullMQ job in async mode (the in-process timer
+  stays for deployments without a worker). `@vola/core`: `PROCESSING_KINDS`,
+  `PROCESSING_STATUSES`, `aggregateProcessingStatus`, `THUMBNAIL_SIZES`, `THUMBNAIL_CROPS`,
+  `thumbnailDerivedName`, `thumbnailSupported`, `THUMBNAIL_STATUS_HEADER`. New dependencies:
+  `bullmq`, `sharp`, `pino`. The E2E stack starts the built worker next to the built server.
+
 - Real-time `subscribe` (plan 3.2): `GET /udc/subscribe` upgrades to a WebSocket
   (`bearer.<key>` subprotocol next to `vola.v1`, or the usual headers; `files:read`; refusals
   are plain `401`/`403`/`400` before the upgrade; the key is never read from the URL). A

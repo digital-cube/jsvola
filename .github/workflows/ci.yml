@@ -48,6 +48,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: System tools the thumbnail tests need (pdftoppm)
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends poppler-utils
       - name: Lint (Biome)
         run: pnpm lint
       - name: Type check

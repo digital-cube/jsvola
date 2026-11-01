@@ -17,6 +17,7 @@ import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
+import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
 import {
@@ -34,9 +35,9 @@ import {
   patchFile,
   purgeFile,
   type StagedUpload,
-  serializeFile,
   softDeleteFile,
   stageUpload,
+  withProcessingStatus,
 } from "../services/files.js";
 import {
   type FoldersDeps,
@@ -61,6 +62,8 @@ export interface FileRoutesDeps {
   lookups?: Lookups | undefined;
   /** Where every change is announced after its commit (real-time `subscribe`). */
   events?: FileEventBus | undefined;
+  /** Background jobs of a new file (`async` mode); absent in `sync` mode. */
+  jobs?: JobDispatcher | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -99,8 +102,9 @@ interface InfoQuery {
  *   (upsert of a named file) — `files:write`;
  * - `GET|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` — `files:read`: `Range`/`206`,
  *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`;
- * - `GET …/:fileId/info`, `…/:fileId/versions`, `GET /files/:type/:id` (cursor list) —
- *   `files:read`;
+ * - `GET …/:fileId/info` (with the aggregate `processing_status` of its jobs),
+ *   `…/:fileId/versions`, `GET /files/:type/:id` (cursor list) — `files:read`;
+ * - `GET|HEAD …/:fileId/thumb/:size` lives in `thumbnailRoutes`;
  * - `PATCH …/:fileId` (move, rename, visibility) — `files:write`;
  * - `DELETE …/:fileId` (soft), `DELETE …/:fileId/purge` — `files:write`.
  */
@@ -112,6 +116,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     logger: deps.logger ?? app.log,
     lookups: deps.lookups,
     events: deps.events,
+    jobs: deps.jobs,
     now: deps.now,
   };
   const folderService: FoldersDeps = {
@@ -294,7 +299,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
       const row = flag(request.query.include_deleted)
         ? await findFile(service, scope, request.params.fileId, { includeDeleted: true })
         : await findReadableFile(service, scope, request.params.fileId);
-      return serializeFile(row);
+      return withProcessingStatus(service, row);
     },
   );
 

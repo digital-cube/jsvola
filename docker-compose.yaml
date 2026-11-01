@@ -1,4 +1,4 @@
-# Production-like JSVola stack: the vola server + PostgreSQL + Redis.
+# Production-like JSVola stack: the vola server + the vola worker + PostgreSQL + Redis.
 #   docker compose -f docker-compose.yaml up -d --build
 #   curl localhost:8300/vola/health/live
 # (compose.yaml next to it is the development infrastructure: PostgreSQL + Redis only.)
@@ -33,6 +33,27 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 5
+
+  # The background worker (thumbnails, later OCR): the SAME image, `node dist/worker.js`, the
+  # SAME /data volume (thumbnails are written next to the blobs). Starts after `vola` is healthy,
+  # i.e. after the migrations ran. Scale it with `--scale vola-worker=N`.
+  vola-worker:
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    depends_on:
+      vola:
+        condition: service_healthy
+    environment:
+      VOLA_DATABASE_URL: postgresql://${POSTGRES_USER:-vola}:${POSTGRES_PASSWORD:-vola}@postgres:5432/${POSTGRES_DB:-vola}
+      VOLA_REDIS_URL: redis://redis:6379/0
+      VOLA_LOG_LEVEL: ${VOLA_LOG_LEVEL:-info}
+      VOLA_STORAGE_PATH: /data/storage
+      VOLA_WORKER_CONCURRENCY: ${VOLA_WORKER_CONCURRENCY:-2}
+    volumes:
+      - vola-data:/data
+    healthcheck:
+      disable: true
 
   postgres:
     image: docker.io/library/postgres:16
