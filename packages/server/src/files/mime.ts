@@ -112,20 +112,36 @@ export interface DetectMimeInput {
   declared?: string | null | undefined;
 }
 
+/** A detected MIME type and where it came from. */
+export interface DetectedMime {
+  mime: string;
+  /** `magic`: the bytes said so — the only source a browser may trust for inline rendering. */
+  source: "magic" | "extension" | "declared" | "default";
+}
+
 /**
  * The MIME type of an upload: magic bytes first (`file-type`), then the extension, then what
  * the client declared, else `application/octet-stream`. A sniffed generic container type
  * (`application/x-cfb` of an old `.doc`) defers to the extension.
  */
-export async function detectMime(input: DetectMimeInput): Promise<string> {
+export async function detectMimeDetailed(input: DetectMimeInput): Promise<DetectedMime> {
   const byExtension = mimeForExtension(input.filename);
   if (input.head.length > 0) {
     const sniffed = await fileTypeFromBuffer(input.head).catch(() => undefined);
-    if (sniffed && !(GENERIC_SNIFFED.has(sniffed.mime) && byExtension)) return sniffed.mime;
+    if (sniffed && !(GENERIC_SNIFFED.has(sniffed.mime) && byExtension)) {
+      return { mime: sniffed.mime, source: "magic" };
+    }
   }
-  if (byExtension) return byExtension;
+  if (byExtension) return { mime: byExtension, source: "extension" };
   const declared = normalizeMime(input.declared);
-  return MIME_RE.test(declared) ? declared : "application/octet-stream";
+  return MIME_RE.test(declared)
+    ? { mime: declared, source: "declared" }
+    : { mime: "application/octet-stream", source: "default" };
+}
+
+/** `detectMimeDetailed` without the source. */
+export async function detectMime(input: DetectMimeInput): Promise<string> {
+  return (await detectMimeDetailed(input)).mime;
 }
 
 const KIND_EXACT: Readonly<Record<string, FileKind>> = {

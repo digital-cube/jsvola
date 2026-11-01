@@ -57,6 +57,7 @@ export {
   type TenantContext,
   tenantRequired,
 } from "./context.js";
+export * from "./crypto/index.js";
 export {
   connect,
   type Database,
@@ -117,8 +118,10 @@ export {
   splitFilename,
 } from "./files/filename.js";
 export {
+  type DetectedMime,
   type DetectMimeInput,
   detectMime,
+  detectMimeDetailed,
   kindForMime,
   mimeForExtension,
   SNIFF_BYTES,
@@ -192,8 +195,11 @@ export { type LookupRoutesDeps, lookupRoutes } from "./routes/lookups.js";
 export { PUBLIC_MAX_AGE_SECONDS, type PublicRoutesDeps, publicRoutes } from "./routes/public.js";
 export {
   type DownloadQuery,
+  ENCRYPTED_CACHE_CONTROL,
+  ENCRYPTED_INLINE_MIMES,
   ifNoneMatchMatches,
   type SendFileOptions,
+  sendEncryptedFile,
   sendFile,
 } from "./routes/send-file.js";
 export {
@@ -238,6 +244,21 @@ export {
   touchLastUsed,
 } from "./services/apikeys.js";
 export {
+  AVAILABLE_ENCRYPTIONS,
+  type CreateEncryptionServiceOptions,
+  createEncryptionService,
+  EncryptionService,
+  type EncryptionServiceOptions,
+  encryptionUnavailable,
+  integrityFailure,
+  type KeyUsage,
+  type OpenedFile,
+  tenantKeyUsage,
+} from "./services/encryption.js";
+export {
+  describeFile,
+  describeFiles,
+  type EncryptedStage,
   type FilePatchInput,
   type FilesDeps,
   type FinalizeUploadInput,
@@ -261,7 +282,9 @@ export {
   parseSlug,
   patchFile,
   purgeFile,
+  revealFile,
   type StagedUpload,
+  type StageOptions,
   serializeFile,
   softDeleteFile,
   stageUpload,
@@ -398,6 +421,9 @@ export {
   listTenants,
   serializeTenant,
   setTenantActive,
+  setTenantDefaultEncryption,
+  TENANT_DEFAULT_ENCRYPTIONS,
+  type TenantDefaultEncryption,
   titleCase,
 } from "./services/tenants.js";
 export {

@@ -1,11 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "@vola/server";
+import { generateKeyLine, loadConfig } from "@vola/server";
 import { Redis } from "ioredis";
 import type { TestProject } from "vitest/node";
 
@@ -29,6 +29,8 @@ declare module "vitest" {
     server: string;
     /** `true` when the stack runs a worker process (Redis configured, own stack). */
     worker: boolean;
+    /** The blob store of the suite's own server (`null` for an external `VOLA_E2E_URL`). */
+    storagePath: string | null;
   }
 }
 
@@ -66,6 +68,8 @@ interface StackEnv {
   storagePath: string;
   /** Private BullMQ prefix of this run (server and worker share it). */
   queuePrefix: string;
+  /** The tenant-encryption key file of this run (`VOLA_KEY_FILE`), one fresh line. */
+  keyFile: string;
 }
 
 function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string>) {
@@ -77,6 +81,7 @@ function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string
       ...(env.redisUrl ? { VOLA_REDIS_URL: env.redisUrl } : {}),
       VOLA_STORAGE_PATH: env.storagePath,
       VOLA_QUEUE_PREFIX: env.queuePrefix,
+      VOLA_KEY_FILE: env.keyFile,
       VOLA_LOG_LEVEL: process.env.VOLA_E2E_LOG_LEVEL ?? "warn",
       ...extra,
     },
@@ -127,21 +132,27 @@ export default async function setup({ provide }: TestProject) {
     if (!response.ok) throw new Error(`${base}/health/live answered ${response.status}`);
     provide("server", base);
     provide("worker", false);
+    provide("storagePath", null);
     return;
   }
 
   const config = loadConfig();
   // The suite's own server (and worker) store blobs in a throw-away directory.
+  const storagePath = await mkdtemp(join(tmpdir(), "vola-e2e-storage-"));
+  const keyFile = join(storagePath, "vola.key");
+  await writeFile(keyFile, `${generateKeyLine()}\n`, { mode: 0o600 });
   const env: StackEnv = {
     databaseUrl: config.testDatabaseUrl,
     redisUrl: config.redisUrl,
-    storagePath: await mkdtemp(join(tmpdir(), "vola-e2e-storage-")),
+    storagePath,
     queuePrefix: `vola-e2e-${randomUUID().slice(0, 8)}`,
+    keyFile,
   };
   const [base, server] = await startServer(env);
   const worker = startWorker(env);
   provide("server", base);
   provide("worker", worker !== null);
+  provide("storagePath", storagePath);
   return async () => {
     await Promise.all([stop(server), stop(worker)]);
     if (env.redisUrl) {

@@ -643,11 +643,14 @@ describe("POST /admin/transfer — refusals", () => {
     }
   });
 
-  it("refuses an instance holding an encrypted file with 409 and moves nothing", async () => {
+  it("refuses an instance holding a keyring-encrypted file with 409 and moves nothing (tenant files are re-wrapped: encryption.test)", async () => {
     const instanceId = randomUUID();
     const plain = await uploaded(Buffer.from("plain"), "plain.txt", { instanceId });
     const secret = await uploaded(Buffer.from("secret"), "secret.txt", { instanceId });
-    await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, secret.info.id));
+    await handle.db
+      .update(files)
+      .set({ encryption: "keyring" })
+      .where(eq(files.id, secret.info.id));
     const other = randomUUID();
     await uploaded(Buffer.from("o"), "o.txt", { instanceId: other });
 

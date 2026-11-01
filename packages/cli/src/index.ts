@@ -5,6 +5,7 @@ export {
   type CliOptions,
   formatKeyLine,
   friendlyError,
+  keyStatusLines,
   plaintextLines,
   readUserMap,
   runCli,

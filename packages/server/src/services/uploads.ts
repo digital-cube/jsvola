@@ -1,5 +1,6 @@
+import { createReadStream } from "node:fs";
 import type { Readable } from "node:stream";
-import type { FileInfo } from "@vola/core";
+import type { FileEncryption, FileInfo } from "@vola/core";
 import { and, eq, lt } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
@@ -11,6 +12,7 @@ import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import type { StorageBackend } from "../storage/index.js";
 import { PartOverflowError, type PartStore } from "../uploads/part-store.js";
+import type { EncryptionService } from "./encryption.js";
 import {
   type FilesDeps,
   finalizeUpload,
@@ -19,6 +21,8 @@ import {
   parseInstance,
   parseMetadata,
   parseSlug,
+  type StagedUpload,
+  stageUpload,
 } from "./files.js";
 import { type FoldersDeps, parsePath, resolveFolderId } from "./folders.js";
 
@@ -37,6 +41,8 @@ export interface UploadsDeps {
   events?: FileEventBus | undefined;
   /** Background jobs of the completed file (`async` mode). */
   jobs?: JobDispatcher | undefined;
+  /** Encryption (plan 6.1): an upload created with `encryption = tenant` is encrypted at completion. */
+  crypto?: EncryptionService | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -58,6 +64,7 @@ function filesDeps(deps: UploadsDeps): FilesDeps {
     lookups: deps.lookups,
     events: deps.events,
     jobs: deps.jobs,
+    crypto: deps.crypto,
     now: deps.now,
   };
 }
@@ -106,6 +113,8 @@ export interface CreateUploadInput {
   contentType?: string | undefined;
   /** The `metadata` pair: a JSON object as text. */
   metadata?: string | undefined;
+  /** The `encryption` pair or `X-Vola-Encryption`: `none` | `tenant`; absent: the tenant default. */
+  encryption?: string | undefined;
 }
 
 export interface CreatedUpload {
@@ -142,6 +151,21 @@ export async function createUpload(
     input.folderPath === undefined ? null : parsePath(input.folderPath, "folder_path");
   const slug = input.slug === undefined ? null : parseSlug(input.slug);
   const metadata = parseMetadata(input.metadata);
+  // Decided at creation (and checked to be servable), so a client knows before it sends a byte.
+  let encryption: FileEncryption = "none";
+  if (deps.crypto) {
+    encryption = await deps.crypto.resolveMode(
+      scope.tenantId,
+      deps.crypto.parseMode(input.encryption),
+    );
+    if (encryption !== "none") await deps.crypto.assertAvailable(encryption);
+  } else if (
+    input.encryption !== undefined &&
+    input.encryption !== "" &&
+    input.encryption !== "none"
+  ) {
+    throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
+  }
   let parent: FileRow | null = null;
   if (input.parentId !== undefined) {
     if (!UUID_RE.test(input.parentId)) throw validation("parent_id: must be a UUID");
@@ -163,6 +187,7 @@ export async function createUpload(
       metadata,
       length: input.length,
       offset: 0,
+      encryption,
       createdBy: input.userId,
       createdAt: now,
       expiresAt: new Date(now.getTime() + deps.ttlMs),
@@ -179,6 +204,7 @@ export async function createUpload(
     {
       upload: upload.id,
       length: upload.length,
+      encryption,
       instance: `${scope.instanceType}/${scope.instanceId}`,
     },
     "upload created",
@@ -341,6 +367,12 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
  * rename, folder and version, the `vola_file` row) and the upload row records the file.
  * Runs with the upload row locked. The folder path is resolved (created when missing) and
  * the parent looked up again HERE, since either may have changed since creation.
+ *
+ * An upload created with `encryption != none` is encrypted NOW: the (plaintext) part file is
+ * streamed through the same `stageUpload` as a multipart body — with the length the header
+ * can carry, since it is known — and removed once the ciphertext is committed. Until phase
+ * 6.3 cuts the incoming stream into segments, the part file is plaintext on disk for the
+ * life of the upload (`docs/CRYPTO.md` § What is not covered).
  */
 async function completeLocked(
   deps: UploadsDeps,
@@ -356,14 +388,25 @@ async function completeLocked(
     row.folderPath === null
       ? undefined
       : await resolveFolderId(foldersDeps(deps), scope, row.folderPath, actor);
-  if ((await deps.parts.size(row.id)) === null) throw uploadLost();
-  const upload = await deps.parts.stage(row.id);
-  if (upload.staged.size !== row.length) {
+  const partSize = await deps.parts.size(row.id);
+  if (partSize === null) throw uploadLost();
+  if (partSize !== row.length) {
     throw new VolaError(
       "upload_lost",
       410,
-      `the part file holds ${upload.staged.size} bytes, the upload expects ${row.length}`,
+      `the part file holds ${partSize} bytes, the upload expects ${row.length}`,
     );
+  }
+  const encryption = (row.encryption ?? "none") as FileEncryption;
+  let upload: StagedUpload;
+  if (encryption === "none") {
+    upload = await deps.parts.stage(row.id);
+  } else {
+    upload = await stageUpload(filesDeps(deps), createReadStream(deps.parts.path(row.id)), {
+      encryption,
+      plaintextLength: row.length,
+      maxBytes: deps.maxUploadBytes,
+    });
   }
   const file = await finalizeUpload(filesDeps(deps), {
     scope,
@@ -380,8 +423,17 @@ async function completeLocked(
     .update(uploads)
     .set({ completedFileId: file.id, folderId: file.folder_id, offset: row.length })
     .where(eq(uploads.id, row.id));
+  // The plaintext part file of an encrypted upload: the ciphertext is committed, it goes now.
+  if (encryption !== "none") await deps.parts.remove(row.id).catch(() => undefined);
   deps.logger?.info(
-    { upload: row.id, file: file.id, hash: file.hash, size: file.size, slug: file.slug },
+    {
+      upload: row.id,
+      file: file.id,
+      hash: file.hash,
+      size: file.size,
+      slug: file.slug,
+      encryption: file.encryption,
+    },
     "upload completed",
   );
   return file;

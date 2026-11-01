@@ -10,6 +10,7 @@ export function serializeTenant(row: TenantRow): Tenant {
     slug: row.slug,
     name: row.name,
     is_active: row.isActive,
+    default_encryption: row.defaultEncryption as Tenant["default_encryption"],
     created_at: row.createdAt.toISOString(),
   };
 }
@@ -76,6 +77,35 @@ export async function setTenantActive(
   const [row] = await db
     .update(tenants)
     .set({ isActive })
+    .where(eq(tenants.slug, slug))
+    .returning();
+  if (!row) throw new VolaError("tenant_not_found", 404, `tenant "${slug}" not found`);
+  return serializeTenant(row);
+}
+
+/** The default encryption modes a tenant may be set to now (`keyring` / `caller` come with 6.2 / 6.3). */
+export const TENANT_DEFAULT_ENCRYPTIONS = ["none", "tenant"] as const;
+export type TenantDefaultEncryption = (typeof TENANT_DEFAULT_ENCRYPTIONS)[number];
+
+/**
+ * Sets how an upload of the tenant that names no `encryption` is stored (`vola tenant-set
+ * --default-encryption`). `validation_error` for anything but `none` / `tenant`.
+ */
+export async function setTenantDefaultEncryption(
+  db: Database,
+  slug: string,
+  mode: string,
+): Promise<Tenant> {
+  if (!(TENANT_DEFAULT_ENCRYPTIONS as readonly string[]).includes(mode)) {
+    throw new VolaError(
+      "validation_error",
+      422,
+      `default_encryption: one of ${TENANT_DEFAULT_ENCRYPTIONS.join(", ")}`,
+    );
+  }
+  const [row] = await db
+    .update(tenants)
+    .set({ defaultEncryption: mode })
     .where(eq(tenants.slug, slug))
     .returning();
   if (!row) throw new VolaError("tenant_not_found", 404, `tenant "${slug}" not found`);

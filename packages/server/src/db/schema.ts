@@ -39,15 +39,29 @@ const tsvector = customType<{ data: string; driverData: string }>({
 export const OCR_TSV_MAX_CHARS = 500_000;
 
 /** A tenant: every file, folder and (non-admin) API key belongs to exactly one. */
-export const tenants = pgTable("vola_tenant", {
-  id: id(),
-  /** Stable identifier (`^[a-z0-9][a-z0-9-]{1,62}$`); `X-Tenant-Slug` of admin requests. */
-  slug: varchar("slug", { length: 64 }).notNull().unique(),
-  name: varchar("name", { length: 200 }).notNull(),
-  /** Inactive: every key of the tenant fails authentication. */
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: createdAt(),
-});
+export const tenants = pgTable(
+  "vola_tenant",
+  {
+    id: id(),
+    /** Stable identifier (`^[a-z0-9][a-z0-9-]{1,62}$`); `X-Tenant-Slug` of admin requests. */
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    name: varchar("name", { length: 200 }).notNull(),
+    /** Inactive: every key of the tenant fails authentication. */
+    isActive: boolean("is_active").notNull().default(true),
+    /**
+     * The encryption of an upload that names none (`none` | `tenant`; `vola tenant-set
+     * --default-encryption`). `keyring` / `caller` are in the CHECK for later phases.
+     */
+    defaultEncryption: varchar("default_encryption", { length: 16 }).notNull().default("none"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check(
+      "vola_tenant_default_encryption_check",
+      sql`${t.defaultEncryption} in ('none', 'tenant', 'keyring', 'caller')`,
+    ),
+  ],
+);
 
 /**
  * API keys. Only the SHA-256 of the plaintext is stored; `prefix` + `last4` identify a key
@@ -130,8 +144,14 @@ export const folders = pgTable(
  * instance_id)` — the host application's object the file is attached to. Soft delete keeps the
  * row (`deleted_at`); purge removes it, and the blob when nothing references it any more.
  *
- * The encryption columns are declared now so phase 6 does not alter the table: until then
- * `encryption` is `none` and `enc_format`, `keyring_id`, `fk_ct`, `meta_ct` are NULL.
+ * Encryption (phase 6, `docs/CRYPTO.md`): for `encryption != none` the row holds `enc_format`
+ * (the `JSV` version of the blob), `fk_ct` (the wrapped file key — the only way to the bytes;
+ * deleting the row is a crypto-shred) and `meta_ct` (name, MIME type and metadata, sealed
+ * under the file key), while `filename` is `<id>.bin`, `mime_type` `application/octet-stream`,
+ * `extension` NULL, `kind` `other`, `metadata` `{}`; `size` is the PLAINTEXT length (quotas
+ * and the UI count what the user stored, not the 16 B per segment of GCM tags) and `hash` is
+ * the SHA-256 of the CIPHERTEXT (the plaintext hash is never stored). `keyring_id` is for
+ * phase 6.2 and NULL until then.
  * `folder_id` (NULL: the instance root) points at a `vola_folder`; `parent_id` at the
  * previous version of the same file (the chain `GET …/versions` walks).
  */
@@ -206,7 +226,9 @@ export const files = pgTable(
  * through the same `finalizeUpload` as a plain `POST /files` and `completed_file_id` points at
  * the row it became. An upload belongs to the TENANT (any `files:write` key of it may resume
  * it); `api_key_id` only records which key created it. Rows past `expires_at` are swept with
- * their part files. `encryption` / `enc_state` are declared for phase 6.3 and NULL until then.
+ * their part files. `encryption` is decided at creation (`none` | `tenant`; NULL in rows from
+ * before phase 6.1 means `none`) and applied when the upload completes; `enc_state` is for
+ * phase 6.3 (segment-wise encryption of the incoming bytes) and NULL until then.
  */
 export const uploads = pgTable(
   "vola_upload",
@@ -237,7 +259,7 @@ export const uploads = pgTable(
     completedFileId: uuid("completed_file_id").references(() => files.id, {
       onDelete: "set null",
     }),
-    /** Phase 6.3: `none` | `tenant` | `keyring` | `caller`; NULL until then. */
+    /** `none` | `tenant` (phase 6.1; `keyring` | `caller` later); NULL in old rows = `none`. */
     encryption: varchar("encryption", { length: 16 }),
     /** Phase 6.3: segment cipher state (`fk_ct`, `nonce_prefix`, `segment_size`, `next_index`). */
     encState: jsonb("enc_state").$type<Record<string, unknown>>(),

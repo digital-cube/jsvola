@@ -108,6 +108,19 @@ export type PurgeResult = z.infer<typeof PurgeResultSchema>;
 /** Multipart field names of an upload. */
 export const UPLOAD_FILE_FIELD = "file";
 export const UPLOAD_METADATA_FIELD = "metadata";
+/**
+ * `encryption` form field (BEFORE the `file` part) or `X-Vola-Encryption` header of an upload:
+ * `none` | `tenant` (phase 6.1). Absent: the tenant's `default_encryption`.
+ */
+export const UPLOAD_ENCRYPTION_FIELD = "encryption";
+export const ENCRYPTION_HEADER = "x-vola-encryption";
+/** The error code of every integrity failure (`409`), and its one fixed sentence. */
+export const INTEGRITY_ERROR_CODE = "vola_integrity";
+export const INTEGRITY_ERROR_MESSAGE = "The file could not be decrypted.";
+/** `503`: the server has no key material for the encryption mode asked for. */
+export const ENCRYPTION_UNAVAILABLE_CODE = "encryption_unavailable";
+/** What the row (and the storage) says the type of an encrypted file is: nothing. */
+export const ENCRYPTED_STORED_MIME = "application/octet-stream";
 
 /** `?download=1` on a download forces `Content-Disposition: attachment`. */
 export const FORCE_DOWNLOAD_QUERY = "download";

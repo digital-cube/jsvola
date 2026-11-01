@@ -1,5 +1,6 @@
 import { type Readable, Transform } from "node:stream";
 import {
+  ENCRYPTED_STORED_MIME,
   FILE_LIST_DEFAULT_LIMIT,
   FILE_LIST_MAX_LIMIT,
   type FileEncryption,
@@ -17,8 +18,16 @@ import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
+import {
+  createEncryptStream,
+  type FileMeta,
+  JSV_VERSION,
+  newFileKey,
+  sealMeta,
+} from "../crypto/index.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
+import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
 import { type FileEventBus, publishFileEvent, publishFileEvents } from "../events/bus.js";
 import {
@@ -27,7 +36,7 @@ import {
   sanitizeFilename,
   splitFilename,
 } from "../files/filename.js";
-import { detectMime, kindForMime, SNIFF_BYTES } from "../files/mime.js";
+import { detectMimeDetailed, kindForMime, SNIFF_BYTES } from "../files/mime.js";
 import type { JobDispatcher } from "../jobs/dispatcher.js";
 import { type Lookups, recordFileCandidates } from "../lookups.js";
 import {
@@ -37,6 +46,7 @@ import {
   type StorageBackend,
 } from "../storage/index.js";
 import { LastUsedThrottle } from "./apikeys.js";
+import { type EncryptionService, encryptionUnavailable } from "./encryption.js";
 import { attachProcessingStatus, processingStatusOf } from "./processing.js";
 
 export interface FilesDeps {
@@ -56,6 +66,11 @@ export interface FilesDeps {
   jobs?: JobDispatcher | undefined;
   /** The audit trail (plan 5.2): soft delete, purge and visibility changes are recorded on it. */
   audit?: AuditLog | undefined;
+  /**
+   * Encryption (plan 6.1): the wrap providers, the segment size, how a stored row's key and
+   * metadata open. Absent: `encryption != none` cannot be served (`503`) nor produced.
+   */
+  crypto?: EncryptionService | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -150,17 +165,99 @@ export function serializeFile(
   };
 }
 
-/** `serializeFile` with the file's current `processing_status` read from its jobs (one query). */
+/**
+ * `info` with the REAL name, type and metadata of an encrypted file put back from `meta_ct`
+ * — what `info`, lists and the UDC rows show when the server holds the key (`tenant` mode).
+ * `extension` and `kind` follow the real name and type.
+ */
+export function revealFile(info: FileInfo, meta: FileMeta): FileInfo {
+  return {
+    ...info,
+    filename: meta.filename,
+    extension: extensionOf(meta.filename),
+    mime_type: meta.mime,
+    kind: kindForMime(meta.mime),
+    metadata: meta.metadata,
+  };
+}
+
+/**
+ * The public view of `row` with the metadata of an encrypted file decrypted when the server
+ * can (quietly: a file whose key material is missing keeps `<id>.bin` / octet-stream, a
+ * list never fails because of one file). `processingStatus` as for `serializeFile`.
+ */
+export async function describeFile(
+  deps: FilesDeps,
+  row: FileRow,
+  processingStatus: ProcessingStatus | null = null,
+): Promise<FileInfo> {
+  const info = serializeFile(row, processingStatus);
+  if (row.encryption === "none" || !deps.crypto) return info;
+  const meta = await deps.crypto.reveal(row);
+  return meta ? revealFile(info, meta) : info;
+}
+
+/** `describeFile` for a page of rows, with their `processing_status` read in one query. */
+export async function describeFiles(deps: FilesDeps, rows: FileRow[]): Promise<FileInfo[]> {
+  const statuses = await attachProcessingStatus(
+    deps.db,
+    rows.map((row) => ({ id: row.id })),
+  );
+  const out: FileInfo[] = [];
+  for (const [i, row] of rows.entries()) {
+    out.push(await describeFile(deps, row, statuses[i]?.processing_status ?? null));
+  }
+  return out;
+}
+
+/** `describeFile` with the file's current `processing_status` read from its jobs (one query). */
 export async function withProcessingStatus(deps: FilesDeps, row: FileRow): Promise<FileInfo> {
-  return serializeFile(row, await processingStatusOf(deps.db, row.id));
+  return describeFile(deps, row, await processingStatusOf(deps.db, row.id));
 }
 
 // --- upload -----------------------------------------------------------------------------
 
+/** What an encrypted staging produced besides the blob: the key and the id the blob is bound to. */
+export interface EncryptedStage {
+  mode: FileEncryption;
+  /** The id of the row to come: it is in the AAD of every segment, so it is drawn BEFORE encryption. */
+  fileId: string;
+  /** The random file key; wrapped into `fk_ct` by `finalizeUpload`, never stored in the clear. */
+  fk: Buffer;
+  plaintextLength: number;
+  format: number;
+}
+
 /** A blob in the temporary area plus the bytes needed to tell its type. */
 export interface StagedUpload {
   staged: StagedBlob;
+  /** The first `SNIFF_BYTES` of the PLAINTEXT. */
   head: Buffer;
+  /** Set when the staged blob is a `JSV` ciphertext. */
+  encrypted?: EncryptedStage | undefined;
+}
+
+/** A pass-through that fails with `FileTooLargeError` once more than `maxBytes` went through. */
+function plaintextMeter(maxBytes: number): Transform {
+  let size = 0;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      size += chunk.length;
+      if (size > maxBytes) {
+        callback(new FileTooLargeError(maxBytes));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+}
+
+export interface StageOptions {
+  maxBytes?: number | undefined;
+  /** `none` (default): the bytes as they are; `tenant`: a `JSV` blob under a fresh file key. */
+  encryption?: FileEncryption | undefined;
+  /** The plaintext length when it is known up front (a resumable upload): written into the header. */
+  plaintextLength?: number | undefined;
 }
 
 /** A pass-through that keeps a copy of the first `SNIFF_BYTES` for MIME detection. */
@@ -183,19 +280,51 @@ export function headSniffer(): { transform: Transform; head: () => Buffer } {
 /**
  * Streams the bytes of an upload into the temporary area (hash and size computed on the way,
  * nothing buffered beyond the sniffing head). `413 file_too_large` beyond `maxBytes`.
+ *
+ * With `encryption` other than `none` the stream is plaintext → sniff → encrypt → stage: the
+ * blob is a `JSV` ciphertext under a fresh file key, its hash is the hash of the CIPHERTEXT
+ * (so two uploads of the same bytes are two blobs — there is no deduplication of encrypted
+ * files, by design), and `maxBytes` is measured on the plaintext. The mode's key material is
+ * checked FIRST (`503 encryption_unavailable` before a byte is read).
  */
 export async function stageUpload(
   deps: FilesDeps,
   stream: Readable,
-  options: { maxBytes?: number | undefined } = {},
+  options: StageOptions = {},
 ): Promise<StagedUpload> {
+  const mode = options.encryption ?? "none";
   const sniffer = headSniffer();
+  let piped: Readable = stream.pipe(sniffer.transform);
   // Errors of the source surface through pipeline() inside stage(); the sniffer only copies.
-  const piped = stream.pipe(sniffer.transform);
   stream.on("error", (error) => sniffer.transform.destroy(error));
+  let encrypted: EncryptedStage | undefined;
+  let encrypt: ReturnType<typeof createEncryptStream> | undefined;
+  if (mode !== "none") {
+    if (!deps.crypto) throw encryptionUnavailable(mode);
+    await deps.crypto.assertAvailable(mode);
+    const fileId = uuidv7();
+    const fk = newFileKey();
+    encrypt = createEncryptStream(fk, fileId, {
+      segmentSize: deps.crypto.segmentSize,
+      plaintextLength: options.plaintextLength,
+    });
+    const meter = options.maxBytes === undefined ? null : plaintextMeter(options.maxBytes);
+    const tail = encrypt;
+    sniffer.transform.on("error", (error) => tail.destroy(error));
+    if (meter) {
+      meter.on("error", (error) => tail.destroy(error));
+      piped = piped.pipe(meter);
+    }
+    piped = piped.pipe(encrypt);
+    encrypted = { mode, fileId, fk, plaintextLength: 0, format: JSV_VERSION };
+  }
   try {
-    const staged = await deps.storage.stage(piped, { maxBytes: options.maxBytes });
-    return { staged, head: sniffer.head() };
+    const staged = await deps.storage.stage(piped, {
+      // The ciphertext is a little longer than the plaintext: the plaintext meter decides.
+      maxBytes: encrypted ? undefined : options.maxBytes,
+    });
+    if (encrypted && encrypt) encrypted.plaintextLength = encrypt.plaintextLength;
+    return { staged, head: sniffer.head(), encrypted };
   } catch (error) {
     if (error instanceof FileTooLargeError) {
       throw new VolaError(
@@ -253,22 +382,60 @@ export async function finalizeUpload(
   const slug = input.slug ?? null;
   const parent = input.parent ?? null;
   const givenName = input.filename ? sanitizeFilename(input.filename) : null;
-  const inherited = parent !== null && (givenName === null || givenName === parent.filename);
+  // The name of an encrypted parent is in its `meta_ct`; without the key it has none to inherit.
+  const parentName =
+    parent === null
+      ? null
+      : parent.encryption === "none"
+        ? parent.filename
+        : ((await deps.crypto?.reveal(parent))?.filename ?? null);
+  const inherited =
+    parent !== null && parentName !== null && (givenName === null || givenName === parentName);
   const filename = inherited
-    ? parent.filename
+    ? (parentName as string)
     : (givenName ?? sanitizeFilename(null, slug ?? "unnamed"));
   const folderId =
     input.folderId === undefined && parent ? parent.folderId : (input.folderId ?? null);
-  const mimeType = await detectMime({
+  const detected = await detectMimeDetailed({
     head: upload.head,
     filename,
     declared: input.declaredMime,
   });
+  const mimeType = detected.mime;
   const extension = extensionOf(filename);
   const kind = kindForMime(mimeType);
   const metadata = input.metadata ?? {};
   const now = (deps.now ?? (() => new Date()))();
   let committed = false;
+
+  // An encrypted file: the row shows nothing but the id, the real values are sealed under the
+  // file key, and the key is wrapped by the mode's provider BEFORE anything is committed.
+  const enc = upload.encrypted;
+  let sealed: { fkCt: Buffer; metaCt: Buffer; meta: FileMeta } | null = null;
+  if (enc) {
+    if (!deps.crypto) {
+      await deps.storage.discard(upload.staged);
+      throw encryptionUnavailable(enc.mode);
+    }
+    const meta: FileMeta = {
+      filename,
+      mime: mimeType,
+      metadata,
+      sniffed: detected.source === "magic",
+    };
+    try {
+      const fkCt = await deps.crypto.wrapNewKey(enc.mode, enc.fk, {
+        fileId: enc.fileId,
+        tenantId: scope.tenantId,
+      });
+      sealed = { fkCt, metaCt: sealMeta(enc.fk, enc.fileId, meta), meta };
+    } catch (error) {
+      await deps.storage.discard(upload.staged);
+      throw error;
+    } finally {
+      enc.fk.fill(0);
+    }
+  }
 
   try {
     // A concurrent upsert of the same slug trips the partial unique index: retry, the other
@@ -296,32 +463,61 @@ export async function finalizeUpload(
                 .where(and(instanceWhere(scope), eq(files.slug, slug), isNull(files.deletedAt)))
                 .returning({ id: files.id, folderId: files.folderId })
             : [];
-          const resolved = inherited
-            ? filename
-            : await resolveFilename(tx, scope, filename, folderId);
+          // No collision rename for an encrypted file: its stored name is `<id>.bin`, and the
+          // real names of its neighbours are sealed (the UI tells them apart by id).
+          const resolved =
+            inherited || enc ? filename : await resolveFilename(tx, scope, filename, folderId);
           const [row] = await tx
             .insert(files)
-            .values({
-              tenantId: scope.tenantId,
-              instanceType: scope.instanceType,
-              instanceId: scope.instanceId,
-              slug,
-              hash: upload.staged.hash,
-              size: upload.staged.size,
-              filename: resolved,
-              extension,
-              mimeType,
-              kind,
-              metadata,
-              folderId,
-              parentId: parent?.id ?? null,
-              createdBy: input.userId,
-              // Millisecond timestamps from here, so the list cursor compares exactly.
-              createdAt: now,
-              updatedAt: now,
-            })
+            .values(
+              enc && sealed
+                ? {
+                    id: enc.fileId,
+                    tenantId: scope.tenantId,
+                    instanceType: scope.instanceType,
+                    instanceId: scope.instanceId,
+                    slug,
+                    hash: upload.staged.hash,
+                    // The PLAINTEXT length: quotas and the UI count what the user stored.
+                    size: enc.plaintextLength,
+                    filename: `${enc.fileId}.bin`,
+                    extension: null,
+                    mimeType: ENCRYPTED_STORED_MIME,
+                    kind: "other",
+                    metadata: {},
+                    folderId,
+                    parentId: parent?.id ?? null,
+                    encryption: enc.mode,
+                    encFormat: enc.format,
+                    fkCt: sealed.fkCt,
+                    metaCt: sealed.metaCt,
+                    createdBy: input.userId,
+                    createdAt: now,
+                    updatedAt: now,
+                  }
+                : {
+                    tenantId: scope.tenantId,
+                    instanceType: scope.instanceType,
+                    instanceId: scope.instanceId,
+                    slug,
+                    hash: upload.staged.hash,
+                    size: upload.staged.size,
+                    filename: resolved,
+                    extension,
+                    mimeType,
+                    kind,
+                    metadata,
+                    folderId,
+                    parentId: parent?.id ?? null,
+                    createdBy: input.userId,
+                    // Millisecond timestamps from here, so the list cursor compares exactly.
+                    createdAt: now,
+                    updatedAt: now,
+                  },
+            )
             .returning();
-          return { info: serializeFile(row as FileRow), replaced };
+          const info = serializeFile(row as FileRow);
+          return { info: sealed ? revealFile(info, sealed.meta) : info, replaced };
         });
         // Best effort, after the commit: a value the vocabulary does not know is queued for review.
         await recordFileCandidates(deps.lookups, info);
@@ -557,7 +753,6 @@ export async function patchFile(
 ): Promise<FileInfo> {
   const row = await findFile(deps, scope, fileId);
   const folderId = patch.folderId === undefined ? row.folderId : patch.folderId;
-  const filename = patch.filename === undefined ? row.filename : sanitizeFilename(patch.filename);
   if (patch.isGlobalPublic === true && row.encryption !== "none") {
     throw new VolaError(
       "encrypted_not_public",
@@ -565,6 +760,12 @@ export async function patchFile(
       "an encrypted file cannot be made globally public",
     );
   }
+  // The name of an encrypted file lives in `meta_ct`: a rename re-seals it (no collision rule,
+  // the stored name stays `<id>.bin`). Only when the server holds the key (`tenant`).
+  if (patch.filename !== undefined && row.encryption !== "none") {
+    return renameEncrypted(deps, scope, row, patch);
+  }
+  const filename = patch.filename === undefined ? row.filename : sanitizeFilename(patch.filename);
   const relocates = folderId !== row.folderId || filename !== row.filename;
   if (relocates) {
     const family = new Set((await versionFamily(deps.db, row)).map((f) => f.id));
@@ -621,6 +822,43 @@ export async function patchFile(
   return withProcessingStatus(deps, updated);
 }
 
+/** `patchFile` for an encrypted row with a new name: the metadata record is re-sealed under the file key. */
+async function renameEncrypted(
+  deps: FilesDeps,
+  scope: InstanceScope,
+  row: FileRow,
+  patch: FilePatchInput,
+): Promise<FileInfo> {
+  if (!deps.crypto) throw encryptionUnavailable(row.encryption);
+  const { fk, meta } = await deps.crypto.open(row);
+  const filename = sanitizeFilename(patch.filename);
+  const metaCt = sealMeta(fk, row.id, { ...meta, filename });
+  fk.fill(0);
+  const folderId = patch.folderId === undefined ? row.folderId : patch.folderId;
+  const now = (deps.now ?? (() => new Date()))();
+  const [updated] = await deps.db
+    .update(files)
+    .set({
+      folderId,
+      metaCt,
+      isPublic: patch.isPublic ?? row.isPublic,
+      isGlobalPublic: patch.isGlobalPublic ?? row.isGlobalPublic,
+      updatedAt: now,
+    })
+    .where(and(eq(files.id, row.id), isNull(files.deletedAt)))
+    .returning();
+  if (!updated) throw fileNotFound();
+  // Never the name: it is what the encryption protects.
+  deps.logger?.info({ file: row.id, folder: folderId, renamed: true }, "file updated");
+  await publishFileEvent(deps, {
+    ...scope,
+    folderId: updated.folderId,
+    fileId: updated.id,
+    kind: "updated",
+  });
+  return withProcessingStatus(deps, updated);
+}
+
 // --- versions ----------------------------------------------------------------------------
 
 /**
@@ -637,12 +875,7 @@ export async function listVersions(
   const family = (await versionFamily(deps.db, row))
     .filter((f) => options.includeDeleted || f.deletedAt === null)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
-  return {
-    versions: await attachProcessingStatus(
-      deps.db,
-      family.map((f) => serializeFile(f)),
-    ),
-  };
+  return { versions: await describeFiles(deps, family) };
 }
 
 // --- list --------------------------------------------------------------------------------
@@ -709,10 +942,7 @@ export async function listFiles(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    files: await attachProcessingStatus(
-      deps.db,
-      page.map((row) => serializeFile(row)),
-    ),
+    files: await describeFiles(deps, page),
     next_cursor: rows.length > limit && last ? encodeCursor(last) : null,
   };
 }

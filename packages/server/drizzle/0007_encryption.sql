@@ -1,0 +1,2 @@
+ALTER TABLE "vola_tenant" ADD COLUMN "default_encryption" varchar(16) DEFAULT 'none' NOT NULL;--> statement-breakpoint
+ALTER TABLE "vola_tenant" ADD CONSTRAINT "vola_tenant_default_encryption_check" CHECK ("vola_tenant"."default_encryption" in ('none', 'tenant', 'keyring', 'caller'));

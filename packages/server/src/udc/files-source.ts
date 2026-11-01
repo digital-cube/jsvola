@@ -20,6 +20,9 @@ import { type BoundTenantContext, requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, fileMetadata, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
+import { extensionOf } from "../files/filename.js";
+import { kindForMime } from "../files/mime.js";
+import type { EncryptionService } from "../services/encryption.js";
 import { processingStatusByFile } from "../services/processing.js";
 import { decodePageCursor, encodePageCursor, type PageCursor } from "./cursor.js";
 import {
@@ -34,7 +37,11 @@ import type { RowSink, SubscribableSource, Subscription } from "./subscribable.j
 
 /** The name of the collection under `/udc`. */
 export const FILES_COLLECTION = "files";
-/** What an encrypted file is called in a row until phase 6 decrypts its name under an unlock. */
+/**
+ * What an encrypted file is called in a row when its name cannot be decrypted here: a
+ * `keyring` file without an unlock (phase 6.2), a `tenant` file without the key file. With
+ * the key (`tenant` mode) the real name, type, extension and kind are put back (`toRows`).
+ */
 export const ENCRYPTED_FILENAME = "<encrypted>";
 /** The filter every `list` needs (a top-level `eq`); without it the list is empty. */
 export const INSTANCE_TYPE_FILTER = "instance_type";
@@ -75,7 +82,10 @@ export interface FilesSourceOptions {
   db: Database;
   /** Mount prefix of the vola routes (`/vola`), for `download_url` and `thumb_url`. */
   prefix: string;
+  /** Runs AFTER the built-in decryption of `tenant` rows (a host's own hook, unlock sessions). */
   decorateRow?: DecorateRow | undefined;
+  /** Decrypts the metadata of `tenant`-encrypted rows (name, type); absent: they stay masked. */
+  crypto?: EncryptionService | undefined;
   /**
    * The bus file changes arrive on; with it the collection is subscribable
    * (`capabilities.subscribe`), without it `subscribe` is `unsupported_op`.
@@ -416,6 +426,7 @@ export class FilesCollectionSource implements SubscribableSource {
   private readonly schema: SchemaDoc;
   private readonly compiler: SqlFilterCompiler;
   private readonly decorateRow: DecorateRow | undefined;
+  private readonly crypto: EncryptionService | undefined;
   private readonly events: FileEventBus | undefined;
   private readonly logger: FastifyBaseLogger | undefined;
   private readonly groups = new Map<string, TenantGroup>();
@@ -426,6 +437,7 @@ export class FilesCollectionSource implements SubscribableSource {
     this.schema = schemaOf(this.fields);
     this.compiler = new SqlFilterCompiler(this.fields);
     this.decorateRow = options.decorateRow;
+    this.crypto = options.crypto;
     this.events = options.events;
     this.logger = options.logger;
     this.capabilities = { ...FILES_SOURCE_CAPABILITIES, subscribe: this.events !== undefined };
@@ -758,10 +770,29 @@ export class FilesCollectionSource implements SubscribableSource {
     );
     for (const record of records) {
       record.processingStatus = statuses.get(record.file.id) ?? null;
-      const row: Row = { __meta: { id: record.file.id, version: 1 } };
+      let row: Row = { __meta: { id: record.file.id, version: 1 } };
       for (const [name, field] of Object.entries(this.fields)) row[name] = field.value(record);
+      row = await this.revealEncrypted(row, record.file);
       rows.push(this.decorateRow ? await this.decorateRow(row, record.file, tenant) : row);
     }
     return rows;
+  }
+
+  /**
+   * The built-in decoration: the real name, MIME type, extension and kind of an encrypted
+   * file whose metadata the server can open (`tenant` mode, key file present). Filters,
+   * sorts and cursors keep working on the masked values — the real name is never in SQL.
+   */
+  private async revealEncrypted(row: Row, file: FileRow): Promise<Row> {
+    if (!encrypted(file) || !this.crypto) return row;
+    const meta = await this.crypto.reveal(file);
+    if (!meta) return row;
+    return {
+      ...row,
+      filename: meta.filename,
+      mime_type: meta.mime,
+      extension: extensionOf(meta.filename),
+      kind: kindForMime(meta.mime),
+    };
   }
 }

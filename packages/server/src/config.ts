@@ -8,6 +8,7 @@ import {
   parseOcrLangs,
 } from "@vola/core";
 import { z } from "zod";
+import { DEFAULT_KEY_FILE } from "./crypto/tenant.js";
 import { DEFAULT_LOOKUPS_PATH } from "./lookups.js";
 import { DEFAULT_MENU_PATH } from "./udc/menu.js";
 
@@ -113,6 +114,7 @@ const ConfigSchema = z
       .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
       .optional(),
     VOLA_MEMENTO_API_KEY: z.string().min(1).optional(),
+    VOLA_KEY_FILE: z.string().min(1).default(DEFAULT_KEY_FILE),
     VOLA_LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
@@ -175,6 +177,13 @@ export interface Config {
    * scope). `null`: no audit events are written — a supported configuration, logged once at INFO.
    */
   memento: MementoConfig | null;
+  /**
+   * `VOLA_KEY_FILE` (default `/run/secrets/vola.key`): the key file of the `tenant`
+   * encryption provider — one base64 32-byte key per line, the first one active
+   * (`docs/CRYPTO.md`). A missing file does not stop the server: encrypted uploads and
+   * downloads answer `503 encryption_unavailable` until it is there.
+   */
+  keyFile: string;
   logLevel: LogLevel;
 }
 
@@ -291,6 +300,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       c.VOLA_MEMENTO_URL && c.VOLA_MEMENTO_API_KEY
         ? { url: c.VOLA_MEMENTO_URL.replace(/\/+$/, ""), apiKey: c.VOLA_MEMENTO_API_KEY }
         : null,
+    keyFile: resolve(c.VOLA_KEY_FILE),
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

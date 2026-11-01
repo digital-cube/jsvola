@@ -46,12 +46,13 @@
  *   moved: the client resuming it authenticates with a SOURCE tenant key, which would answer
  *   `404` the moment the row moved, and its part file would complete into the wrong tenant.
  *   The caller waits for it to finish, deletes it, or lets it expire (`VOLA_UPLOAD_TTL_HOURS`);
- * - an instance that holds an encrypted file (`encryption != none`) is refused with
- *   `409 encrypted_transfer_unsupported`: the `tenant` provider binds the wrapped file key to
- *   the tenant through the AAD, the `keyring` provider to a principal's keyring, so the rows
- *   cannot simply change tenant. Nothing is encrypted before phase 6.
- *   TODO(TCKK5UTHJX, plan 6.1): re-wrap `fk_ct` for `encryption = tenant` under the
- *   destination tenant's key inside this transaction, then drop the refusal for that mode.
+ * - an encrypted file's wrapped key is bound to its tenant through the wrap AAD, so a row
+ *   cannot simply change tenant. For `encryption = tenant` the key is RE-WRAPPED here, inside
+ *   the transaction: opened under the source tenant's KEK, wrapped under the destination's
+ *   (`EncryptionService.rewrapForTenant`; `503 encryption_unavailable` without the key file,
+ *   `409 vola_integrity` for a key that does not open — either refuses the whole transfer
+ *   before anything is written). `keyring` and `caller` files are still refused with
+ *   `409 encrypted_transfer_unsupported` until phases 6.2 / 6.3 define their move.
  */
 import type { TransferInstance, TransferRequest, TransferResult } from "@vola/core";
 import {
@@ -83,6 +84,7 @@ import {
 } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { type FileEventBus, publishFileEvents } from "../events/bus.js";
+import { type EncryptionService, encryptionUnavailable } from "./encryption.js";
 import { computeStats } from "./stats.js";
 import { findTenantBySlug } from "./tenants.js";
 
@@ -95,6 +97,8 @@ export interface TransferDeps {
   audit?: AuditLog | undefined;
   /** Who does it, for the audit event; default: the request's actor (the CLI passes its own). */
   actor?: { type: AuditActorType; id: string } | null | undefined;
+  /** Re-wraps the keys of `tenant`-encrypted files; without it such an instance is `503`. */
+  crypto?: EncryptionService | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -109,6 +113,7 @@ interface Plan {
   instances: TransferInstance[];
   userMap: Record<string, string>;
   now: Date;
+  crypto: EncryptionService | undefined;
 }
 
 /** A moved file row, as the events after the commit need it. */
@@ -127,6 +132,8 @@ interface Counts {
   jobs: number;
   metadata: number;
   uploads: number;
+  /** `tenant`-encrypted files whose key was re-wrapped for the destination. */
+  rewrapped: number;
 }
 
 const zeroCounts = (): Counts => ({
@@ -137,6 +144,7 @@ const zeroCounts = (): Counts => ({
   jobs: 0,
   metadata: 0,
   uploads: 0,
+  rewrapped: 0,
 });
 
 /** The instances of a request, each once, in the order given. */
@@ -186,6 +194,7 @@ export async function transferInstances(
     instances: distinctInstances(request.instances),
     userMap: request.user_map,
     now: (deps.now ?? (() => new Date()))(),
+    crypto: deps.crypto,
   };
 
   let counts = zeroCounts();
@@ -254,6 +263,7 @@ export async function transferInstances(
       shares: result.shares,
       jobs: result.jobs,
       uploads: result.uploads,
+      rewrapped: counts.rewrapped,
     },
     "instances transferred",
   );
@@ -272,6 +282,7 @@ const addCounts = (a: Counts, b: Counts): Counts => ({
   jobs: a.jobs + b.jobs,
   metadata: a.metadata + b.metadata,
   uploads: a.uploads + b.uploads,
+  rewrapped: a.rewrapped + b.rewrapped,
 });
 
 function instanceOf(
@@ -286,25 +297,38 @@ function instanceOf(
   );
 }
 
-/** The two refusals, checked for every instance before a single row moves. */
+/** The refusals, checked for every instance before a single row moves. */
 async function refuseUnmovable(tx: Tx, plan: Plan, instance: TransferInstance): Promise<void> {
   const [encrypted] = await tx
     .select({ n: sql<number>`count(*)` })
     .from(files)
-    .where(and(instanceOf(files, plan.src.id, instance), ne(files.encryption, "none")));
+    .where(
+      and(
+        instanceOf(files, plan.src.id, instance),
+        ne(files.encryption, "none"),
+        ne(files.encryption, "tenant"),
+      ),
+    );
   const encryptedFiles = Number(encrypted?.n ?? 0);
   if (encryptedFiles > 0) {
-    // TODO(TCKK5UTHJX, plan 6.1): re-wrap fk_ct of `tenant`-encrypted files instead of refusing.
     throw new VolaError(
       "encrypted_transfer_unsupported",
       409,
-      `instance ${instance.instance_type}/${instance.instance_id} holds ${encryptedFiles} encrypted file(s); transferring encrypted files is not supported yet`,
+      `instance ${instance.instance_type}/${instance.instance_id} holds ${encryptedFiles} keyring- or caller-encrypted file(s); only tenant-encrypted files can be transferred yet`,
       {
         instance_type: instance.instance_type,
         instance_id: instance.instance_id,
         files: encryptedFiles,
       },
     );
+  }
+  const [tenantEncrypted] = await tx
+    .select({ n: sql<number>`count(*)` })
+    .from(files)
+    .where(and(instanceOf(files, plan.src.id, instance), eq(files.encryption, "tenant")));
+  if (Number(tenantEncrypted?.n ?? 0) > 0) {
+    if (!plan.crypto) throw encryptionUnavailable("tenant");
+    await plan.crypto.assertAvailable("tenant");
   }
   const [inProgress] = await tx
     .select({ n: sql<number>`count(*)` })
@@ -459,6 +483,25 @@ async function moveFiles(
   instance: TransferInstance,
   counts: Counts,
 ): Promise<MovedFile[]> {
+  // The keys of `tenant`-encrypted files (every version, the soft-deleted too) are re-wrapped
+  // for the destination BEFORE the rows change tenant; the metadata record is bound to the
+  // file id only and needs nothing.
+  const sealed = await tx
+    .select({
+      id: files.id,
+      tenantId: files.tenantId,
+      encryption: files.encryption,
+      fkCt: files.fkCt,
+      keyringId: files.keyringId,
+    })
+    .from(files)
+    .where(and(instanceOf(files, plan.src.id, instance), eq(files.encryption, "tenant")));
+  for (const row of sealed) {
+    if (!plan.crypto) throw encryptionUnavailable("tenant");
+    const fkCt = await plan.crypto.rewrapForTenant(row, plan.dst.id);
+    await tx.update(files).set({ fkCt }).where(eq(files.id, row.id));
+    counts.rewrapped++;
+  }
   const movedRows = await tx
     .update(files)
     .set({

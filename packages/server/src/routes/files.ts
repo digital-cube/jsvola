@@ -1,6 +1,8 @@
 import fastifyMultipart from "@fastify/multipart";
 import {
+  ENCRYPTION_HEADER,
   type FileDetail,
+  type FileEncryption,
   type FileInfo,
   type FileList,
   FilePatchSchema,
@@ -8,6 +10,7 @@ import {
   OCR_QUERY_FULL,
   type PurgeResult,
   splitFilePath,
+  UPLOAD_ENCRYPTION_FIELD,
   UPLOAD_FILE_FIELD,
   UPLOAD_FOLDER_ID_FIELD,
   UPLOAD_FOLDER_PATH_FIELD,
@@ -23,6 +26,7 @@ import type { FileEventBus } from "../events/bus.js";
 import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
+import type { EncryptionService } from "../services/encryption.js";
 import {
   type FilesDeps,
   finalizeUpload,
@@ -70,6 +74,8 @@ export interface FileRoutesDeps {
   jobs?: JobDispatcher | undefined;
   /** The audit trail: soft delete, purge, visibility change. */
   audit?: AuditLog | undefined;
+  /** Encryption (plan 6.1): providers and the row-level open; absent → encrypted files are `503`. */
+  crypto?: EncryptionService | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -127,6 +133,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     events: deps.events,
     jobs: deps.jobs,
     audit: deps.audit,
+    crypto: deps.crypto,
     now: deps.now,
   };
   const folderService: FoldersDeps = {
@@ -152,7 +159,25 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
   const scopeOf = (request: FastifyRequest<{ Params: InstanceParams }>) =>
     parseInstance(requireTenant().tenantId, request.params.type, request.params.id);
 
-  /** Streams the one `file` part into storage while collecting the text fields, then records the row. */
+  /** The `encryption` an upload names, from a text field or the header; `undefined`: the tenant default. */
+  const requestedEncryption = (raw: string | undefined): FileEncryption | undefined => {
+    if (raw === undefined) return undefined;
+    if (!deps.crypto)
+      throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
+    return deps.crypto.parseMode(raw);
+  };
+  const headerValue = (request: FastifyRequest, name: string): string | undefined => {
+    const raw = request.headers[name];
+    return Array.isArray(raw) ? raw[0] : raw;
+  };
+
+  /**
+   * Streams the one `file` part into storage while collecting the text fields, then records
+   * the row. The encryption mode must be known when the file part STARTS (it decides what is
+   * written to disk), so it comes from `X-Vola-Encryption`, from an `encryption` field sent
+   * before the file part, or from the tenant's default — a field after the file part is
+   * accepted only when it agrees (`422` otherwise).
+   */
   async function handleUpload(
     request: FastifyRequest<{ Params: InstanceParams }>,
     reply: FastifyReply,
@@ -167,6 +192,10 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     let upload: StagedUpload | undefined;
     let filename: string | undefined;
     let declaredMime: string | undefined;
+    let encryption: FileEncryption | undefined = requestedEncryption(
+      headerValue(request, ENCRYPTION_HEADER),
+    );
+    let usedEncryption: FileEncryption | undefined;
     const fields: Record<string, string> = {};
     try {
       for await (const part of request.parts()) {
@@ -179,7 +208,13 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
             );
           }
           if (upload) throw new VolaError("bad_request", 400, "exactly one file part is allowed");
-          upload = await stageUpload(service, part.file, { maxBytes: deps.maxUploadBytes });
+          usedEncryption = deps.crypto
+            ? await deps.crypto.resolveMode(scope.tenantId, encryption)
+            : "none";
+          upload = await stageUpload(service, part.file, {
+            maxBytes: deps.maxUploadBytes,
+            encryption: usedEncryption,
+          });
           if (part.file.truncated) {
             throw new VolaError(
               "file_too_large",
@@ -190,7 +225,19 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
           filename = part.filename;
           declaredMime = part.mimetype;
         } else {
-          fields[part.fieldname] = typeof part.value === "string" ? part.value : String(part.value);
+          const value = typeof part.value === "string" ? part.value : String(part.value);
+          fields[part.fieldname] = value;
+          if (part.fieldname === UPLOAD_ENCRYPTION_FIELD) {
+            const named = requestedEncryption(value);
+            if (upload && named !== undefined && named !== usedEncryption) {
+              throw new VolaError(
+                "validation_error",
+                422,
+                `${UPLOAD_ENCRYPTION_FIELD}: send it before the file part (or as ${ENCRYPTION_HEADER}); the file was already stored as "${usedEncryption}"`,
+              );
+            }
+            encryption = named ?? encryption;
+          }
         }
       }
       if (!upload)
@@ -242,6 +289,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
           slug: info.slug,
           folder: info.folder_id,
           parent: info.parent_id,
+          encryption: info.encryption,
           instance: `${scope.instanceType}/${scope.instanceId}`,
         },
         "file uploaded",
@@ -303,17 +351,25 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
 
   /**
    * Metadata without the bytes (and never `fk_ct` / `meta_ct`), plus the `ocr` block.
-   * `?include_deleted=1` sees a soft-deleted file; `?ocr=full` adds the whole OCR text.
+   * `?include_deleted=1` sees a soft-deleted file; `?ocr=full` adds the whole OCR text. For
+   * an encrypted file the real name, type and metadata come out of `meta_ct` — `503` when
+   * the server has no key material for its mode, `409` when the record does not open.
    */
   app.get<{ Params: FileParams; Querystring: InfoQuery }>(
     "/files/:type/:id/:fileId/info",
     { config: READ },
-    async (request): Promise<FileDetail> => {
+    async (request, reply): Promise<FileDetail> => {
       const scope = scopeOf(request);
       const row = flag(request.query.include_deleted)
         ? await findFile(service, scope, request.params.fileId, { includeDeleted: true })
         : await findReadableFile(service, scope, request.params.fileId);
       const full = (request.query.ocr ?? "").toLowerCase() === OCR_QUERY_FULL;
+      if (row.encryption !== "none") {
+        if (!deps.crypto)
+          throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
+        await deps.crypto.open(row); // 503 / 409 here, loudly, rather than a masked answer
+        reply.header("cache-control", "no-store");
+      }
       const [info, ocr] = await Promise.all([
         withProcessingStatus(service, row),
         ocrInfoOf(deps.db, row.id, { full }),

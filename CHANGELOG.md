@@ -9,6 +9,63 @@ share one version.
 
 ### Added
 
+- Encryption at rest, part I (plan 6.1, `docs/CRYPTO.md`). A new crypto core
+  (`@vola/server` `src/crypto/`, pure `node:crypto` AES-256-GCM, no I/O): the segmented blob
+  format **`JSV` v1** — a 24-byte header (`"JSV"`, version, `segment_size` u32 — default 1 MiB,
+  64 KiB … 64 MiB —, 8-byte random `nonce_prefix`, `plaintext_length` u64 or the "deferred"
+  marker) and segments `ct ∥ tag` with nonce `prefix ∥ i` and AAD `header ∥ file_id ∥ i ∥ last`
+  (∥ length on the last) — so truncation, an added or reordered segment, a changed header, an
+  unknown version and a blob transplanted onto another file id all fail (`IntegrityError`), a
+  `Range` decrypts only the segments it touches, and memory is one segment per request. The
+  plaintext length of a streamed upload is derived from the ciphertext length and
+  authenticated by the last segment's AAD (the header carries it when it was known, e.g. a
+  resumable upload). `createEncryptStream`, `createDecryptStream` (reads the header and the
+  needed span through a `CiphertextSource`, verifies the first segment before handing out the
+  stream, dispatches on the version), `ciphertextRangeFor`, `sealMeta` / `openMeta`
+  (`{filename, mime, metadata, sniffed}` under the file key, AAD `<file id>:meta`), the
+  `WrapProvider` interface (`wrap` / `unwrap` with lazy `rewrapped`, AAD
+  `<file id>:key:<mode>:<tenant id | keyring id>`) and the **`tenant` provider**:
+  `VOLA_KEY_FILE` (default `/run/secrets/vola.key`; base64 32-byte lines, the first active),
+  KEK = HKDF-SHA256(line, salt `vola-tenant-kek`, info = tenant id), `fk_ct` = `kid(4) ∥
+  nonce ∥ ct ∥ tag` (64 B), unwrap tries the hinted line then every line and re-wraps under
+  the active one (lazy rotation: prepend a line, old ones retire as files are read). A missing
+  key file never stops the server: `503 encryption_unavailable` on encrypted uploads, downloads
+  and `info` until it is there (re-read on change). `409 vola_integrity` with the one fixed
+  sentence "The file could not be decrypted." for every integrity failure. Uploads
+  (`POST /files`, `PUT …/slug/:slug`, the tus completion) take `encryption=tenant` from the
+  `encryption` form field (before the `file` part), `X-Vola-Encryption`, the `encryption`
+  `Upload-Metadata` pair, or the tenant's new `default_encryption` (migration
+  `0007_encryption`, `vola tenant-set --slug <s> --default-encryption none|tenant`); the stream
+  is plaintext → MIME sniff → encrypt → CAS, the row stores `<id>.bin` /
+  `application/octet-stream` / `other` / `{}`, `encryption`, `enc_format = 1`, `fk_ct`, `meta_ct`,
+  `size` = plaintext length and `hash` = hash of the CIPHERTEXT (no plaintext hash anywhere, no
+  deduplication of encrypted files, no collision rename), the upload limit is measured on the
+  plaintext, and the plaintext part file of a resumable upload is removed once the ciphertext
+  is committed. Downloads of an encrypted file decrypt the requested range (`206` in plaintext
+  coordinates), `ETag: "<file id>"`, `Cache-Control: no-store`, `X-Content-Type-Options:
+  nosniff`, `inline` only for a PNG/JPEG/GIF/WebP the bytes identified, otherwise `attachment;
+  filename*=` with the decrypted name. `…/info`, `GET /files/:type/:id`, `…/versions`, UDC
+  `files` rows (list, read, subscribe) show the real name, type, extension, kind and metadata
+  when the server holds the key (filters, sorts and cursors keep the `<encrypted>` mask); the
+  plugin's `decorateRow` runs after. `PATCH {filename}` re-seals the metadata of an encrypted
+  file. `POST /admin/transfer` and `vola transfer` re-wrap the key of every `tenant` file for the
+  destination tenant inside the transaction (`503` without the key file, `409` for a key that
+  does not open) and refuse only `keyring` / `caller` files with `409
+  encrypted_transfer_unsupported`. The worker still skips encrypted files; `is_global_public`
+  stays `409 encrypted_not_public`; logs and audit payloads never carry the name or type of an
+  encrypted file. CLI: `vola keys-generate [--path]` (0600, refuses to overwrite),
+  `vola keys-status [--path]` (files per key line, `NO LINE` warning for keys that are gone,
+  never a key), `vola tenant-set`. `@vola/core`: `UPLOAD_ENCRYPTION_FIELD`,
+  `ENCRYPTION_HEADER`, `INTEGRITY_ERROR_CODE` / `_MESSAGE`, `ENCRYPTION_UNAVAILABLE_CODE`,
+  `ENCRYPTED_STORED_MIME`, `UPLOAD_META_KEYS.encryption`, `Tenant.default_encryption`;
+  `@vola/server`: everything of `src/crypto/`, `EncryptionService` / `createEncryptionService` /
+  `tenantKeyUsage` (`services/encryption.ts`), `VolaPluginOptions.encryption`, `Config.keyFile`,
+  `FilesDeps.crypto`, `describeFile(s)`, `revealFile`, `StageOptions`, `EncryptedStage`,
+  `sendEncryptedFile`, `ENCRYPTED_INLINE_MIMES`, `detectMimeDetailed`,
+  `setTenantDefaultEncryption`. New document `docs/CRYPTO.md`. Phases 6.2 (`keyring`: PIN,
+  unlock, recovery) and 6.3 (`caller`, encrypted thumbnails/OCR, share grant, segment-wise
+  resumable) plug into the same format and interface; asking for them answers `501` today.
+
 - Admin transfer and the memento audit trail (plan 5.2). `POST /admin/transfer` (scope
   `admin`, i.e. an admin key; `X-Tenant-Slug` ignored; `{from_tenant, to_tenant, instances:
   [{instance_type, instance_id}], user_map?, dry_run?}`) moves every row of the listed

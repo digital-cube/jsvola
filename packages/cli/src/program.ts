@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   type ApiKey,
   displayApiKey,
@@ -20,19 +20,26 @@ import {
   connect,
   createApiKey,
   createAuditSink,
+  createEncryptionService,
   createFileEventBus,
   createTenant,
   type DatabaseHandle,
   DEFAULT_LOOKUPS_PATH,
   findApiKey,
+  generateKeyLine,
   getTenantBySlug,
   initLookups,
+  KeyFile,
+  type KeyUsage,
   keyAuditPayload,
   listApiKeys,
   loadConfig,
   revokeApiKey,
   runMigrations,
   schema,
+  setTenantDefaultEncryption,
+  TENANT_DEFAULT_ENCRYPTIONS,
+  tenantKeyUsage,
   transferInstances,
   VolaError,
 } from "@vola/server";
@@ -141,6 +148,30 @@ export function transferLines(result: TransferResult): string[] {
   ];
 }
 
+/** The lines of `keys-status`. */
+export function keyStatusLines(path: string, lines: number, usage: KeyUsage[]): string[] {
+  const total = usage.reduce((sum, u) => sum + u.files, 0);
+  const orphaned = usage.filter((u) => u.line === null);
+  return [
+    `${path}: ${lines} key line(s), line 0 active; ${total} tenant-encrypted file(s)`,
+    ...usage.map((u) =>
+      u.line === null
+        ? `  kid ${u.kid}  NO LINE  ${u.files} file(s) — these cannot be decrypted; restore the key line`
+        : `  kid ${u.kid}  line ${u.line}${u.line === 0 ? " (active)" : ""}  ${u.files} file(s)`,
+    ),
+    ...(orphaned.length > 0
+      ? [
+          `WARNING: ${orphaned.reduce((s, u) => s + u.files, 0)} file(s) depend on a key that is not in the file`,
+        ]
+      : []),
+    ...(usage.some((u) => u.line !== null && u.line > 0)
+      ? [
+          "older lines are still in use: they retire lazily, one download or info at a time; keep them",
+        ]
+      : []),
+  ];
+}
+
 function dateArgument(value: string): Date {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -180,9 +211,10 @@ export function plaintextLines(key: string): string[] {
 }
 
 /**
- * The `vola` command tree: `migrate`, `create-tenant`, `create-key`, `create-admin-key`,
- * `list-keys`, `revoke-key` (every one reads `VOLA_DATABASE_URL` and connects only when it
- * runs), and the vocabulary commands `lookup-promote`, `lookups validate`, `lookups
+ * The `vola` command tree: `migrate`, `create-tenant`, `tenant-set`, `create-key`,
+ * `create-admin-key`, `list-keys`, `revoke-key`, `transfer`, `keys-status` (every one reads
+ * `VOLA_DATABASE_URL` and connects only when it runs), `keys-generate` (the encryption key
+ * file only) and the vocabulary commands `lookup-promote`, `lookups validate`, `lookups
  * candidates` (files only, no database).
  */
 export function buildProgram(io: CliIo, options: CliOptions = {}): Command {
@@ -206,6 +238,9 @@ Examples:
   $ vola create-admin-key --name ops
   $ vola list-keys --tenant acme
   $ vola revoke-key vola_live…k3Qz
+  $ vola tenant-set --slug acme --default-encryption tenant
+  $ vola keys-generate
+  $ vola keys-status
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --instance tickets:9e2f… --dry-run
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --user-map users.json
   $ vola lookups validate
@@ -216,6 +251,7 @@ Environment:
   VOLA_DATABASE_URL     PostgreSQL the commands use (default postgresql://vola:vola@localhost:5432/vola)
   VOLA_REDIS_URL        with it, transfer announces the move to live subscribers
   VOLA_MEMENTO_URL      with VOLA_MEMENTO_API_KEY: key and transfer commands write audit events to memento
+  VOLA_KEY_FILE         the tenant encryption key file (default /run/secrets/vola.key); keys-generate / keys-status / transfer
   VOLA_LOOKUPS_PATH     lookups.yaml the vocabulary commands work on (default: the repository's)
 
 Scopes: ${SCOPES.join(", ")}`,
@@ -285,6 +321,89 @@ Scopes: ${SCOPES.join(", ")}`,
       await withDb(async ({ db }) => {
         const tenant: Tenant = await createTenant(db, { slug: opts.slug, name: opts.name });
         print(tenant, `created tenant ${tenant.slug} (${tenant.name}) id=${tenant.id}`);
+      });
+    });
+
+  program
+    .command("tenant-set")
+    .description("change a tenant's settings")
+    .requiredOption("--slug <slug>", "the tenant", slugArgument)
+    .option(
+      "--default-encryption <mode>",
+      `how an upload that names no encryption is stored: ${TENANT_DEFAULT_ENCRYPTIONS.join(" | ")}`,
+    )
+    .action(async (opts: { slug: string; defaultEncryption?: string }) => {
+      if (opts.defaultEncryption === undefined) {
+        throw new VolaError("validation_error", 422, "nothing to set: give --default-encryption");
+      }
+      await withDb(async ({ db }) => {
+        const tenant = await setTenantDefaultEncryption(
+          db,
+          opts.slug,
+          opts.defaultEncryption as string,
+        );
+        print(tenant, `tenant ${tenant.slug}: default_encryption = ${tenant.default_encryption}`);
+      });
+    });
+
+  // --- encryption key file -----------------------------------------------------------------
+
+  const keyFilePath = (given: string | undefined) => given ?? config().keyFile;
+
+  program
+    .command("keys-generate")
+    .description(
+      "write a new tenant-encryption key file (one random 32-byte key, mode 0600); refuses to overwrite",
+    )
+    .option("--path <file>", "where (default: VOLA_KEY_FILE, /run/secrets/vola.key)")
+    .addHelpText(
+      "after",
+      `
+To ROTATE, do not run this again: prepend a fresh line to the existing file —
+  (echo "$(openssl rand -base64 32)"; cat vola.key) > vola.key.new && mv vola.key.new vola.key
+Old lines must stay: they still open what they wrapped (keys-status shows how many files).`,
+    )
+    .action(async (opts: { path?: string }) => {
+      const path = keyFilePath(opts.path);
+      await mkdir(dirname(path), { recursive: true }).catch(() => undefined);
+      try {
+        await writeFile(path, `${generateKeyLine()}\n`, { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new VolaError(
+            "conflict",
+            409,
+            `${path} exists; refusing to overwrite a key file (rotation = prepend a line, see --help)`,
+          );
+        }
+        throw error;
+      }
+      print({ path, lines: 1 }, [
+        `wrote ${path} (mode 0600, 1 key line)`,
+        "Back it up somewhere safe: without this file every tenant-encrypted file is unreadable.",
+      ]);
+    });
+
+  program
+    .command("keys-status")
+    .description(
+      "how many tenant-encrypted files depend on which line of the key file (never prints a key)",
+    )
+    .option("--path <file>", "the key file (default: VOLA_KEY_FILE)")
+    .action(async (opts: { path?: string }) => {
+      const path = keyFilePath(opts.path);
+      const lines = await new KeyFile(path).lines();
+      await withDb(async ({ db }) => {
+        const usage = await tenantKeyUsage(db, lines);
+        print(
+          {
+            path,
+            lines: lines.length,
+            usage,
+            orphaned_files: usage.filter((u) => u.line === null).reduce((s, u) => s + u.files, 0),
+          },
+          keyStatusLines(path, lines.length, usage),
+        );
       });
     });
 
@@ -449,9 +568,11 @@ Scopes: ${SCOPES.join(", ")}`,
       "after",
       `
 A folder whose path already exists on the destination is merged into it; share tokens stay the
-same; statistics of both tenants are recomputed. An instance holding an encrypted file is
-refused (encrypted_transfer_unsupported), as is one with a resumable upload in progress
-(uploads_in_progress). With VOLA_REDIS_URL live subscribers of both tenants are told.`,
+same; statistics of both tenants are recomputed. The key of a tenant-encrypted file is
+re-wrapped for the destination (needs VOLA_KEY_FILE); an instance holding a keyring- or
+caller-encrypted file is refused (encrypted_transfer_unsupported), as is one with a resumable
+upload in progress (uploads_in_progress). With VOLA_REDIS_URL live subscribers of both tenants
+are told.`,
     )
     .action(
       async (opts: {
@@ -479,10 +600,17 @@ refused (encrypted_transfer_unsupported), as is one with a resumable upload in p
         await withDb(async ({ db }) => {
           const redisUrl = options.redisUrl === undefined ? config().redisUrl : options.redisUrl;
           const events = redisUrl ? createFileEventBus(redisUrl) : undefined;
+          const crypto = createEncryptionService({ db, keyFile: config().keyFile });
           try {
             const result = await audited(() =>
               transferInstances(
-                { db, events, audit: request.data.dry_run ? undefined : audit(), actor: actor() },
+                {
+                  db,
+                  events,
+                  audit: request.data.dry_run ? undefined : audit(),
+                  actor: actor(),
+                  crypto,
+                },
                 request.data,
               ),
             );

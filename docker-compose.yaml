@@ -32,6 +32,10 @@ services:
     volumes:
       # the content-addressable blobs (VOLA_STORAGE_PATH=/data/storage)
       - vola-data:/data
+      # Encryption at rest (docs/CRYPTO.md): mount the key file made with `vola keys-generate`
+      # read-only at VOLA_KEY_FILE (default /run/secrets/vola.key) — in BOTH services. Without
+      # it the server starts and serves plain files; encrypted ones answer 503.
+      # - ./secrets/vola.key:/run/secrets/vola.key:ro
     healthcheck:
       test: ["CMD", "vola-healthcheck"]
       interval: 10s
@@ -58,6 +62,7 @@ services:
       VOLA_STATS_TTL_MIN: ${VOLA_STATS_TTL_MIN:-60}
     volumes:
       - vola-data:/data
+      # - ./secrets/vola.key:/run/secrets/vola.key:ro
     healthcheck:
       disable: true
 

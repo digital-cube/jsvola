@@ -39,6 +39,9 @@ export {
   REQUEST_ID_HEADER,
 } from "./errors.js";
 export {
+  ENCRYPTED_STORED_MIME,
+  ENCRYPTION_HEADER,
+  ENCRYPTION_UNAVAILABLE_CODE,
   FILE_ENCRYPTIONS,
   FILE_KINDS,
   FILE_LIST_DEFAULT_LIMIT,
@@ -58,11 +61,14 @@ export {
   type FileSlug,
   FileSlugSchema,
   FORCE_DOWNLOAD_QUERY,
+  INTEGRITY_ERROR_CODE,
+  INTEGRITY_ERROR_MESSAGE,
   type InstanceType,
   InstanceTypeSchema,
   type PurgeResult,
   PurgeResultSchema,
   Sha256Schema,
+  UPLOAD_ENCRYPTION_FIELD,
   UPLOAD_FILE_FIELD,
   UPLOAD_METADATA_FIELD,
 } from "./files.js";

@@ -8,6 +8,7 @@ import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify"
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
 import type { Config } from "./config.js";
+import { EncryptionUnavailableError, IntegrityError } from "./crypto/index.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
@@ -29,6 +30,12 @@ import { statsRoutes } from "./routes/stats.js";
 import { thumbnailRoutes } from "./routes/thumbnails.js";
 import { uploadRoutes } from "./routes/uploads.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
+import {
+  createEncryptionService,
+  type EncryptionService,
+  encryptionUnavailable,
+  integrityFailure,
+} from "./services/encryption.js";
 import {
   isLimiterRedis,
   MemorySharePasswordLimiter,
@@ -97,8 +104,15 @@ export interface VolaPluginOptions {
    * file exists; `false`: no `menu` collection. A path given here must exist.
    */
   menu?: string | false | undefined;
-  /** Phase-6 hook of the `files` collection: decorates every row after the built-in masking. */
+  /** Hook of the `files` collection: decorates every row after the built-in masking and decryption. */
   decorateRow?: DecorateRow | undefined;
+  /**
+   * Encryption (plan 6.1, `docs/CRYPTO.md`). Default: the `tenant` provider on
+   * `config.keyFile` (`VOLA_KEY_FILE`); a missing file is `503 encryption_unavailable` on
+   * encrypted uploads and downloads, nothing else. An `EncryptionService` given here is used as
+   * is (tests: in-memory keys, a small segment size); `false`: no encryption at all.
+   */
+  encryption?: EncryptionService | false | undefined;
   /**
    * The bus every file change is announced on and the `files` collection's `subscribe`
    * listens to. Default: Redis pub/sub on `config.redisUrl` when set, in-process otherwise
@@ -234,6 +248,14 @@ export function installErrorHandling(app: FastifyInstance): void {
   });
 
   app.setErrorHandler((error: FastifyError | VolaError, request, reply) => {
+    // The crypto layer's errors, should one escape a service (a stream that failed late).
+    if (error instanceof IntegrityError) {
+      request.log.warn({ reason: error.reason }, "integrity failure");
+      error = integrityFailure();
+    } else if (error instanceof EncryptionUnavailableError) {
+      request.log.warn({ reason: error.message }, "encryption unavailable");
+      error = encryptionUnavailable("tenant");
+    }
     if (error instanceof VolaError) {
       if (error.status >= 500) request.log.error({ err: error }, error.message);
       else request.log.info({ code: error.code }, error.message);
@@ -318,6 +340,18 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     });
   }
   const uploadsPath = options.uploadsPath ?? join(options.config.storagePath, "uploads");
+  const crypto =
+    options.encryption === false
+      ? undefined
+      : (options.encryption ??
+        createEncryptionService({
+          db: options.db,
+          keyFile: options.config.keyFile,
+          logger: app.log,
+        }));
+  if (crypto && options.encryption === undefined) {
+    app.log.info({ key_file: options.config.keyFile }, "encryption: tenant provider");
+  }
   const audit =
     options.audit === false
       ? disabledAuditLog()
@@ -335,7 +369,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db, audit });
-  await app.register(adminRoutes, { db: options.db, events, audit });
+  await app.register(adminRoutes, { db: options.db, events, audit, crypto });
   await app.register(lookupRoutes, { db: options.db, lookups });
   await app.register(fileRoutes, {
     db: options.db,
@@ -346,6 +380,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     events,
     jobs: jobs?.dispatcher,
     audit,
+    crypto,
   });
   await app.register(thumbnailRoutes, {
     db: options.db,
@@ -363,6 +398,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     lookups,
     events,
     jobs: jobs?.dispatcher,
+    crypto,
   });
   await app.register(folderRoutes, { db: options.db, events, audit });
   await app.register(publicRoutes, {
@@ -391,6 +427,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
         db: options.db,
         prefix: app.prefix,
         decorateRow: options.decorateRow,
+        crypto,
         events,
         logger: app.log,
       });

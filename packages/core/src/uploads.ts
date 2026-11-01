@@ -44,6 +44,8 @@ export const UPLOAD_META_KEYS = {
   /** tus-js-client's default key for the MIME type. */
   filetype: "filetype",
   metadata: "metadata",
+  /** `none` | `tenant`: how the completed file is stored (phase 6.1); the tenant default otherwise. */
+  encryption: "encryption",
 } as const;
 
 const META_KEY_RE = /^[^\s,]+$/;

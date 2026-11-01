@@ -1,6 +1,7 @@
 import type { Readable } from "node:stream";
 import {
   decodeTusMetadata,
+  ENCRYPTION_HEADER,
   encodeTusMetadata,
   TUS_EXTENSION_HEADER,
   TUS_EXTENSIONS,
@@ -25,6 +26,7 @@ import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
+import type { EncryptionService } from "../services/encryption.js";
 import {
   appendUpload,
   createUpload,
@@ -58,6 +60,8 @@ export interface UploadRoutesDeps {
   lookups?: Lookups | undefined;
   /** Where the completed file is announced after its commit (real-time `subscribe`). */
   events?: FileEventBus | undefined;
+  /** Encryption (plan 6.1): `encryption` in `Upload-Metadata` or `X-Vola-Encryption` at creation. */
+  crypto?: EncryptionService | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -113,6 +117,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
     lookups: deps.lookups,
     events: deps.events,
     jobs: deps.jobs,
+    crypto: deps.crypto,
     now: deps.now,
   };
 
@@ -199,6 +204,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
       slug: meta[K.slug],
       contentType: meta[K.contentType] ?? meta[K.filetype],
       metadata: meta[K.metadata],
+      encryption: meta[K.encryption] ?? header(request, ENCRYPTION_HEADER),
     });
     reply.status(201).header("location", location(upload));
     describe(reply, upload);
@@ -222,6 +228,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
         [UPLOAD_META_KEYS.slug]: row.slug,
         [UPLOAD_META_KEYS.parentId]: row.parentId,
         [UPLOAD_META_KEYS.contentType]: row.declaredMime,
+        [UPLOAD_META_KEYS.encryption]: row.encryption,
       });
       reply.header(UPLOAD_METADATA_HEADER, metadata);
       return reply.send();
