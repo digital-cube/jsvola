@@ -78,6 +78,18 @@ export interface BlobStat {
   path: string;
 }
 
+/** Bytes and entries of one area of the store. */
+export interface AreaUsage {
+  bytes: number;
+  count: number;
+}
+
+/** What the store physically holds: the blobs and their derived files (thumbnails, …). */
+export interface StoreUsage {
+  blobs: AreaUsage;
+  derived: AreaUsage;
+}
+
 /**
  * Content-addressable blob storage shared by every tenant: the SAME bytes are one blob, so
  * tenant isolation lives in the metadata layer (database rows), never in the layout.
@@ -108,6 +120,8 @@ export interface StorageBackend {
   statDerived(hash: string, name: string): Promise<BlobStat | null>;
   /** Where the blob is (or would be) on disk. */
   blobPath(hash: string): string;
+  /** Walks the store: bytes and count of the blobs and of the derived files (`GET /stats/storage` for an admin). */
+  usage(): Promise<StoreUsage>;
 }
 
 /** Throws `InvalidHashError` unless `hash` is a lowercase SHA-256 hex digest. */

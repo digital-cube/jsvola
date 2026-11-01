@@ -1,4 +1,5 @@
 export {
+  type AreaUsage,
   assertDerivedName,
   assertHash,
   BlobNotFoundError,
@@ -13,5 +14,6 @@ export {
   type StagedBlob,
   type StorageBackend,
   type StoredBlob,
+  type StoreUsage,
 } from "./backend.js";
-export { FilesystemBackend } from "./filesystem.js";
+export { directoryUsage, FilesystemBackend, walkFiles } from "./filesystem.js";

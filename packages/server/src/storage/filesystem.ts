@@ -1,20 +1,23 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, type Dirent } from "node:fs";
 import { link, mkdir, open, readdir, rename, rm, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  type AreaUsage,
   assertDerivedName,
   assertHash,
   BlobNotFoundError,
   type BlobStat,
   type ByteSpan,
   FileTooLargeError,
+  HASH_RE,
   type PutOptions,
   type StagedBlob,
   type StorageBackend,
   type StoredBlob,
+  type StoreUsage,
 } from "./backend.js";
 
 /** `ENOENT` and friends carry a `code`. */
@@ -215,6 +218,64 @@ export class FilesystemBackend implements StorageBackend {
   async statDerived(hash: string, name: string): Promise<BlobStat | null> {
     return statPath(this.derivedPath(hash, name));
   }
+
+  /**
+   * Walks `blobs/`: an entry named exactly a SHA-256 is a blob, `<sha256>.<name>` a derived
+   * file; anything else is ignored. A file removed while walking is skipped.
+   */
+  async usage(): Promise<StoreUsage> {
+    const usage: StoreUsage = { blobs: { bytes: 0, count: 0 }, derived: { bytes: 0, count: 0 } };
+    await walkFiles(this.blobsDir, (name, size) => {
+      if (HASH_RE.test(name)) {
+        usage.blobs.bytes += size;
+        usage.blobs.count++;
+      } else if (DERIVED_FILE_RE.test(name)) {
+        usage.derived.bytes += size;
+        usage.derived.count++;
+      }
+    });
+    return usage;
+  }
+}
+
+/** `<sha256>.<derived name>`. */
+const DERIVED_FILE_RE = /^[a-f0-9]{64}\.[a-z0-9][a-z0-9._-]*$/;
+
+/** Calls `visit(name, size)` for every regular file below `dir` (recursively); a missing `dir` is empty. */
+export async function walkFiles(
+  dir: string,
+  visit: (name: string, size: number) => void,
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (errno(error) === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkFiles(path, visit);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    try {
+      visit(entry.name, (await stat(path)).size);
+    } catch (error) {
+      if (errno(error) !== "ENOENT") throw error;
+    }
+  }
+}
+
+/** Bytes and count of the regular files directly below or anywhere under `dir` (`uploads/`). */
+export async function directoryUsage(dir: string): Promise<AreaUsage> {
+  const usage: AreaUsage = { bytes: 0, count: 0 };
+  await walkFiles(dir, (_name, size) => {
+    usage.bytes += size;
+    usage.count++;
+  });
+  return usage;
 }
 
 async function statPath(path: string): Promise<BlobStat | null> {

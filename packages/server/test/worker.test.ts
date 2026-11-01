@@ -60,6 +60,7 @@ beforeAll(async () => {
     events,
     jobs: queue,
     uploadSweepIntervalMs: 0,
+    statsRefreshIntervalMs: 0, // this suite counts job schedulers: only its own sweep
   });
   app = fx.app;
   await app.ready();

@@ -42,6 +42,19 @@ describe("loadConfig", () => {
     expect(config.uploadTtlHours).toBe(72);
   });
 
+  it("reads the stats TTL and the public URL (trailing slash dropped)", () => {
+    expect(loadConfig({}).stats.ttlMin).toBe(60);
+    expect(loadConfig({}).publicUrl).toBeNull();
+    const config = loadConfig({
+      VOLA_STATS_TTL_MIN: "15",
+      VOLA_PUBLIC_URL: "https://files.example.com/",
+    });
+    expect(config.stats.ttlMin).toBe(15);
+    expect(config.publicUrl).toBe("https://files.example.com");
+    expect(() => loadConfig({ VOLA_STATS_TTL_MIN: "0" })).toThrow(/VOLA_STATS_TTL_MIN/);
+    expect(() => loadConfig({ VOLA_PUBLIC_URL: "files.example.com" })).toThrow(/VOLA_PUBLIC_URL/);
+  });
+
   it("rejects a bad database URL with one clear message", () => {
     const attempt = () => loadConfig({ VOLA_DATABASE_URL: "mysql://nope" });
     expect(attempt).toThrow(ConfigError);

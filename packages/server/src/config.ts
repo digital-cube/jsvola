@@ -3,6 +3,7 @@ import {
   DEFAULT_OCR_LANGS,
   DEFAULT_OCR_MAX_PAGES,
   DEFAULT_OCR_TIMEOUT_S,
+  DEFAULT_STATS_TTL_MIN,
   type OcrLanguage,
   parseOcrLangs,
 } from "@vola/core";
@@ -94,6 +95,16 @@ const ConfigSchema = z.object({
     .string()
     .regex(/^[\w:-]{1,64}$/, "letters, digits, _ - : only")
     .default("vola"),
+  VOLA_STATS_TTL_MIN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(7 * 24 * 60)
+    .default(DEFAULT_STATS_TTL_MIN),
+  VOLA_PUBLIC_URL: z
+    .string()
+    .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
+    .optional(),
   VOLA_WS_HEARTBEAT_MS: z.coerce.number().int().min(1000).default(30_000),
   VOLA_WS_MAX_BUFFERED: z.coerce.number().int().min(1).default(1000),
   VOLA_LOG_LEVEL: z
@@ -140,7 +151,24 @@ export interface Config {
   worker: WorkerConfig;
   /** OCR (plan 4.2): whether, in which languages, how many pages, how long. */
   ocr: OcrConfig;
+  /** Statistics snapshots (plan 5.1). */
+  stats: StatsConfig;
+  /**
+   * `VOLA_PUBLIC_URL`: the origin clients reach this server on (`https://files.example.com`),
+   * without the prefix and without a trailing slash; the `url` of a share link is built on it.
+   * `null`: the `Host` and protocol of the creating request are used.
+   */
+  publicUrl: string | null;
   logLevel: LogLevel;
+}
+
+export interface StatsConfig {
+  /**
+   * `VOLA_STATS_TTL_MIN`: minutes a `vola_tenant_stats` snapshot may age. The worker's
+   * `refresh-stats` job recomputes older ones for tenants with activity since; without a
+   * worker a read recomputes a snapshot past this age. Default 60.
+   */
+  ttlMin: number;
 }
 
 export interface OcrConfig {
@@ -236,6 +264,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       maxPages: c.VOLA_OCR_MAX_PAGES,
       timeoutS: c.VOLA_OCR_TIMEOUT_S,
     },
+    stats: { ttlMin: c.VOLA_STATS_TTL_MIN },
+    publicUrl: c.VOLA_PUBLIC_URL ? c.VOLA_PUBLIC_URL.replace(/\/+$/, "") : null,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

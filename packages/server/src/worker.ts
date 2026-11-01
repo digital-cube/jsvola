@@ -48,6 +48,7 @@ const worker = new ProcessingWorker({
     maxUploadBytes: config.maxUploadBytes,
   },
   ocr: config.ocr,
+  stats: { ttlMs: config.stats.ttlMin * 60_000 },
 });
 
 let closing = false;

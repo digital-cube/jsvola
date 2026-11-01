@@ -9,6 +9,46 @@ share one version.
 
 ### Added
 
+- Share links and statistics (plan 5.1). New table `vola_share_link` (migration
+  `0006_shares_stats`: `tenant_id`, `file_id` XOR `folder_id` (CHECK), `token_hash` — the
+  SHA-256 of a 32-byte base64url token, unique — `scope` (`ShareScopes`, v1 `PUBLIC_LINK`
+  only), `password_hash` (argon2id, 19 MiB / t=2 / p=1), `expires_at`, `max_downloads`,
+  `download_count`, `created_by`, `created_at`, `revoked_at`, and `fk_share_ct` bytea
+  reserved for the share grant of phase 6.3). `POST /shares` (`shares:write`;
+  `{file_id | folder: {instance_type, instance_id, path}, password?, expires_at?,
+  max_downloads?, scope?}`) answers `201` with the token (this once) and the public `url`
+  (built on `VOLA_PUBLIC_URL`, new, optional, or the request's origin); a scope other than
+  `PUBLIC_LINK` is `501 not_implemented`, an encrypted file `409 encrypted_share_requires_grant`.
+  `GET /shares[?file_id=|folder_id=][&include_revoked=1]`, `GET /shares/:id`,
+  `DELETE /shares/:id` (revoke, idempotent). Anonymous `GET|HEAD /s/:token` (file: the
+  download with `Range`/`ETag`/`Content-Disposition`; folder: a one-level JSON listing with
+  paths relative to the shared folder) and `GET|HEAD /s/:token/path/*` (a file or subfolder
+  inside a shared folder, never outside it). Password in `X-Share-Password` or `?password=`;
+  missing or wrong → `401 share_password_required`, ten wrong ones per token in fifteen
+  minutes → `429 too_many_password_attempts` (counter in Redis when configured, in memory
+  otherwise); unknown token `404 share_not_found`; revoked or expired `410 share_gone`. Only
+  a request that starts a download counts against `max_downloads` (`GET` without `Range` or
+  from byte 0; atomic `UPDATE … WHERE download_count < max_downloads RETURNING`); `HEAD` and
+  `Range` continuations never count and still answer once the limit is reached, so the last
+  granted download can be resumed; starting another is `410`. Share answers carry
+  `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`; an encrypted file
+  inside a shared folder is invisible. New table `vola_tenant_stats` (same migration): one
+  snapshot per `(tenant, scope tenant|instance, instance_type, instance_id)` with
+  `total_files`, `total_bytes`, `by_kind` jsonb, `oldest_at`, `newest_at`, `computed_at`.
+  `GET /stats/tenant[?recompute=1]`, `GET /stats/instance/:type/:id[?recompute=1]`
+  (`files:read`; computed lazily on the first read, soft-deleted files never counted) and
+  `GET /stats/storage` (`files:read`; the tenant's live files, logical bytes, distinct blobs
+  and their bytes; an admin key adds `physical` — `blobs`, `derived`, `uploads` on disk — and
+  without `X-Tenant-Slug` measures the whole deployment). The worker gains the repeatable
+  `refresh-stats` job (scheduled by the server every half `VOLA_STATS_TTL_MIN`, new, default
+  60): snapshots older than the TTL whose tenant had file activity since are recomputed;
+  without a worker a read past the TTL recomputes instead. `@vola/core`: `SHARE_SCOPES`,
+  `ShareCreateSchema`, `ShareInfoSchema`, `ShareCreatedSchema`, `SharedFolderListingSchema`,
+  `SHARE_PASSWORD_HEADER`, `TenantStatsSchema`, `StorageStatsSchema`, `RECOMPUTE_QUERY`;
+  `@vola/server`: `services/shares.ts`, `services/share-password.ts`
+  (`MemorySharePasswordLimiter`, `RedisSharePasswordLimiter`), `services/stats.ts`,
+  `shareRoutes`, `sharePublicRoutes`, `statsRoutes`, `StorageBackend.usage()`,
+  `ProcessingQueue.scheduleStatsRefresh`, `REFRESH_STATS_JOB`. New dependency: `argon2`.
 - OCR (plan 4.2). After every upload of a raster image (not SVG, not GIF) or a PDF with
   `encryption = none` the server also queues one `OCR` job (`VOLA_OCR_ENABLED` = `auto` /
   `1` / `0`); the worker runs the system `tesseract` — `tesseract <file> stdout -l <langs>`

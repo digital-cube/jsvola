@@ -24,6 +24,9 @@ services:
       VOLA_STORAGE_PATH: /data/storage
       # `0` here means no OCR job is ever queued (the worker's own setting decides whether it runs).
       VOLA_OCR_ENABLED: ${VOLA_OCR_ENABLED:-auto}
+      # The origin share links are built on (behind a reverse proxy); empty: the request's Host.
+      VOLA_PUBLIC_URL: ${VOLA_PUBLIC_URL:-}
+      VOLA_STATS_TTL_MIN: ${VOLA_STATS_TTL_MIN:-60}
     ports:
       - "${VOLA_HOST_PORT:-8300}:8300"
     volumes:
@@ -52,6 +55,7 @@ services:
       VOLA_LOG_LEVEL: ${VOLA_LOG_LEVEL:-info}
       VOLA_STORAGE_PATH: /data/storage
       VOLA_WORKER_CONCURRENCY: ${VOLA_WORKER_CONCURRENCY:-2}
+      VOLA_STATS_TTL_MIN: ${VOLA_STATS_TTL_MIN:-60}
     volumes:
       - vola-data:/data
     healthcheck:

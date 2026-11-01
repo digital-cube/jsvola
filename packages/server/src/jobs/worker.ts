@@ -24,6 +24,7 @@ import {
   type ProcessingDeps,
   shortError,
 } from "../services/processing.js";
+import { refreshStaleStats } from "../services/stats.js";
 import {
   DEFAULT_THUMBNAIL_TIMEOUT_MS,
   generateThumbnail,
@@ -38,6 +39,7 @@ import {
   PROCESSING_QUEUE,
   type ProcessingJobData,
   queueConnection,
+  REFRESH_STATS_JOB,
   SWEEP_UPLOADS_JOB,
   THUMBNAIL_JOB,
   type ThumbnailJobData,
@@ -79,6 +81,8 @@ export interface ProcessingWorkerOptions {
   logger?: FastifyBaseLogger | undefined;
   /** What the expired-upload sweep needs; without it `sweep-uploads` jobs are ignored. */
   uploads?: { parts: PartStore; ttlMs: number; maxUploadBytes: number } | undefined;
+  /** The statistics refresh (plan 5.1): snapshots older than `ttlMs` are recomputed; without it `refresh-stats` jobs are ignored. */
+  stats?: { ttlMs: number } | undefined;
   /** Wall-clock limit of one job. Default 30 s. */
   jobTimeoutMs?: number | undefined;
   /** The `pdftoppm` binary. Default: the one on `PATH`. */
@@ -190,6 +194,8 @@ export class ProcessingWorker {
         return this.ocr(job as Job<OcrJobData>);
       case SWEEP_UPLOADS_JOB:
         return this.sweep();
+      case REFRESH_STATS_JOB:
+        return this.refreshStats();
       default:
         throw new UnrecoverableError(`unknown job ${job.name}`);
     }
@@ -212,6 +218,19 @@ export class ProcessingWorker {
       now: this.options.now,
     };
     await sweepExpiredUploads(deps);
+  }
+
+  /** Recomputes every `vola_tenant_stats` snapshot older than the TTL whose tenant had activity since. */
+  private async refreshStats(): Promise<void> {
+    const stats = this.options.stats;
+    if (!stats) {
+      this.options.logger?.debug("refresh-stats job ignored: no stats configuration");
+      return;
+    }
+    await refreshStaleStats(
+      { db: this.options.db, logger: this.options.logger, now: this.options.now },
+      { ttlMs: stats.ttlMs },
+    );
   }
 
   /**

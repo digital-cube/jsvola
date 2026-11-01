@@ -280,8 +280,72 @@ and the previous version stays live — a path download answers the newest file 
 **Visibility:** `is_public` lets any authenticated tenant download the file (and read `…/info`)
 by its `(type, id, fileId)` — the vola-spp rule; everything else stays the owner's.
 `is_global_public` opens `GET|HEAD /vola/public/:fileId` to anyone, without a key; an encrypted
-file can never get it (`409 encrypted_not_public`). Thumbnails, shares and encryption come with
-the later tickets of `docs/PLAN.md`.
+file can never get it (`409 encrypted_not_public`). Encryption comes with phase 6 of
+`docs/PLAN.md`.
+
+### Share links
+
+A share link gives anyone with its token access to one file or one folder — no API key, no
+tenant. Only the SHA-256 of the token is stored (the plaintext is in the `201` once); a password
+is stored as argon2id; `expires_at` ends the link, `max_downloads` caps how many downloads may
+*start* through it, `DELETE` revokes it. A share of an encrypted file is a share grant (phase
+6.3) and is refused here with `409 encrypted_share_requires_grant`.
+
+```sh
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"file_id":"'$FILE'","password":"s3cr3t","expires_at":"2026-12-31T23:59:59Z","max_downloads":3}' \
+     localhost:8300/vola/shares                           # 201 {id, token, url, has_password, …}
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"folder":{"instance_type":"tickets","instance_id":"'$TICKET'","path":"docs/2026"}}' \
+     localhost:8300/vola/shares                           # a folder share
+curl -H "X-Share-Password: s3cr3t" localhost:8300/vola/s/$TOKEN                   # the file; or ?password=
+curl localhost:8300/vola/s/$TOKEN                        # a folder share: {kind:"folder", folder, subfolders[], files[]}
+curl localhost:8300/vola/s/$TOKEN/path/q4/report.pdf     # a file inside the shared folder, by relative path
+curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/shares?file_id=$FILE&include_revoked=1"
+curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/shares/$SHARE    # revoke → 410 from then on
+```
+
+| route | scope | notes |
+|---|---|---|
+| `POST /vola/shares` | `shares:write` | `{file_id \| folder: {instance_type, instance_id, path}, password?, expires_at?, max_downloads?, scope?}` → `201` with `token` and `url` (`VOLA_PUBLIC_URL`, or the request's origin); `scope` other than `PUBLIC_LINK` → `501 not_implemented`; encrypted file → `409`; another tenant's target → `404` |
+| `GET /vola/shares[?file_id=\|folder_id=][&include_revoked=1]`, `GET /vola/shares/:id` | `shares:write` | newest first, never the token |
+| `DELETE /vola/shares/:id` | `shares:write` | revoke, idempotent |
+| `GET\|HEAD /vola/s/:token` | — | file share: the download (`Range`, `ETag`, `Content-Disposition`, `?download=1`); folder share: one level as JSON, paths relative to the shared folder |
+| `GET\|HEAD /vola/s/:token/path/*` | — | a file (or the listing of a subfolder) inside a shared folder; never outside it (`..` → `422`) |
+
+Answers: unknown token `404 share_not_found`; revoked or expired `410 share_gone`; password
+missing or wrong `401 share_password_required` — ten wrong ones per token in fifteen minutes
+(Redis-shared when `VOLA_REDIS_URL` is set, per process otherwise) → `429
+too_many_password_attempts` with `retry_after`, the right password included until the window
+ends. **Counting:** only a request that starts a download counts — a `GET` without `Range` or
+with a `Range` from byte 0 — through an atomic `UPDATE … WHERE download_count < max_downloads`,
+so two readers cannot both take the last one. `HEAD` and a `Range` continuation never count,
+and once the limit is reached they still answer (the last granted download can be resumed)
+while starting another is `410`. The limit counts downloads, not bytes. Every share answer
+carries `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`; an encrypted
+file inside a shared folder is invisible to the share.
+
+### Statistics
+
+```sh
+curl -H "Authorization: Bearer $KEY" "localhost:8300/vola/stats/tenant?recompute=1"
+#   {"scope":"tenant","total_files":42,"total_bytes":…,"by_kind":{"image":30,"document":12},"oldest_at":…,"newest_at":…,"computed_at":…}
+curl -H "Authorization: Bearer $KEY" localhost:8300/vola/stats/instance/tickets/$TICKET
+curl -H "Authorization: Bearer $KEY" localhost:8300/vola/stats/storage
+#   {"scope":"tenant","files":42,"logical_bytes":…,"unique_blobs":40,"unique_bytes":…,"physical":null,…}
+curl -H "Authorization: Bearer $ADMIN" localhost:8300/vola/stats/storage       # scope "deployment" + physical {blobs, derived, uploads}
+```
+
+| route | scope | notes |
+|---|---|---|
+| `GET /vola/stats/tenant[?recompute=1]` | `files:read` | the tenant's live files (soft-deleted ones never count): `total_files`, `total_bytes` (before deduplication), `by_kind`, `oldest_at`, `newest_at`, `computed_at` |
+| `GET /vola/stats/instance/:type/:id[?recompute=1]` | `files:read` | the same for one instance |
+| `GET /vola/stats/storage` | `files:read` | logical bytes, distinct blobs and their bytes; an admin key adds `physical` (the disk: `blobs`, `derived`, `uploads`) and without `X-Tenant-Slug` measures the whole deployment |
+
+The tenant and instance numbers are **snapshots** in `vola_tenant_stats`: computed on the first
+read, forced with `?recompute=1`, and refreshed by the worker's repeatable `refresh-stats` job
+for snapshots older than `VOLA_STATS_TTL_MIN` (60) whose tenant had file activity since (the
+job runs every half TTL). Without a worker a read past the TTL recomputes instead.
 
 ## Lookups and translations
 

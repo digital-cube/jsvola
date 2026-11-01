@@ -331,6 +331,103 @@ export const fileMetadata = pgTable(
   ],
 );
 
+/**
+ * A share link (plan 5.1): anonymous access to one file or one folder of a tenant through an
+ * opaque token. Only the SHA-256 of the token is stored (`token_hash`); the plaintext is
+ * returned once, at creation. Exactly one of `file_id` / `folder_id` is set (the XOR check).
+ * `scope` is a `ShareScopes` term — v1 implements `PUBLIC_LINK` only. `password_hash` is an
+ * argon2id string; `expires_at`, `max_downloads` / `download_count` and `revoked_at` decide
+ * whether the link still answers (`410 share_gone` otherwise). `fk_share_ct` is reserved for
+ * the share grant of an encrypted file (plan 6.3): the file key wrapped under the link's
+ * secret; NULL until then.
+ */
+export const shareLinks = pgTable(
+  "vola_share_link",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+    folderId: uuid("folder_id").references(() => folders.id, { onDelete: "cascade" }),
+    /** SHA-256 of the plaintext token (32 random bytes, base64url), lowercase hex. */
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    /** `PUBLIC_LINK` | `TENANT` | `INSTANCE_VIEWERS` | `EMAIL` (ShareScopes); v1: `PUBLIC_LINK`. */
+    scope: varchar("scope", { length: 20 }).notNull().default("PUBLIC_LINK"),
+    /** argon2id encoded hash (`$argon2id$v=19$m=…`); NULL: no password. */
+    passwordHash: text("password_hash"),
+    /** NULL: never expires. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /** NULL: unlimited. Only a request that STARTS a download counts (not HEAD, not a Range continuation). */
+    maxDownloads: integer("max_downloads"),
+    downloadCount: integer("download_count").notNull().default(0),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: createdAt(),
+    /** Soft revoke: the row stays, the link answers `410 share_gone`. */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** Phase 6.3: the file key wrapped under the link secret. NULL until then. */
+    fkShareCt: bytea("fk_share_ct"),
+  },
+  (t) => [
+    index("vola_share_link_tenant_idx").on(t.tenantId),
+    index("vola_share_link_file_idx").on(t.fileId),
+    index("vola_share_link_folder_idx").on(t.folderId),
+    check("vola_share_link_target_check", sql`(${t.fileId} is null) <> (${t.folderId} is null)`),
+    check(
+      "vola_share_link_scope_check",
+      sql`${t.scope} in ('PUBLIC_LINK', 'TENANT', 'INSTANCE_VIEWERS', 'EMAIL')`,
+    ),
+    check(
+      "vola_share_link_max_downloads_check",
+      sql`${t.maxDownloads} is null or ${t.maxDownloads} > 0`,
+    ),
+    check("vola_share_link_download_count_check", sql`${t.downloadCount} >= 0`),
+  ],
+);
+
+/**
+ * A statistics snapshot (plan 5.1): the live files of a tenant (`scope = tenant`) or of one
+ * of its instances (`scope = instance`, `instance_type` + `instance_id` set) — how many, how
+ * many bytes (the sum of `size`, before deduplication), how many of each `kind`, the oldest
+ * and newest `created_at`. Computed lazily on the first read, on `?recompute=1`, and by the
+ * worker's `refresh-stats` job for snapshots older than `VOLA_STATS_TTL_MIN` whose tenant
+ * had activity since. Soft-deleted files are never counted. One row per `(tenant, scope,
+ * instance)`; rows go with the tenant.
+ */
+export const tenantStats = pgTable(
+  "vola_tenant_stats",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** `tenant` | `instance`. */
+    scope: varchar("scope", { length: 10 }).notNull(),
+    instanceType: varchar("instance_type", { length: 100 }),
+    instanceId: uuid("instance_id"),
+    totalFiles: bigint("total_files", { mode: "number" }).notNull().default(0),
+    totalBytes: bigint("total_bytes", { mode: "number" }).notNull().default(0),
+    /** `{ "image": 12, "document": 5 }` — live files per `kind`. */
+    byKind: jsonb("by_kind").$type<Record<string, number>>().notNull().default({}),
+    oldestAt: timestamp("oldest_at", { withTimezone: true }),
+    newestAt: timestamp("newest_at", { withTimezone: true }),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("vola_tenant_stats_tenant_uq").on(t.tenantId).where(sql`${t.scope} = 'tenant'`),
+    uniqueIndex("vola_tenant_stats_instance_uq")
+      .on(t.tenantId, t.instanceType, t.instanceId)
+      .where(sql`${t.scope} = 'instance'`),
+    index("vola_tenant_stats_computed_idx").on(t.computedAt),
+    check("vola_tenant_stats_scope_check", sql`${t.scope} in ('tenant', 'instance')`),
+    check(
+      "vola_tenant_stats_instance_check",
+      sql`(${t.scope} = 'tenant' and ${t.instanceType} is null and ${t.instanceId} is null) or (${t.scope} = 'instance' and ${t.instanceType} is not null and ${t.instanceId} is not null)`,
+    ),
+    check("vola_tenant_stats_totals_check", sql`${t.totalFiles} >= 0 and ${t.totalBytes} >= 0`),
+  ],
+);
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
@@ -338,3 +435,5 @@ export type FolderRow = typeof folders.$inferSelect;
 export type UploadRow = typeof uploads.$inferSelect;
 export type ProcessingJobRow = typeof processingJobs.$inferSelect;
 export type FileMetadataRow = typeof fileMetadata.$inferSelect;
+export type ShareLinkRow = typeof shareLinks.$inferSelect;
+export type TenantStatsRow = typeof tenantStats.$inferSelect;

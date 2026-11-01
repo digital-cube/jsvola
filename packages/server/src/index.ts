@@ -41,10 +41,13 @@ export {
 } from "./db/index.js";
 export type {
   ApiKeyRow,
+  FileMetadataRow,
   FileRow,
   FolderRow,
   ProcessingJobRow,
+  ShareLinkRow,
   TenantRow,
+  TenantStatsRow,
   UploadRow,
 } from "./db/schema.js";
 export * as schema from "./db/schema.js";
@@ -118,6 +121,7 @@ export {
   ProcessingQueue,
   type ProcessingQueueOptions,
   queueConnection,
+  REFRESH_STATS_JOB,
   SWEEP_UPLOADS_JOB,
   THUMBNAIL_JOB,
   type ThumbnailJobData,
@@ -144,6 +148,7 @@ export {
 } from "./lookups.js";
 export {
   installErrorHandling,
+  MIN_STATS_REFRESH_INTERVAL_MS,
   requestId,
   type SubscribeOptions,
   type VolaPluginOptions,
@@ -162,6 +167,20 @@ export {
   type SendFileOptions,
   sendFile,
 } from "./routes/send-file.js";
+export {
+  requestSharePassword,
+  SHARE_CACHE_CONTROL,
+  SHARE_ROBOTS_TAG,
+  type SharePublicRoutesDeps,
+  sharePublicRoutes,
+} from "./routes/share-public.js";
+export {
+  requestOrigin,
+  type ShareRoutesDeps,
+  shareRoutes,
+  shareUrl,
+} from "./routes/shares.js";
+export { type StatsRoutesDeps, statsRoutes } from "./routes/stats.js";
 export {
   noThumbnail,
   THUMBNAIL_PLACEHOLDER_CACHE_CONTROL,
@@ -284,6 +303,63 @@ export {
   type ThumbnailJobParams,
 } from "./services/processing.js";
 export {
+  hashSharePassword,
+  isLimiterRedis,
+  type LimiterOptions,
+  type LimiterRedis,
+  MEMORY_LIMITER_MAX_KEYS,
+  MemorySharePasswordLimiter,
+  type PasswordAttemptState,
+  RedisSharePasswordLimiter,
+  SHARE_ARGON2_OPTIONS,
+  SHARE_PASSWORD_KEY_PREFIX,
+  type SharePasswordLimiter,
+  verifySharePassword,
+} from "./services/share-password.js";
+export {
+  type CreatedShare,
+  type CreateShareInput,
+  consumeDownload,
+  createShare,
+  findShare,
+  generateShareToken,
+  hashShareToken,
+  type ListSharesInput,
+  listSharedFolder,
+  listShares,
+  type ResolveShareInput,
+  relativeToShare,
+  resolveShare,
+  resolveSharedPath,
+  revokeShare,
+  SHARE_LIST_LIMIT,
+  type SharedPathTarget,
+  type SharesDeps,
+  scopeOfFolder,
+  serializeShare,
+  serializeSharedFile,
+  sharedFile,
+  sharedFolder,
+  shareGone,
+  shareNotFound,
+  sharePasswordRequired,
+  startsDownload,
+} from "./services/shares.js";
+export {
+  computeStats,
+  getStats,
+  instanceTarget,
+  type RefreshResult,
+  readStats,
+  refreshStaleStats,
+  type StatsDeps,
+  type StatsTarget,
+  type StorageStatsDeps,
+  type StorageStatsInput,
+  serializeStats,
+  storageStats,
+} from "./services/stats.js";
+export {
   type CreateTenantInput,
   createTenant,
   findTenantBySlug,
@@ -322,12 +398,14 @@ export {
   uploadScope,
 } from "./services/uploads.js";
 export {
+  type AreaUsage,
   assertDerivedName,
   assertHash,
   BlobNotFoundError,
   type BlobStat,
   type ByteSpan,
   DERIVED_NAME_RE,
+  directoryUsage,
   FilesystemBackend,
   FileTooLargeError,
   HASH_RE,
@@ -337,6 +415,8 @@ export {
   type StagedBlob,
   type StorageBackend,
   type StoredBlob,
+  type StoreUsage,
+  walkFiles,
 } from "./storage/index.js";
 export { type FilesCollectionsOptions, filesCollections } from "./udc/collections.js";
 export { decodePageCursor, encodePageCursor, type PageCursor } from "./udc/cursor.js";

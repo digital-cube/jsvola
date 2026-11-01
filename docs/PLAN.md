@@ -53,7 +53,7 @@ standalone. Greške su `{error: {code, message}}`; kodovi su snake_case i stabil
   - `PATCH /vola/files/:type/:id/:fileId` (`{folder_path?, is_public?, is_global_public?, filename?}`), `DELETE …/:fileId` (soft), `DELETE …/:fileId/purge`
   - `POST|GET|PATCH|DELETE /vola/folders/:type/:id/*path`
   - `POST /vola/uploads`, `HEAD|PATCH|DELETE /vola/uploads/:uploadId` (tus 1.0 core semantika, implementirana nativno)
-  - `POST /vola/shares`, `DELETE /vola/shares/:id`, `GET|HEAD /vola/s/:token[/path/*]` (bez auth-a)
+  - `POST|GET /vola/shares`, `GET|DELETE /vola/shares/:id`, `GET|HEAD /vola/s/:token[/path/*]` (bez auth-a; 5.1)
   - `GET|HEAD /vola/public/:fileId`
   - `GET /vola/stats/tenant|storage`, `GET /vola/stats/instance/:type/:id`, `GET /vola/instance-types`, `GET /vola/lookups`
   - `POST /vola/admin/transfer`

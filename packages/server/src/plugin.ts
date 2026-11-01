@@ -21,9 +21,18 @@ import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
 import { lookupRoutes } from "./routes/lookups.js";
 import { publicRoutes } from "./routes/public.js";
+import { sharePublicRoutes } from "./routes/share-public.js";
+import { shareRoutes } from "./routes/shares.js";
+import { statsRoutes } from "./routes/stats.js";
 import { thumbnailRoutes } from "./routes/thumbnails.js";
 import { uploadRoutes } from "./routes/uploads.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
+import {
+  isLimiterRedis,
+  MemorySharePasswordLimiter,
+  RedisSharePasswordLimiter,
+  type SharePasswordLimiter,
+} from "./services/share-password.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 import { filesCollections } from "./udc/collections.js";
 import type { DecorateRow } from "./udc/files-source.js";
@@ -60,6 +69,17 @@ export interface VolaPluginOptions {
   jobs?: ProcessingQueue | false | undefined;
   /** Wall-clock limit of an inline thumbnail rendition in ms (tests). Default 30 s. */
   thumbnailTimeoutMs?: number | undefined;
+  /**
+   * The wrong-password counter of share links. Default: on `redis` when that client can
+   * count (an ioredis client — shared by every server), in memory otherwise (per process).
+   */
+  sharePasswordLimiter?: SharePasswordLimiter | undefined;
+  /**
+   * Period of the worker's statistics refresh in ms; `0` disables scheduling it (tests).
+   * Default: half of `VOLA_STATS_TTL_MIN`, at least 30 s. Only in `async` mode; in `sync`
+   * mode a read recomputes a snapshot older than the TTL instead.
+   */
+  statsRefreshIntervalMs?: number | undefined;
   /**
    * The controlled vocabulary (`GET /lookups`, candidate recording). Default: loaded from
    * `config.lookups` — an absent `lookups.yaml` gives an empty vocabulary, with a warning.
@@ -133,6 +153,8 @@ async function loadLookups(app: FastifyInstance, config: Config): Promise<Lookup
 
 /** Default period of the expired-upload sweep (the same the upload routes use). */
 const DEFAULT_SWEEP_INTERVAL_MS = 15 * 60_000;
+/** The statistics refresh never runs more often than this, whatever the TTL. */
+export const MIN_STATS_REFRESH_INTERVAL_MS = 30_000;
 
 interface Jobs {
   queue: ProcessingQueue;
@@ -275,6 +297,23 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
         .catch((error: unknown) => app.log.warn({ err: error }, "upload sweep not scheduled"));
     });
   }
+  const statsTtlMs = options.config.stats.ttlMin * 60_000;
+  const statsRefreshMs =
+    options.statsRefreshIntervalMs ?? Math.max(MIN_STATS_REFRESH_INTERVAL_MS, statsTtlMs / 2);
+  if (jobs && statsRefreshMs > 0) {
+    const queue = jobs.queue;
+    app.addHook("onReady", async () => {
+      await queue
+        .scheduleStatsRefresh(statsRefreshMs)
+        .catch((error: unknown) => app.log.warn({ err: error }, "stats refresh not scheduled"));
+    });
+  }
+  const uploadsPath = options.uploadsPath ?? join(options.config.storagePath, "uploads");
+  const sharePasswordLimiter =
+    options.sharePasswordLimiter ??
+    (isLimiterRedis(options.redis)
+      ? new RedisSharePasswordLimiter(options.redis, { log: app.log })
+      : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db });
   await app.register(lookupRoutes, { db: options.db, lookups });
@@ -296,7 +335,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   await app.register(uploadRoutes, {
     db: options.db,
     storage,
-    uploadsPath: options.uploadsPath ?? join(options.config.storagePath, "uploads"),
+    uploadsPath,
     maxUploadBytes: options.config.maxUploadBytes,
     uploadTtlHours: options.config.uploadTtlHours,
     sweepIntervalMs,
@@ -309,6 +348,20 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     db: options.db,
     storage,
     accessThrottle: options.accessThrottle,
+  });
+  await app.register(shareRoutes, { db: options.db, publicUrl: options.config.publicUrl });
+  await app.register(sharePublicRoutes, {
+    db: options.db,
+    storage,
+    limiter: sharePasswordLimiter,
+    accessThrottle: options.accessThrottle,
+  });
+  await app.register(statsRoutes, {
+    db: options.db,
+    storage,
+    uploadsPath,
+    // Without a worker nobody refreshes a snapshot: a read past the TTL does it instead.
+    staleAfterMs: jobsMode === "sync" ? statsTtlMs : undefined,
   });
   if (options.udc !== false) {
     const registry =

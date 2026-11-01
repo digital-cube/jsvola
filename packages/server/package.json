@@ -46,6 +46,7 @@
     "@jsudc/server": "0.2.1",
     "@vola/core": "workspace:*",
     "@vola/lookups": "workspace:*",
+    "argon2": "^0.45.1",
     "bullmq": "^6.5.3",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",

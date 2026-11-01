@@ -43,6 +43,13 @@
       "when": 1793555137880,
       "tag": "0005_file_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793556654547,
+      "tag": "0006_shares_stats",
+      "breakpoints": true
     }
   ]
 }

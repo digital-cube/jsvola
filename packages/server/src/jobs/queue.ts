@@ -14,6 +14,8 @@ export const SWEEP_UPLOADS_JOB = "sweep-uploads";
 export const THUMBNAIL_JOB = "thumbnail";
 /** The job name of the OCR pass of one file (plan 4.2). */
 export const OCR_JOB = "ocr";
+/** The job scheduler id and job name of the statistics refresh (plan 5.1). */
+export const REFRESH_STATS_JOB = "refresh-stats";
 /** Base of the exponential backoff between the tries of a job, in ms. */
 export const DEFAULT_BACKOFF_MS = 1000;
 
@@ -123,6 +125,25 @@ export class ProcessingQueue {
   /** Stops the sweep (tests). */
   async unscheduleUploadSweep(): Promise<void> {
     await this.queue.removeJobScheduler(SWEEP_UPLOADS_JOB);
+  }
+
+  /** Keeps the statistics refresh running every `everyMs` (one scheduler, shared by every server). */
+  async scheduleStatsRefresh(everyMs: number): Promise<void> {
+    await this.queue.upsertJobScheduler(
+      REFRESH_STATS_JOB,
+      { every: everyMs },
+      { name: REFRESH_STATS_JOB, data: {}, opts: { removeOnComplete: true, removeOnFail: true } },
+    );
+  }
+
+  /** Stops the statistics refresh (tests). */
+  async unscheduleStatsRefresh(): Promise<void> {
+    await this.queue.removeJobScheduler(REFRESH_STATS_JOB);
+  }
+
+  /** Runs the statistics refresh once, now (tests, an operator's nudge). */
+  async enqueueStatsRefresh(): Promise<void> {
+    await this.queue.add(REFRESH_STATS_JOB, {}, { removeOnComplete: true, removeOnFail: true });
   }
 
   async close(): Promise<void> {

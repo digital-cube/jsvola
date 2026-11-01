@@ -176,7 +176,13 @@ beforeAll(async () => {
   events = new LocalFileEventBus();
   queue = new ProcessingQueue({ redisUrl, prefix, backoffMs: 20 });
   // VOLA_OCR_ENABLED=auto (the default): the server queues OCR jobs, the worker decides.
-  fx = await setupFixture(handle, { storage, events, jobs: queue, uploadSweepIntervalMs: 0 });
+  fx = await setupFixture(handle, {
+    storage,
+    events,
+    jobs: queue,
+    uploadSweepIntervalMs: 0,
+    statsRefreshIntervalMs: 0,
+  });
   app = fx.app;
   await app.ready();
   http = httpClient(app, fx.full.key, TYPE);
