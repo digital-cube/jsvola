@@ -14,6 +14,7 @@ describe("loadConfig", () => {
       prefix: "/vola",
       logLevel: "info",
       maxUploadBytes: 512 * 1024 * 1024,
+      uploadTtlHours: 24,
     });
     expect(isAbsolute(config.storagePath)).toBe(true);
     expect(config.storagePath.endsWith("/var/storage")).toBe(true);
@@ -28,6 +29,7 @@ describe("loadConfig", () => {
       VOLA_LOG_LEVEL: "",
       VOLA_STORAGE_PATH: "/data/storage",
       VOLA_MAX_UPLOAD_BYTES: "1048576",
+      VOLA_UPLOAD_TTL_HOURS: "72",
       UNRELATED: "ignored",
     });
     expect(config.databaseUrl).toBe("postgres://u:p@db:5432/x");
@@ -37,6 +39,7 @@ describe("loadConfig", () => {
     expect(config.logLevel).toBe("info");
     expect(config.storagePath).toBe("/data/storage");
     expect(config.maxUploadBytes).toBe(1_048_576);
+    expect(config.uploadTtlHours).toBe(72);
   });
 
   it("rejects a bad database URL with one clear message", () => {

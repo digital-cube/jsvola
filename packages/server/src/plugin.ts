@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { installAuth } from "./auth.js";
@@ -11,6 +12,7 @@ import { folderRoutes } from "./routes/folders.js";
 import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
 import { publicRoutes } from "./routes/public.js";
+import { uploadRoutes } from "./routes/uploads.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 
@@ -25,6 +27,10 @@ export interface VolaPluginOptions {
   storage?: StorageBackend | undefined;
   /** Throttle of `last_accessed_at` writes (tests); default: one per plugin instance. */
   accessThrottle?: LastUsedThrottle | undefined;
+  /** Directory of resumable-upload part files; default `<config.storagePath>/uploads`. */
+  uploadsPath?: string | undefined;
+  /** Period of the expired-upload sweep in ms; `0` disables it (tests). Default 15 minutes. */
+  uploadSweepIntervalMs?: number | undefined;
   /**
    * Registers more routes INSIDE the plugin, after the built-in ones: they share its prefix,
    * error envelope and auth (`config.scope`, `config.auth`). For a host application's own
@@ -95,6 +101,14 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     storage,
     maxUploadBytes: options.config.maxUploadBytes,
     accessThrottle: options.accessThrottle,
+  });
+  await app.register(uploadRoutes, {
+    db: options.db,
+    storage,
+    uploadsPath: options.uploadsPath ?? join(options.config.storagePath, "uploads"),
+    maxUploadBytes: options.config.maxUploadBytes,
+    uploadTtlHours: options.config.uploadTtlHours,
+    sweepIntervalMs: options.uploadSweepIntervalMs,
   });
   await app.register(folderRoutes, { db: options.db });
   await app.register(publicRoutes, {

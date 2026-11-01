@@ -98,6 +98,43 @@ MIME is detected from the magic bytes (`file-type`), then the extension, then th
 `kind` (`image`, `video`, `audio`, `document`, `spreadsheet`, `presentation`, `archive`, `text`,
 `code`, `other`) follows from it.
 
+### Resumable uploads (tus 1.0)
+
+`/vola/uploads` speaks [tus 1.0](https://tus.io/protocols/resumable-upload) core with the
+`creation`, `termination` and `expiration` extensions, implemented natively (phase 6.3 cuts this
+byte stream into encrypted segments, which no external tus server would allow), so
+[`tus-js-client`](https://github.com/tus/tus-js-client) works unchanged. An upload belongs to the
+tenant: any `files:write` key of it may resume one; another tenant's is `404`. Completion takes
+the SAME path as `POST /vola/files` — hash, dedup, MIME, collision rename, folder, version, slug —
+and the last `PATCH` answers with `Vola-File-Id` (so does every `HEAD` after it).
+
+```js
+import * as tus from "tus-js-client";
+const upload = new tus.Upload(file, {
+  endpoint: "https://…/vola/uploads",
+  headers: { Authorization: `Bearer ${key}`, "X-User-Id": userId },
+  metadata: { instance_type: "tickets", instance_id: ticketId, filename: file.name, filetype: file.type,
+              folder_path: "docs/2026", slug: "contract", metadata: JSON.stringify({ source: "web" }) },
+  chunkSize: 8 * 1024 * 1024,
+  onSuccess: ({ lastResponse }) => console.log("file", lastResponse.getHeader("Vola-File-Id")),
+});
+upload.start();
+```
+
+| route | scope | notes |
+|---|---|---|
+| `OPTIONS /vola/uploads` | — | `Tus-Resumable`, `Tus-Version: 1.0.0`, `Tus-Extension: creation,termination,expiration`, `Tus-Max-Size` (= `VOLA_MAX_UPLOAD_BYTES`) |
+| `POST /vola/uploads` | `files:write` | `Upload-Length` (required; `Upload-Defer-Length` → `400`; over the limit → `413 file_too_large`) + `Upload-Metadata` (tus base64 pairs): `instance_type`, `instance_id`, `filename` required; `folder_path`, `parent_id`, `slug`, `content_type` (or tus's `filetype`), `metadata` (JSON object) optional → `201`, `Location: /vola/uploads/<id>`, `Upload-Expires`; a zero-length upload completes at once |
+| `HEAD /vola/uploads/:id` | `files:write` | `Upload-Offset`, `Upload-Length`, `Upload-Metadata`, `Upload-Expires`, `Cache-Control: no-store`; `Vola-File-Id` once complete; expired → `410 upload_expired` |
+| `PATCH /vola/uploads/:id` | `files:write` | `Content-Type: application/offset+octet-stream`, `Upload-Offset` must equal the server's (`409 upload_offset_mismatch`); the body is appended as it streams and the offset is committed only after `fsync`; a parallel PATCH on the same upload → `409 upload_locked` (`SELECT … FOR UPDATE NOWAIT`); a body past `Upload-Length` → `400 upload_overflow`, undone → `204` with the new `Upload-Offset` (+ `Vola-File-Id` when complete) |
+| `DELETE /vola/uploads/:id` | `files:write` | removes the row and the partial bytes |
+
+Every request but `OPTIONS` must carry `Tus-Resumable: 1.0.0` (`412` with `Tus-Version`
+otherwise). Partial bytes live in `VOLA_STORAGE_PATH/uploads/<id>.part`, as they arrive — no
+assumption about chunk sizes, so 6.3 can cut them into fixed 1 MiB segments. An upload not
+finished within `VOLA_UPLOAD_TTL_HOURS` (24) is swept, part file and row, by a periodic job in
+the server process (every 15 minutes; a BullMQ repeatable job once phase 4.1 brings the worker).
+
 ### Folders, versions, visibility
 
 Folders are virtual: a hierarchy in the database inside one instance (the blob store stays
@@ -134,8 +171,8 @@ and the previous version stays live — a path download answers the newest file 
 **Visibility:** `is_public` lets any authenticated tenant download the file (and read `…/info`)
 by its `(type, id, fileId)` — the vola-spp rule; everything else stays the owner's.
 `is_global_public` opens `GET|HEAD /vola/public/:fileId` to anyone, without a key; an encrypted
-file can never get it (`409 encrypted_not_public`). Resumable uploads, thumbnails, shares and
-encryption come with the later tickets of `docs/PLAN.md`.
+file can never get it (`409 encrypted_not_public`). Thumbnails, shares and encryption come with
+the later tickets of `docs/PLAN.md`.
 
 ## Container
 

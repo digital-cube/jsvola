@@ -32,7 +32,7 @@ export {
   MIGRATIONS_FOLDER,
   runMigrations,
 } from "./db/index.js";
-export type { ApiKeyRow, FileRow, FolderRow, TenantRow } from "./db/schema.js";
+export type { ApiKeyRow, FileRow, FolderRow, TenantRow, UploadRow } from "./db/schema.js";
 export * as schema from "./db/schema.js";
 export { uuidv7 } from "./db/uuid.js";
 export { codeForStatus, STATUS_CODES, VolaError } from "./errors.js";
@@ -77,6 +77,7 @@ export {
   type SendFileOptions,
   sendFile,
 } from "./routes/send-file.js";
+export { type UploadRoutesDeps, uploadRoutes } from "./routes/uploads.js";
 export {
   type AuthenticatedKey,
   authenticateApiKey,
@@ -155,6 +156,21 @@ export {
   titleCase,
 } from "./services/tenants.js";
 export {
+  type AppendInput,
+  type AppendResult,
+  appendUpload,
+  type CreatedUpload,
+  type CreateUploadInput,
+  createUpload,
+  deleteUpload,
+  findUpload,
+  type SweepResult,
+  sweepExpiredUploads,
+  type UploadsDeps,
+  uploadNotFound,
+  uploadScope,
+} from "./services/uploads.js";
+export {
   assertDerivedName,
   assertHash,
   BlobNotFoundError,
@@ -171,3 +187,8 @@ export {
   type StorageBackend,
   type StoredBlob,
 } from "./storage/index.js";
+export {
+  type AppendResult as PartAppendResult,
+  PartOverflowError,
+  PartStore,
+} from "./uploads/part-store.js";

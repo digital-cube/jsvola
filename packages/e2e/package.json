@@ -14,6 +14,7 @@
     "@vola/server": "workspace:*"
   },
   "devDependencies": {
-    "drizzle-orm": "^0.45.4"
+    "drizzle-orm": "^0.45.4",
+    "tus-js-client": "^4.3.1"
   }
 }

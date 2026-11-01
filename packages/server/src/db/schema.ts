@@ -189,7 +189,60 @@ export const files = pgTable(
   ],
 );
 
+/**
+ * A resumable upload in flight (tus 1.0 core: `POST|HEAD|PATCH|DELETE /uploads`). The bytes
+ * received so far sit in `<storage>/uploads/<id>.part`; `offset` is how many of them are
+ * durable (committed only after `fsync`). When `offset` reaches `length` the part file goes
+ * through the same `finalizeUpload` as a plain `POST /files` and `completed_file_id` points at
+ * the row it became. An upload belongs to the TENANT (any `files:write` key of it may resume
+ * it); `api_key_id` only records which key created it. Rows past `expires_at` are swept with
+ * their part files. `encryption` / `enc_state` are declared for phase 6.3 and NULL until then.
+ */
+export const uploads = pgTable(
+  "vola_upload",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
+    instanceType: varchar("instance_type", { length: 100 }).notNull(),
+    instanceId: uuid("instance_id").notNull(),
+    /** Normalised folder path given at creation; resolved (created when missing) at completion. */
+    folderPath: text("folder_path"),
+    folderId: uuid("folder_id").references(() => folders.id, { onDelete: "set null" }),
+    /** The version this upload supersedes. */
+    parentId: uuid("parent_id").references(() => files.id, { onDelete: "set null" }),
+    slug: varchar("slug", { length: 100 }),
+    filename: varchar("filename", { length: 255 }).notNull(),
+    declaredMime: varchar("declared_mime", { length: 255 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    /** `Upload-Length`: known at creation (`Upload-Defer-Length` is not supported). */
+    length: bigint("length", { mode: "number" }).notNull(),
+    /** Bytes durably on disk. */
+    offset: bigint("offset", { mode: "number" }).notNull().default(0),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    completedFileId: uuid("completed_file_id").references(() => files.id, {
+      onDelete: "set null",
+    }),
+    /** Phase 6.3: `none` | `tenant` | `keyring` | `caller`; NULL until then. */
+    encryption: varchar("encryption", { length: 16 }),
+    /** Phase 6.3: segment cipher state (`fk_ct`, `nonce_prefix`, `segment_size`, `next_index`). */
+    encState: jsonb("enc_state").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    index("vola_upload_tenant_idx").on(t.tenantId),
+    index("vola_upload_expires_idx").on(t.expiresAt),
+    check("vola_upload_instance_type_check", sql`${t.instanceType} ~ '^[a-z][a-z0-9_]*$'`),
+    check("vola_upload_length_check", sql`${t.length} >= 0`),
+    check("vola_upload_offset_check", sql`${t.offset} >= 0 and ${t.offset} <= ${t.length}`),
+  ],
+);
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type FileRow = typeof files.$inferSelect;
 export type FolderRow = typeof folders.$inferSelect;
+export type UploadRow = typeof uploads.$inferSelect;

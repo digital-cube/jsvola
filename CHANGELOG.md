@@ -9,6 +9,21 @@ share one version.
 
 ### Added
 
+- Resumable uploads (`vola_upload`, migration `0003_uploads`): `OPTIONS|POST /uploads`,
+  `HEAD|PATCH|DELETE /uploads/:id` speaking tus 1.0 core + `creation`, `termination`,
+  `expiration`, implemented natively in `@vola/server` (no `@tus/server`) so `tus-js-client`
+  works unchanged — verified by an e2e test that uses it. `Upload-Metadata` carries
+  `instance_type`, `instance_id`, `filename` (required), `folder_path`, `parent_id`, `slug`,
+  `content_type`/`filetype`, `metadata`; `Upload-Length` is required (`Upload-Defer-Length` →
+  `400`, over `VOLA_MAX_UPLOAD_BYTES` → `413`). Partial bytes go to
+  `VOLA_STORAGE_PATH/uploads/<id>.part` as they stream, the offset is committed only after
+  `fsync`, a parallel PATCH is `409 upload_locked` (`FOR UPDATE NOWAIT`), a wrong offset
+  `409 upload_offset_mismatch`, a client cut mid-body keeps what arrived. Completion goes
+  through the same `finalizeUpload` as `POST /files` (hash, dedup, MIME, rename, folder,
+  version, slug); the last PATCH and every later HEAD carry `Vola-File-Id`. An upload belongs to
+  the tenant, not the key. `VOLA_UPLOAD_TTL_HOURS` (24): expired uploads are swept by a periodic
+  job in the server process. `@vola/core` gains the tus header names and the `Upload-Metadata`
+  codec (`encodeTusMetadata` / `decodeTusMetadata`).
 - Folders, versions and visibility (`vola_folder`, migration `0002_folders`): virtual folders
   inside an instance (`POST|GET|PATCH|DELETE /folders/:type/:id/*path` — chain auto-create,
   one-level listing, rename and move with every descendant path rewritten in one

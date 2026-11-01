@@ -25,6 +25,12 @@ const ConfigSchema = z.object({
     .int()
     .min(1)
     .default(512 * 1024 * 1024),
+  VOLA_UPLOAD_TTL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 365)
+    .default(24),
   VOLA_LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
@@ -45,6 +51,8 @@ export interface Config {
   storagePath: string;
   /** Largest file one upload may carry; bigger → `413 file_too_large`. Default 512 MiB. */
   maxUploadBytes: number;
+  /** Hours a resumable upload may sit unfinished before it is swept. Default 24. */
+  uploadTtlHours: number;
   logLevel: LogLevel;
 }
 
@@ -76,6 +84,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     prefix: c.VOLA_PREFIX.replace(/\/+$/, ""),
     storagePath: resolve(c.VOLA_STORAGE_PATH),
     maxUploadBytes: c.VOLA_MAX_UPLOAD_BYTES,
+    uploadTtlHours: c.VOLA_UPLOAD_TTL_HOURS,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }
