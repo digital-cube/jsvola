@@ -14,11 +14,15 @@ RUN corepack enable
 WORKDIR /src
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm turbo run build --filter=@vola/server... --filter=@vola/cli...
+# …and the examples site (apps/examples, a Vite build) the server serves at / and /en/
+# (VOLA_UI_DIR=/app/ui), with its demo pack for `vola demo-seed` (/app/demo-assets).
+RUN pnpm turbo run build --filter=@vola/server... --filter=@vola/cli... --filter=@vola/examples
 # Standalone copies of @vola/server and @vola/cli with their production dependencies; the
 # workspace packages they use (@vola/core, …) are copied in, not symlinked.
 RUN pnpm --config.inject-workspace-packages=true --filter @vola/server deploy --prod /out/app \
  && pnpm --config.inject-workspace-packages=true --filter @vola/cli deploy --prod /out/cli \
+ && cp -r apps/examples/dist /out/app/ui \
+ && cp -r apps/examples/assets /out/app/demo-assets \
  && printf '#!/bin/sh\nexec node /opt/vola-cli/dist/main.js "$@"\n' > /out/vola \
  && chmod 755 /out/vola
 
@@ -47,7 +51,9 @@ ENV NODE_ENV=production \
     VOLA_STORAGE_PATH=/data/storage \
     VOLA_LOOKUPS_PATH=/app/config/lookups.yaml \
     VOLA_MENU_PATH=/app/config/menu.yaml \
-    VOLA_CANDIDATES_DIR=/data/candidates
+    VOLA_CANDIDATES_DIR=/data/candidates \
+    VOLA_UI_DIR=/app/ui \
+    VOLA_DEMO_ASSETS=/app/demo-assets
 WORKDIR /app
 COPY --from=build --chown=node:node /out/app /app
 # The vocabulary, its translations and the examples menu (mount your own over /app/config).
@@ -65,4 +71,6 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
   CMD ["vola-healthcheck"]
 # Applies pending migrations, then listens; SIGTERM closes connections and exits.
 # The worker process of the same image: `node dist/worker.js` (needs VOLA_REDIS_URL).
+# The examples site (apps/examples) is served at / with VOLA_EXAMPLES=true and the two demo
+# keys (docs/EXAMPLES-SITE.md); `vola demo-seed` fills its demo instance.
 CMD ["node", "dist/server.js"]

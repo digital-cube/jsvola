@@ -24,8 +24,11 @@ import {
   createFileEventBus,
   createTenant,
   type DatabaseHandle,
+  DEFAULT_DEMO_INSTANCE_ID,
+  DEFAULT_DEMO_INSTANCE_TYPE,
   DEFAULT_LOOKUPS_PATH,
   findApiKey,
+  generateApiKey,
   generateKeyLine,
   getTenantBySlug,
   initLookups,
@@ -47,6 +50,7 @@ import {
 } from "@vola/server";
 import { Command, InvalidArgumentError, Option } from "commander";
 import { eq } from "drizzle-orm";
+import { seedDemo } from "./seed.js";
 
 export const CLI_VERSION = "1.0.0";
 
@@ -269,6 +273,8 @@ Examples:
   $ vola keys-status
   $ vola pepper-generate
   $ vola pepper-status
+  $ vola demo-keys                                   # a key pair for the examples site's .env
+  $ vola demo-seed --url http://localhost:8300/vola --assets apps/examples/assets
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --instance tickets:9e2f… --dry-run
   $ vola transfer --from acme --to beta --instance tickets:5c1b… --user-map users.json
   $ vola lookups validate
@@ -282,6 +288,8 @@ Environment:
   VOLA_KEY_FILE         the tenant encryption key file (default /run/secrets/vola.key); keys-generate / keys-status / transfer
   VOLA_PEPPER_FILE      the keyring (PIN) pepper file (default /run/secrets/vola.pepper); pepper-generate / pepper-status
   VOLA_LOOKUPS_PATH     lookups.yaml the vocabulary commands work on (default: the repository's)
+  VOLA_URL, VOLA_DEMO_WRITE_KEY, VOLA_DEMO_ASSETS, VOLA_DEMO_INSTANCE_TYPE, VOLA_DEMO_INSTANCE_ID
+                        demo-seed: where the server is, the write key, the pack and the demo instance
 
 Scopes: ${SCOPES.join(", ")}`,
     );
@@ -541,6 +549,70 @@ still depend on each; a keyring moves to the active line at its next unlock).`,
             ...plaintextLines(key),
           ]);
         });
+      },
+    );
+
+  // --- the examples site (plan 8.1) ---------------------------------------------------------
+
+  program
+    .command("demo-keys")
+    .description(
+      "print a fresh pair of keys for the examples site's .env (VOLA_DEMO_API_KEY, VOLA_DEMO_WRITE_KEY); nothing is stored — the server stores them at its next start",
+    )
+    .addOption(new Option("--env <env>", "live or test").default("live").argParser(envArgument))
+    .action((opts: { env: "live" | "test" }) => {
+      const read = generateApiKey(opts.env).key;
+      const write = generateApiKey(opts.env).key;
+      print({ VOLA_DEMO_API_KEY: read, VOLA_DEMO_WRITE_KEY: write }, [
+        "# the examples site (VOLA_EXAMPLES=true): paste into the stage .env",
+        `VOLA_DEMO_API_KEY=${read}`,
+        `VOLA_DEMO_WRITE_KEY=${write}`,
+      ]);
+    });
+
+  program
+    .command("demo-seed")
+    .description(
+      "upload the examples site's demo pack (assets/manifest.json) into the demo instance over HTTP; an upsert per slug, so it may run at every start",
+    )
+    .option("--url <base>", "the API base URL (default VOLA_URL, else http://localhost:8300/vola)")
+    .option("--key <key>", "a write key of the demo tenant (default VOLA_DEMO_WRITE_KEY)")
+    .option(
+      "--assets <dir>",
+      "the directory with manifest.json (default VOLA_DEMO_ASSETS, else /app/demo-assets)",
+    )
+    .option("--instance-type <type>", "default VOLA_DEMO_INSTANCE_TYPE, else demo")
+    .option("--instance-id <uuid>", "default VOLA_DEMO_INSTANCE_ID, else the fixed demo id")
+    .option("--wait <seconds>", "how long to wait for the server to be ready", "120")
+    .action(
+      async (opts: {
+        url?: string;
+        key?: string;
+        assets?: string;
+        instanceType?: string;
+        instanceId?: string;
+        wait: string;
+      }) => {
+        const e = env();
+        const key = opts.key ?? e.VOLA_DEMO_WRITE_KEY;
+        if (!key) {
+          throw new VolaError(
+            "validation_error",
+            422,
+            "a write key is required: --key or VOLA_DEMO_WRITE_KEY",
+          );
+        }
+        const result = await seedDemo({
+          url: opts.url ?? e.VOLA_URL ?? "http://localhost:8300/vola",
+          key,
+          assets: opts.assets ?? e.VOLA_DEMO_ASSETS ?? "/app/demo-assets",
+          instanceType:
+            opts.instanceType ?? e.VOLA_DEMO_INSTANCE_TYPE ?? DEFAULT_DEMO_INSTANCE_TYPE,
+          instanceId: opts.instanceId ?? e.VOLA_DEMO_INSTANCE_ID ?? DEFAULT_DEMO_INSTANCE_ID,
+          waitS: Number(opts.wait),
+          log: json() ? undefined : io.out,
+        });
+        if (json()) io.out(JSON.stringify(result));
       },
     );
 

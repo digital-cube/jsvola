@@ -2,6 +2,9 @@ packages:
   - "packages/*"
   - "apps/*"
 
-# Dependencies whose install scripts may run (pnpm refuses the rest).
+# Dependencies whose install scripts may run (pnpm refuses the rest). argon2 and
+# msgpackr-extract ship prebuilt binaries and need no script: reviewed, denied.
 allowBuilds:
   esbuild: true
+  argon2: false
+  msgpackr-extract: false

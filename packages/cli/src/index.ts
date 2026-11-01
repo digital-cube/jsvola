@@ -12,3 +12,11 @@ export {
   runCli,
   transferLines,
 } from "./program.js";
+export {
+  readManifest,
+  type SeedEntry,
+  type SeedManifest,
+  type SeedOptions,
+  type SeedResult,
+  seedDemo,
+} from "./seed.js";

@@ -191,6 +191,32 @@ export class FilesystemBackend implements StorageBackend {
     return removed;
   }
 
+  async removeDerived(hash: string, name?: string): Promise<number> {
+    const path = this.blobPath(hash);
+    if (name !== undefined) {
+      try {
+        await unlink(this.derivedPath(hash, name));
+        return 1;
+      } catch (error) {
+        if (errno(error) !== "ENOENT") throw error;
+        return 0;
+      }
+    }
+    let siblings: string[] = [];
+    try {
+      siblings = await readdir(dirname(path));
+    } catch (error) {
+      if (errno(error) !== "ENOENT") throw error;
+    }
+    let removed = 0;
+    for (const entry of siblings) {
+      if (!entry.startsWith(`${hash}.`)) continue;
+      await rm(join(dirname(path), entry), { force: true });
+      removed++;
+    }
+    return removed;
+  }
+
   async putDerived(hash: string, name: string, data: Buffer | Readable): Promise<string> {
     const target = this.derivedPath(hash, name);
     if (!(await this.exists(hash))) throw new BlobNotFoundError(hash);

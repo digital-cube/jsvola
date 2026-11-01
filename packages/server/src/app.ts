@@ -1,9 +1,15 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions, LogController } from "fastify";
 import { installErrorHandling, requestId, type VolaPluginOptions, volaPlugin } from "./plugin.js";
+import { installUi } from "./ui.js";
 
 export interface BuildAppOptions extends VolaPluginOptions {
   /** pino options, `false` to silence, `true` for defaults. Default: `config.logLevel` with `LOG_REDACT`. */
   logger?: FastifyServerOptions["logger"];
+  /**
+   * A built single-page app to serve at `/` and `/en/` (the examples site). Default:
+   * `config.uiDir` (`VOLA_UI_DIR`); `false`: the API only, whatever the config.
+   */
+  ui?: string | false | undefined;
 }
 
 /** The request headers a log line must never carry whole. */
@@ -45,13 +51,17 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
       : typeof logger === "object" && logger !== null && !("child" in logger)
         ? { redact: [...LOG_REDACT], ...logger }
         : logger;
+  const { ui: uiOption, ...rest } = plugin;
+  const ui = uiOption === undefined ? options.config.uiDir : uiOption || null;
   const app = Fastify({
     logger: loggerOptions,
     requestIdHeader: false,
     genReqId: (request) => requestId(request.headers["x-request-id"]),
     logController: new LogController({ requestIdLogLabel: "request_id" }),
+    trustProxy: options.config.trustProxy,
   });
-  installErrorHandling(app);
-  await app.register(volaPlugin, { ...plugin, prefix: options.config.prefix });
+  installErrorHandling(app, { notFound: !ui });
+  await app.register(volaPlugin, { ...rest, prefix: options.config.prefix });
+  if (ui) await installUi(app, { root: ui, apiPrefix: options.config.prefix });
   return app;
 }

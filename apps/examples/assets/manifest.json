@@ -1,0 +1,79 @@
+{
+  "$comment": "The demo pack `vola demo-seed` uploads into the demo instance (apps/examples/ASSETS.md). `slug` makes every run an upsert; `folder` is the folder path; `encryption` is passed as X-Vola-Encryption; `public` marks the file is_global_public (the Range & streaming page plays it anonymously).",
+  "files": [
+    {
+      "path": "images/aurora.jpg",
+      "slug": "aurora",
+      "folder": "images",
+      "mime": "image/jpeg",
+      "title": "Aurora (landscape, JPEG)"
+    },
+    {
+      "path": "images/geometry.png",
+      "slug": "geometry",
+      "folder": "images",
+      "mime": "image/png",
+      "title": "Geometry (square, PNG)"
+    },
+    {
+      "path": "images/portrait.webp",
+      "slug": "portrait",
+      "folder": "images",
+      "mime": "image/webp",
+      "title": "Portrait (tall, WebP; the attention crop finds the face)"
+    },
+    {
+      "path": "images/grid.png",
+      "slug": "grid",
+      "folder": "images",
+      "mime": "image/png",
+      "title": "Labelled grid (shows what each crop keeps)"
+    },
+    {
+      "path": "documents/ocr-sample.pdf",
+      "slug": "ocr-sample",
+      "folder": "documents",
+      "mime": "application/pdf",
+      "title": "OCR sample (one page of text)"
+    },
+    {
+      "path": "documents/notes.txt",
+      "slug": "notes",
+      "folder": "documents",
+      "mime": "text/plain",
+      "title": "Plain text (no thumbnail)"
+    },
+    {
+      "path": "media/clip.mp4",
+      "slug": "clip",
+      "folder": "media",
+      "mime": "video/mp4",
+      "public": true,
+      "title": "Test pattern clip (8 s, H.264 + AAC)"
+    },
+    {
+      "path": "media/tone.mp3",
+      "slug": "tone",
+      "folder": "media",
+      "mime": "audio/mpeg",
+      "public": true,
+      "title": "Three tones (12 s, MP3)"
+    },
+    {
+      "path": "encrypted/vault-poster.png",
+      "slug": "vault-poster",
+      "folder": "encrypted",
+      "mime": "image/png",
+      "encryption": "tenant",
+      "title": "Poster stored encrypted at rest (tenant)"
+    },
+    {
+      "path": "encrypted/confidential.pdf",
+      "slug": "confidential",
+      "folder": "encrypted",
+      "mime": "application/pdf",
+      "encryption": "tenant",
+      "title": "PDF stored encrypted at rest (tenant)"
+    }
+  ]
+}

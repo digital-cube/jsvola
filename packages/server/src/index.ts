@@ -42,6 +42,12 @@ export {
 export {
   type Config,
   ConfigError,
+  DEFAULT_DEMO_INSTANCE_ID,
+  DEFAULT_DEMO_INSTANCE_TYPE,
+  DEFAULT_DEMO_MAX_BYTES,
+  DEFAULT_DEMO_RATE_LIMIT,
+  DEFAULT_DEMO_TENANT,
+  type ExamplesConfig,
   type LogLevel,
   loadConfig,
   type MementoConfig,
@@ -96,6 +102,34 @@ export {
   RedisFileEventBus,
   type RedisFileEventBusOptions,
 } from "./events/bus.js";
+export {
+  DEMO_READ_SCOPES,
+  DEMO_WRITE_SCOPES,
+  DemoSetupError,
+  type DemoTenant,
+  ensureDemoTenant,
+  SEEDER_USER,
+} from "./examples/demo.js";
+export { RateLimiter } from "./examples/limiter.js";
+export {
+  bareMime,
+  DEMO_MIME_TYPES,
+  DEMO_USER_RE,
+  type DemoAction,
+  type DemoScope,
+  demoAction,
+  isCountedWrite,
+  mimeAllowed,
+} from "./examples/policy.js";
+export { type DemoPurgeDeps, type DemoPurgeResult, purgeDemo } from "./examples/purge.js";
+export {
+  DEMO_RATE_WINDOW_MS,
+  type ExamplesConfigResponse,
+  type ExamplesRoutesDeps,
+  examplesRoutes,
+  MULTIPART_SLACK_BYTES,
+  WRITE_PATH,
+} from "./examples/routes.js";
 export {
   type ByteRange,
   contentRange,
@@ -619,6 +653,7 @@ export {
   type Subscription,
 } from "./udc/subscribable.js";
 export { selectSubprotocol, subscribeRoutes } from "./udc/subscribe-route.js";
+export { installUi, type UiOptions } from "./ui.js";
 export {
   type AppendResult as PartAppendResult,
   PartOverflowError,

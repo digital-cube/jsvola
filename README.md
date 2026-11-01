@@ -18,6 +18,7 @@ and as one Docker image.
 | `@vola/client` | fetch-based SDK |
 | `@vola/react` | React 19 components and hooks |
 | `packages/e2e` | end-to-end tests against the built server (private) |
+| `apps/examples` | the examples site: one page per capability over a demo instance, served by the server at `/` ([docs/EXAMPLES-SITE.md](docs/EXAMPLES-SITE.md)) |
 
 ## Quick start
 
@@ -597,6 +598,25 @@ ws.onopen = () =>
 ws.onmessage = (e) => console.log(JSON.parse(e.data)); // udc.welcome, udc.subscribe.ok, udc.row.upsert …
 ```
 
+## The examples site
+
+`apps/examples` is a public site that shows every capability above, one page per
+capability — Browse, Upload, Thumbnails, Range & streaming, Share, Encrypted files, API —
+over a demo instance, with a **read-only key the server hands every visitor**
+(`GET /vola/examples/config`, with `VOLA_EXAMPLES=true`) and a **write proxy**
+(`/vola/examples/write/<route>`) through which the server makes a visitor's writes under its
+own key, within limits (5 MiB, images / PDF / short media / text, 60 writes per ten minutes
+per address, purged after 24 h). The server serves the built site itself (`VOLA_UI_DIR`; the
+image at `/`), the compose `demo` profile seeds the demo pack (`vola demo-seed`). Design,
+configuration and the stage deploy: [docs/EXAMPLES-SITE.md](docs/EXAMPLES-SITE.md); the
+app: [apps/examples/README.md](apps/examples/README.md).
+
+```sh
+pnpm vola demo-keys                                        # VOLA_DEMO_API_KEY / VOLA_DEMO_WRITE_KEY for .env
+docker compose -f docker-compose.yaml --profile demo up -d --build
+open http://localhost:8300/
+```
+
 ## Container
 
 ```sh
@@ -604,6 +624,7 @@ docker compose -f docker-compose.yaml up -d --build
 curl localhost:8300/vola/health/live    # {"status":"ok"}
 curl localhost:8300/vola/health/ready   # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
 docker compose -f docker-compose.yaml logs vola-worker   # "vola worker ready"
+curl -sI localhost:8300/ | head -1      # the examples site (VOLA_UI_DIR=/app/ui)
 ```
 
 Configuration is environment only, every variable prefixed `VOLA_` — see `.env.example`. The
@@ -612,8 +633,10 @@ it) and records lookup candidates under `/data/candidates`. The stack runs two c
 the image: `vola` (`node dist/server.js`, applies migrations, listens) and `vola-worker`
 (`node dist/worker.js`, consumes the BullMQ queue); both mount the same `/data` volume, since
 thumbnails are written next to the blobs. The image ships `libvips`, `poppler-utils`
-(`pdftoppm`) and `tesseract-ocr` (`eng`, `srp`, `deu`) for the worker. Locally: `pnpm dev` and
-`pnpm dev:worker`.
+(`pdftoppm`) and `tesseract-ocr` (`eng`, `srp`, `deu`) for the worker, the built examples site
+under `/app/ui` and its demo pack under `/app/demo-assets`. The key file and the pepper file are
+read from `VOLA_SECRETS_DIR` (default `./secrets`, mounted read-only at `/run/secrets/vola`);
+the `demo` profile adds the `seeder`. Locally: `pnpm dev` and `pnpm dev:worker`.
 
 ## License
 

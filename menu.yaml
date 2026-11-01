@@ -3,7 +3,8 @@
 # Served by @vola/server as the `menu` UDC collection (source `yaml_menu` of @jsudc/server,
 # POST /vola/udc/list {collection: "menu"}), read again whenever the file changes. Path:
 # VOLA_MENU_PATH; default: menu.yaml at the repository root (the Docker image:
-# /app/config/menu.yaml). Without the file there is no `menu` collection.
+# /app/config/menu.yaml). Without the file there is no `menu` collection, and the site draws
+# its built-in copy of this list (apps/examples/src/shell/menu.ts — keep the two the same).
 #
 # Keys of a node:
 #   code             unique among its siblings; letters, digits, _ . -
@@ -12,7 +13,39 @@
 #   url              a route of the site; a node with a url is a link
 #   children         a list of nodes, or "udc:collections": every collection vola serves
 
-- code: FILES
-  translation_key: MENU_FILES
-  icon: lucide:files
-  url: /examples/files
+- code: EXAMPLES
+  translation_key: MENU_EXAMPLES
+  icon: lucide:layout-dashboard
+  children:
+    - code: BROWSE
+      translation_key: MENU_BROWSE
+      icon: lucide:folder-open
+      url: /examples/browse
+    - code: UPLOAD
+      translation_key: MENU_UPLOAD
+      icon: lucide:plane
+      url: /examples/upload
+    - code: THUMBNAILS
+      translation_key: MENU_THUMBNAILS
+      icon: lucide:layout-grid
+      url: /examples/thumbnails
+    - code: STREAMING
+      translation_key: MENU_STREAMING
+      icon: lucide:activity
+      url: /examples/streaming
+    - code: SHARE
+      translation_key: MENU_SHARE
+      icon: lucide:globe
+      url: /examples/share
+    - code: ENCRYPTED
+      translation_key: MENU_ENCRYPTED
+      icon: lucide:building-2
+      url: /examples/encrypted
+    - code: API
+      translation_key: MENU_API
+      icon: lucide:book-open
+      url: /examples/api
+- code: COLLECTIONS
+  translation_key: MENU_COLLECTIONS
+  icon: lucide:layers
+  children: "udc:collections"

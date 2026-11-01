@@ -1,27 +1,26 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { generateKeyLine, loadConfig } from "@vola/server";
+import { generateApiKey, generateKeyLine, loadConfig } from "@vola/server";
 import { Redis } from "ioredis";
 import type { TestProject } from "vitest/node";
+import { spawnProcess, startServer, stop, UI_DIR, WORKER_ENTRY } from "./spawn.js";
 
 /**
  * Brings up the server the E2E suite talks to and hands it the base URL.
  *
  * - `VOLA_E2E_URL` set (e.g. `http://localhost:8300/vola`, the docker-compose stack):
- *   nothing is started, the suite talks to that server.
+ *   nothing is started, the suite talks to that server. With `VOLA_DEMO_API_KEY` and
+ *   `VOLA_DEMO_WRITE_KEY` in the environment the examples suite uses those keys.
  * - otherwise the built server (`packages/server/dist/server.js`) is started on a free port
- *   against the test database (`VOLA_DATABASE_URL_TEST`) and `VOLA_REDIS_URL` — and, with
- *   Redis, the built worker (`dist/worker.js`) next to it on a private queue prefix, so the
- *   thumbnail suite exercises the real two-process path.
+ *   against the test database (`VOLA_DATABASE_URL_TEST`) and `VOLA_REDIS_URL` — with the
+ *   examples on (two fresh demo keys, the built site of `apps/examples/dist` at `/` when it
+ *   exists) — and, with Redis, the built worker (`dist/worker.js`) next to it on a private
+ *   queue prefix, so the thumbnail suite exercises the real two-process path.
  */
-
-const SERVER_ENTRY = fileURLToPath(new URL("../../server/dist/server.js", import.meta.url));
-const WORKER_ENTRY = fileURLToPath(new URL("../../server/dist/worker.js", import.meta.url));
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -31,98 +30,13 @@ declare module "vitest" {
     worker: boolean;
     /** The blob store of the suite's own server (`null` for an external `VOLA_E2E_URL`). */
     storagePath: string | null;
+    /** The examples site's keys (`null`: the external server was not given any). */
+    examples: { apiKey: string; writeKey: string } | null;
+    /** `true` when the server serves the built site at `/`. */
+    ui: boolean;
+    /** The environment the suite's own server was started with (a second server for the gating test). */
+    serverEnv: Record<string, string> | null;
   }
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const address = probe.address();
-      probe.close(() => resolve(typeof address === "object" && address ? address.port : 0));
-    });
-  });
-}
-
-async function waitLive(base: string, child: ChildProcess, output: string[]): Promise<void> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`server exited with ${child.exitCode}:\n${output.join("")}`);
-    }
-    try {
-      const response = await fetch(`${base}/health/live`);
-      if (response.ok) return;
-    } catch {
-      // not listening yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`server at ${base} not live after 30 s:\n${output.join("")}`);
-}
-
-interface StackEnv {
-  databaseUrl: string;
-  redisUrl: string | null;
-  storagePath: string;
-  /** Private BullMQ prefix of this run (server and worker share it). */
-  queuePrefix: string;
-  /** The tenant-encryption key file of this run (`VOLA_KEY_FILE`), one fresh line. */
-  keyFile: string;
-  /** The keyring pepper file of this run (`VOLA_PEPPER_FILE`), one fresh line. */
-  pepperFile: string;
-}
-
-function spawnProcess(entry: string, env: StackEnv, extra: Record<string, string>) {
-  const output: string[] = [];
-  const child = spawn(process.execPath, [entry], {
-    env: {
-      ...process.env,
-      VOLA_DATABASE_URL: env.databaseUrl,
-      ...(env.redisUrl ? { VOLA_REDIS_URL: env.redisUrl } : {}),
-      VOLA_STORAGE_PATH: env.storagePath,
-      VOLA_QUEUE_PREFIX: env.queuePrefix,
-      VOLA_KEY_FILE: env.keyFile,
-      VOLA_PEPPER_FILE: env.pepperFile,
-      VOLA_LOG_LEVEL: process.env.VOLA_E2E_LOG_LEVEL ?? "warn",
-      ...extra,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  for (const stream of [child.stdout, child.stderr]) {
-    stream?.on("data", (chunk: Buffer) => {
-      output.push(String(chunk));
-      if (process.env.VOLA_E2E_LOG_LEVEL) process.stderr.write(chunk);
-    });
-  }
-  return { child, output };
-}
-
-async function startServer(env: StackEnv): Promise<[string, ChildProcess]> {
-  const port = await freePort();
-  const { child, output } = spawnProcess(SERVER_ENTRY, env, {
-    VOLA_HOST: "127.0.0.1",
-    VOLA_PORT: String(port),
-  });
-  const base = `http://127.0.0.1:${port}/vola`;
-  await waitLive(base, child, output);
-  return [base, child];
-}
-
-/** The worker (only with Redis): `node dist/worker.js`, the same build as the server. */
-function startWorker(env: StackEnv): ChildProcess | null {
-  if (!env.redisUrl) return null;
-  const { child } = spawnProcess(WORKER_ENTRY, env, {});
-  return child;
-}
-
-function stop(child: ChildProcess | null): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (!child || child.exitCode !== null) return resolve();
-    child.once("exit", () => resolve());
-    child.kill("SIGTERM");
-  });
 }
 
 export default async function setup({ provide }: TestProject) {
@@ -136,6 +50,11 @@ export default async function setup({ provide }: TestProject) {
     provide("server", base);
     provide("worker", false);
     provide("storagePath", null);
+    const apiKey = process.env.VOLA_DEMO_API_KEY;
+    const writeKey = process.env.VOLA_DEMO_WRITE_KEY;
+    provide("examples", apiKey && writeKey ? { apiKey, writeKey } : null);
+    provide("ui", process.env.VOLA_E2E_UI !== "false");
+    provide("serverEnv", null);
     return;
   }
 
@@ -146,31 +65,48 @@ export default async function setup({ provide }: TestProject) {
   await writeFile(keyFile, `${generateKeyLine()}\n`, { mode: 0o600 });
   const pepperFile = join(storagePath, "vola.pepper");
   await writeFile(pepperFile, `${generateKeyLine()}\n`, { mode: 0o600 });
-  const env: StackEnv = {
-    databaseUrl: config.testDatabaseUrl,
-    redisUrl: config.redisUrl,
-    storagePath,
-    queuePrefix: `vola-e2e-${randomUUID().slice(0, 8)}`,
-    keyFile,
-    pepperFile,
+  const queuePrefix = `vola-e2e-${randomUUID().slice(0, 8)}`;
+  const examples = { apiKey: generateApiKey("test").key, writeKey: generateApiKey("test").key };
+  const ui = existsSync(join(UI_DIR, "index.html"));
+  const env: Record<string, string> = {
+    VOLA_DATABASE_URL: config.testDatabaseUrl,
+    ...(config.redisUrl ? { VOLA_REDIS_URL: config.redisUrl } : {}),
+    VOLA_STORAGE_PATH: storagePath,
+    VOLA_QUEUE_PREFIX: queuePrefix,
+    VOLA_KEY_FILE: keyFile,
+    VOLA_PEPPER_FILE: pepperFile,
   };
-  const [base, server] = await startServer(env);
-  const worker = startWorker(env);
+  const serverEnv: Record<string, string> = {
+    ...env,
+    VOLA_EXAMPLES: "true",
+    VOLA_DEMO_API_KEY: examples.apiKey,
+    VOLA_DEMO_WRITE_KEY: examples.writeKey,
+    VOLA_DEMO_TENANT: "demo-e2e",
+    VOLA_DEMO_PURGE_INTERVAL_MIN: "0",
+    ...(ui ? { VOLA_UI_DIR: UI_DIR } : {}),
+  };
+  const { base, child: server } = await startServer(serverEnv);
+  const worker: ChildProcess | null = config.redisUrl
+    ? spawnProcess(WORKER_ENTRY, env).child
+    : null;
   provide("server", base);
   provide("worker", worker !== null);
   provide("storagePath", storagePath);
+  provide("examples", examples);
+  provide("ui", ui);
+  provide("serverEnv", serverEnv);
   return async () => {
     await Promise.all([stop(server), stop(worker)]);
-    if (env.redisUrl) {
+    if (config.redisUrl) {
       // The private queue keys of this run.
-      const redis = new Redis(env.redisUrl, { maxRetriesPerRequest: null });
+      const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
       try {
-        const keys = await redis.keys(`${env.queuePrefix}:*`);
+        const keys = await redis.keys(`${queuePrefix}:*`);
         if (keys.length > 0) await redis.del(...keys);
       } finally {
         await redis.quit().catch(() => undefined);
       }
     }
-    await rm(env.storagePath, { recursive: true, force: true });
+    await rm(storagePath, { recursive: true, force: true });
   };
 }

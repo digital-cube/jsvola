@@ -9,6 +9,41 @@ share one version.
 
 ### Added
 
+- **The examples site** (plan 8.1, `apps/examples`, `@vola/examples`): a Vite + React 19 site on
+  `@vola/react` and `@jsudc/react`, one page per capability over a demo instance — Browse
+  (`VolaFileBrowser`, live, the folder in the URL), Upload (multipart under 1 MiB, resumable
+  above it in 256 KiB chunks with progress, cancel and resume, a drop zone, the demo's
+  limits), Thumbnails (every size × crop with each tile's state, Regenerate for the
+  `202 → 200` sequence), Range & streaming (`<video>`/`<audio>` on `/public/:id`, a Range probe
+  that shows the `206`), Share (`VolaShareDialog`, the last link), Encrypted files (`tenant`
+  on seeded files; `keyring` behind `VolaPinGate` over the visitor's private folder with the
+  unlock countdown), API (the routes and `curl` with the demo key), `/udc/:collection`; the
+  sidebar from `menu.yaml` (the `menu` collection, a built-in copy without it), EN / SR,
+  Settings (base URL, own key, instance, the visitor id with "New identity"). The visitor's
+  key is read-only; a `demoFetch` sends every write to the server's write proxy. 48 tests.
+- **`@vola/server`: the demo routes** (`VOLA_EXAMPLES=true`, `packages/server/src/examples/`):
+  `GET /examples/config` hands out `VOLA_DEMO_API_KEY` (read-only), the demo instance, the
+  limits and the features; `ANY /examples/write/<route>` replays a visitor's write
+  (`X-User-Id: demo-…`) under `VOLA_DEMO_WRITE_KEY` after the policy — uploads (5 MiB, a
+  type list enforced after the upload: a wrong type is purged and `415`), the resumable
+  protocol (`Location` rewritten), a visitor's own files and folders (seeded ones `403`),
+  shares (expiry capped at the TTL), the visitor's keyring — and a per-address rate limit
+  (`429` + `Retry-After`); `POST /examples/regenerate/:fileId` drops a file's thumbnails
+  (`StorageBackend.removeDerived`); the purge removes a visitor's keyrings (crypto-shred),
+  files and folders after `VOLA_DEMO_TTL_HOURS` (`POST /examples/purge` for an admin). At
+  startup the server creates the demo tenant and stores both keys (by hash, with their
+  scopes), and refuses a visitor key that can write. `VOLA_UI_DIR` serves a built SPA at `/`
+  and `/en/` with an `index.html` fallback (`installUi`); `VOLA_TRUST_PROXY`.
+- **`@vola/cli`**: `vola demo-keys` (a key pair for `.env`) and `vola demo-seed` (uploads
+  `apps/examples/assets` — ten generated files, `ASSETS.md` — into the demo instance over HTTP
+  with `@vola/client`, an upsert per slug, media set `is_global_public`; the compose `seeder`).
+- **Compose / image**: the image builds the site into `/app/ui` and carries the demo pack;
+  `docker-compose.yaml` gains the examples variables, `VOLA_SECRETS_DIR` (the key and pepper
+  files at `/run/secrets/vola`) and the `seeder` service under the `demo` profile.
+- **E2E**: `packages/e2e/test/examples.e2e.ts` — the built site at `/` and every page,
+  `/examples/config`, the seeder twice, the visitor's key, `202 → 200`, `206`, the proxy, and
+  a server without `VOLA_EXAMPLES`; the suite's own server now runs with the examples on.
+
 - **`@vola/react`** (plan 7.2): the React components an application embeds for the whole vola
   surface, on `@jsudc/react` (peer, with `@jsudc/core` and `@tanstack/react-query`; React 19).
   `<VolaProvider client locale="en|sr">` — the client, i18n (`VOLA_MESSAGES`, `en` and `sr`,

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FilterNode, UdcError } from "@jsudc/core";
+import { type FilterNode, type Row, UdcError } from "@jsudc/core";
 import type { FastifyInstance } from "fastify";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -689,16 +689,36 @@ describe("UDC encrypted rows", () => {
 });
 
 describe("UDC menu", () => {
-  it("serves menu.yaml as one row", async () => {
+  it("serves menu.yaml: the examples and the collections, udc:collections resolved", async () => {
     const page = await ok("list", { collection: "menu" });
-    expect(page.rows).toHaveLength(1);
-    expect(page.rows[0]).toMatchObject({
-      code: "FILES",
-      translation_key: "MENU_FILES",
-      icon: "lucide:files",
-      url: "/examples/files",
+    // Depth first: a root, its children, the next root.
+    const roots = page.rows.filter((r: Row) => r.depth === 0);
+    expect(roots.map((r: Row) => r.code)).toEqual(["EXAMPLES", "COLLECTIONS"]);
+    expect(roots[0]).toMatchObject({
+      code: "EXAMPLES",
+      translation_key: "MENU_EXAMPLES",
+      icon: "lucide:layout-dashboard",
+      url: null,
       depth: 0,
+      children_count: 7,
     });
+    const examples = page.rows.filter((r: Row) => r.parent_id === roots[0]?.__meta.id);
+    expect(examples.map((r: Row) => [r.code, r.url])).toEqual([
+      ["BROWSE", "/examples/browse"],
+      ["UPLOAD", "/examples/upload"],
+      ["THUMBNAILS", "/examples/thumbnails"],
+      ["STREAMING", "/examples/streaming"],
+      ["SHARE", "/examples/share"],
+      ["ENCRYPTED", "/examples/encrypted"],
+      ["API", "/examples/api"],
+    ]);
+    // The COLLECTIONS branch is `udc:collections`: every collection the server serves.
+    const collections = page.rows.filter((r: Row) => r.parent_id === roots[1]?.__meta.id);
+    expect(collections.map((r: Row) => [r.url, r.is_dynamic])).toEqual([
+      ["/udc/files", true],
+      ["/udc/menu", true],
+    ]);
+    expect(collections[0]).toMatchObject({ icon: "lucide:folder-open" });
   });
 });
 

@@ -7,6 +7,7 @@ import {
   DEFAULT_STATS_TTL_MIN,
   DEFAULT_UNLOCK_TTL_S,
   type OcrLanguage,
+  parseApiKey,
   parseOcrLangs,
 } from "@vola/core";
 import { z } from "zod";
@@ -14,6 +15,17 @@ import { DEFAULT_PEPPER_FILE } from "./crypto/keyring.js";
 import { DEFAULT_KEY_FILE } from "./crypto/tenant.js";
 import { DEFAULT_LOOKUPS_PATH } from "./lookups.js";
 import { DEFAULT_MENU_PATH } from "./udc/menu.js";
+
+/** The demo tenant of the examples site, unless `VOLA_DEMO_TENANT` says otherwise. */
+export const DEFAULT_DEMO_TENANT = "demo";
+/** `instance_type` of the demo instance every example page shows. */
+export const DEFAULT_DEMO_INSTANCE_TYPE = "demo";
+/** `instance_id` of the demo instance (a fixed, well-formed UUID the seeder and the site agree on). */
+export const DEFAULT_DEMO_INSTANCE_ID = "00000000-0000-4000-8000-000000000001";
+/** The largest file a visitor may upload through the demo routes: 5 MiB. */
+export const DEFAULT_DEMO_MAX_BYTES = 5 * 1024 * 1024;
+/** Writes one visitor IP may make through the demo routes per ten minutes. */
+export const DEFAULT_DEMO_RATE_LIMIT = 60;
 
 const POSTGRES_URL = /^postgres(ql)?:\/\/.+/;
 
@@ -133,10 +145,52 @@ const ConfigSchema = z
     VOLA_LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
+    VOLA_UI_DIR: z.string().min(1).optional(),
+    VOLA_TRUST_PROXY: boolean(false),
+    VOLA_EXAMPLES: boolean(false),
+    VOLA_DEMO_API_KEY: z.string().min(1).optional(),
+    VOLA_DEMO_WRITE_KEY: z.string().min(1).optional(),
+    VOLA_DEMO_TENANT: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9-]{1,62}$/, "a tenant slug")
+      .default(DEFAULT_DEMO_TENANT),
+    VOLA_DEMO_INSTANCE_TYPE: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/, "lowercase letters, digits and _ starting with a letter")
+      .default(DEFAULT_DEMO_INSTANCE_TYPE),
+    VOLA_DEMO_INSTANCE_ID: z.uuid().default(DEFAULT_DEMO_INSTANCE_ID),
+    VOLA_DEMO_MAX_UPLOAD_BYTES: z.coerce.number().int().min(1).default(DEFAULT_DEMO_MAX_BYTES),
+    VOLA_DEMO_TTL_HOURS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 30)
+      .default(24),
+    VOLA_DEMO_RATE_LIMIT: z.coerce.number().int().min(1).default(DEFAULT_DEMO_RATE_LIMIT),
+    VOLA_DEMO_PURGE_INTERVAL_MIN: z.coerce.number().int().min(0).default(15),
   })
   .refine((c) => (c.VOLA_MEMENTO_URL === undefined) === (c.VOLA_MEMENTO_API_KEY === undefined), {
     message: "VOLA_MEMENTO_URL and VOLA_MEMENTO_API_KEY go together: set both or neither",
     path: ["VOLA_MEMENTO_API_KEY"],
+  })
+  .refine((c) => !c.VOLA_EXAMPLES || (c.VOLA_DEMO_API_KEY && c.VOLA_DEMO_WRITE_KEY), {
+    message: "VOLA_EXAMPLES=true needs VOLA_DEMO_API_KEY and VOLA_DEMO_WRITE_KEY",
+    path: ["VOLA_EXAMPLES"],
+  })
+  .refine(
+    (c) =>
+      !c.VOLA_EXAMPLES ||
+      (parseApiKey(c.VOLA_DEMO_API_KEY ?? "") !== null &&
+        parseApiKey(c.VOLA_DEMO_WRITE_KEY ?? "") !== null),
+    {
+      message:
+        "VOLA_DEMO_API_KEY and VOLA_DEMO_WRITE_KEY must be well-formed keys (vola_live_… or vola_test_…; `vola demo-keys` prints a pair)",
+      path: ["VOLA_DEMO_API_KEY"],
+    },
+  )
+  .refine((c) => !c.VOLA_EXAMPLES || c.VOLA_DEMO_API_KEY !== c.VOLA_DEMO_WRITE_KEY, {
+    message: "VOLA_DEMO_API_KEY and VOLA_DEMO_WRITE_KEY must be two different keys",
+    path: ["VOLA_DEMO_WRITE_KEY"],
   });
 
 export type LogLevel = z.infer<typeof ConfigSchema>["VOLA_LOG_LEVEL"];
@@ -220,6 +274,43 @@ export interface Config {
    */
   encDeriveMaxBytes: number;
   logLevel: LogLevel;
+  /**
+   * `VOLA_UI_DIR`: a built single-page app (`apps/examples/dist`, the examples site) the
+   * standalone server serves at `/` and `/en/` with an `index.html` fallback for client
+   * routes. `null`: the API only (the Docker image sets `/app/ui`).
+   */
+  uiDir: string | null;
+  /**
+   * `VOLA_TRUST_PROXY` (default false): behind a reverse proxy, read the client address from
+   * `X-Forwarded-For` (the demo routes' per-IP rate limit, the logs).
+   */
+  trustProxy: boolean;
+  /**
+   * `VOLA_EXAMPLES=true`: the examples site's demo routes under `/examples` (plan 8.1) —
+   * the read-only visitor key, the server-side write proxy, the 24-hour purge. `null`: none
+   * of them exist (the routes answer 404).
+   */
+  examples: ExamplesConfig | null;
+}
+
+export interface ExamplesConfig {
+  /** `VOLA_DEMO_API_KEY`: the READ-ONLY key `GET /examples/config` hands every visitor. */
+  apiKey: string;
+  /** `VOLA_DEMO_WRITE_KEY`: the key the server writes with on a visitor's behalf; never leaves it. */
+  writeKey: string;
+  /** `VOLA_DEMO_TENANT` (`demo`): the tenant both keys belong to (created at startup when missing). */
+  tenant: string;
+  /** `VOLA_DEMO_INSTANCE_TYPE` (`demo`) and `VOLA_DEMO_INSTANCE_ID`: the one instance the site shows. */
+  instanceType: string;
+  instanceId: string;
+  /** `VOLA_DEMO_MAX_UPLOAD_BYTES` (5 MiB): the largest upload through the demo routes. */
+  maxUploadBytes: number;
+  /** `VOLA_DEMO_TTL_HOURS` (24): a visitor's uploads, keyrings and folders are purged after this. */
+  ttlHours: number;
+  /** `VOLA_DEMO_RATE_LIMIT` (60): writes one IP may make through the demo routes per ten minutes. */
+  rateLimit: number;
+  /** `VOLA_DEMO_PURGE_INTERVAL_MIN` (15): how often the purge runs; `0` never (tests). */
+  purgeIntervalMin: number;
 }
 
 export interface MementoConfig {
@@ -340,5 +431,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     unlockTtlS: c.VOLA_UNLOCK_TTL_S,
     encDeriveMaxBytes: c.VOLA_ENC_INLINE_DERIVE_MAX_BYTES,
     logLevel: c.VOLA_LOG_LEVEL,
+    uiDir: c.VOLA_UI_DIR ? resolve(c.VOLA_UI_DIR) : null,
+    trustProxy: c.VOLA_TRUST_PROXY,
+    examples:
+      c.VOLA_EXAMPLES && c.VOLA_DEMO_API_KEY && c.VOLA_DEMO_WRITE_KEY
+        ? {
+            apiKey: c.VOLA_DEMO_API_KEY,
+            writeKey: c.VOLA_DEMO_WRITE_KEY,
+            tenant: c.VOLA_DEMO_TENANT,
+            instanceType: c.VOLA_DEMO_INSTANCE_TYPE,
+            instanceId: c.VOLA_DEMO_INSTANCE_ID.toLowerCase(),
+            maxUploadBytes: c.VOLA_DEMO_MAX_UPLOAD_BYTES,
+            ttlHours: c.VOLA_DEMO_TTL_HOURS,
+            rateLimit: c.VOLA_DEMO_RATE_LIMIT,
+            purgeIntervalMin: c.VOLA_DEMO_PURGE_INTERVAL_MIN,
+          }
+        : null,
   };
 }

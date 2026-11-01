@@ -1,0 +1,4 @@
+JSVola examples: a plain text file.
+
+Text files have no thumbnail (the Thumbnails page shows the 404 placeholder for them),
+download with Content-Disposition: attachment, and count as kind = document.

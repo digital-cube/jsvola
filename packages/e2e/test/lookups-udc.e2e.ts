@@ -115,7 +115,7 @@ describe.skipIf(Boolean(process.env.VOLA_E2E_URL))("UDC files collection (built 
       download_url: expect.stringContaining(`/files/tickets/${instanceId}/`),
     });
     const menu = await udc("list", { collection: "menu" });
-    expect(menu.payload.rows[0]).toMatchObject({ code: "FILES" });
+    expect(menu.payload.rows[0]).toMatchObject({ code: "EXAMPLES", depth: 0 });
   });
 
   it("refuses a missing key in-protocol", async () => {

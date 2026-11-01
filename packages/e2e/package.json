@@ -15,6 +15,8 @@
     "@vola/server": "workspace:*"
   },
   "devDependencies": {
+    "@vola/cli": "workspace:*",
+    "@vola/examples": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "ioredis": "^6.0.0",
     "sharp": "^0.35.5",

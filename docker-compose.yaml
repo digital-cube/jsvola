@@ -1,6 +1,10 @@
 # Production-like JSVola stack: the vola server + the vola worker + PostgreSQL + Redis.
 #   docker compose -f docker-compose.yaml up -d --build
 #   curl localhost:8300/vola/health/live
+# The examples site (apps/examples, docs/EXAMPLES-SITE.md) is the same image at /: set
+# VOLA_EXAMPLES=true and the two demo keys in .env (`vola demo-keys` prints a pair) and bring
+# the `demo` profile up — its `seeder` fills the demo instance with the pack:
+#   docker compose -f docker-compose.yaml --profile demo up -d
 # (compose.yaml next to it is the development infrastructure: PostgreSQL + Redis only.)
 # Every ${VAR} can be set in the shell or in a .env file next to this file.
 name: jsvola
@@ -27,20 +31,33 @@ services:
       # The origin share links are built on (behind a reverse proxy); empty: the request's Host.
       VOLA_PUBLIC_URL: ${VOLA_PUBLIC_URL:-}
       VOLA_STATS_TTL_MIN: ${VOLA_STATS_TTL_MIN:-60}
+      # Behind a reverse proxy: the client address from X-Forwarded-For (the demo rate limit).
+      VOLA_TRUST_PROXY: ${VOLA_TRUST_PROXY:-false}
+      # The examples site (docs/EXAMPLES-SITE.md): served at / by this image (VOLA_UI_DIR=/app/ui
+      # is set in the image). With VOLA_EXAMPLES=true the server stores the two keys at start
+      # (the read-only visitor key, the write key the write proxy uses), creates the `demo`
+      # tenant when missing, serves GET /vola/examples/config and purges what visitors leave
+      # after VOLA_DEMO_TTL_HOURS. Empty: the site is served but asks for a key.
+      VOLA_EXAMPLES: ${VOLA_EXAMPLES:-false}
+      VOLA_DEMO_API_KEY: ${VOLA_DEMO_API_KEY:-}
+      VOLA_DEMO_WRITE_KEY: ${VOLA_DEMO_WRITE_KEY:-}
+      VOLA_DEMO_TENANT: ${VOLA_DEMO_TENANT:-demo}
+      VOLA_DEMO_TTL_HOURS: ${VOLA_DEMO_TTL_HOURS:-24}
+      VOLA_DEMO_MAX_UPLOAD_BYTES: ${VOLA_DEMO_MAX_UPLOAD_BYTES:-5242880}
+      VOLA_DEMO_RATE_LIMIT: ${VOLA_DEMO_RATE_LIMIT:-60}
+      # Encryption at rest (docs/CRYPTO.md): the key file (`vola keys-generate`, the tenant
+      # provider; the worker needs it too) and the pepper file (`vola pepper-generate`, the
+      # keyring provider) are read from this directory, VOLA_SECRETS_DIR (default ./secrets).
+      # A missing file does not stop the server: encrypted files and keyrings answer 503.
+      VOLA_KEY_FILE: /run/secrets/vola/vola.key
+      VOLA_PEPPER_FILE: /run/secrets/vola/vola.pepper
     ports:
       - "${VOLA_HOST_PORT:-8300}:8300"
     volumes:
       # the content-addressable blobs (VOLA_STORAGE_PATH=/data/storage)
       - vola-data:/data
-      # Encryption at rest (docs/CRYPTO.md): mount the key file made with `vola keys-generate`
-      # read-only at VOLA_KEY_FILE (default /run/secrets/vola.key) — in BOTH services (the worker
-      # needs it for the thumbnails and OCR of tenant-encrypted files, § 11). Without it the
-      # server starts and serves plain files; encrypted ones answer 503.
-      # - ./secrets/vola.key:/run/secrets/vola.key:ro
-      # Keyrings (PIN per principal, docs/CRYPTO.md § 8): the pepper file made with
-      # `vola pepper-generate` at VOLA_PEPPER_FILE (default /run/secrets/vola.pepper) — the
-      # server only. Without it (or without Redis) keyring routes and keyring files answer 503.
-      # - ./secrets/vola.pepper:/run/secrets/vola.pepper:ro
+      # vola.key and vola.pepper (see VOLA_KEY_FILE above); an empty directory is fine.
+      - ${VOLA_SECRETS_DIR:-./secrets}:/run/secrets/vola:ro
     healthcheck:
       test: ["CMD", "vola-healthcheck"]
       interval: 10s
@@ -65,11 +82,32 @@ services:
       VOLA_STORAGE_PATH: /data/storage
       VOLA_WORKER_CONCURRENCY: ${VOLA_WORKER_CONCURRENCY:-2}
       VOLA_STATS_TTL_MIN: ${VOLA_STATS_TTL_MIN:-60}
+      VOLA_KEY_FILE: /run/secrets/vola/vola.key
     volumes:
       - vola-data:/data
-      # - ./secrets/vola.key:/run/secrets/vola.key:ro
+      - ${VOLA_SECRETS_DIR:-./secrets}:/run/secrets/vola:ro
     healthcheck:
       disable: true
+
+  # The examples site's demo pack (apps/examples/assets, ASSETS.md): `vola demo-seed` uploads
+  # it into the demo instance through the API with the write key — an upsert per slug, so it
+  # may run at every `up`; it exits when done. Off unless the `demo` profile is on
+  # (`--profile demo` or COMPOSE_PROFILES=demo). Same image, no `build:`.
+  seeder:
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
+    profiles: ["demo"]
+    restart: "no"
+    depends_on:
+      vola:
+        condition: service_healthy
+    command: ["vola", "demo-seed"]
+    environment:
+      VOLA_URL: http://vola:8300${VOLA_PREFIX:-/vola}
+      # The write key of the demo tenant, from .env. Not `:?` — compose interpolates every
+      # service, profile or not. Without it the command exits with "a write key is required".
+      VOLA_DEMO_WRITE_KEY: ${VOLA_DEMO_WRITE_KEY:-}
+      VOLA_DEMO_TENANT: ${VOLA_DEMO_TENANT:-demo}
+      VOLA_DEMO_ASSETS: /app/demo-assets
 
   postgres:
     image: docker.io/library/postgres:16

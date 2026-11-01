@@ -113,6 +113,11 @@ export interface StorageBackend {
   exists(hash: string): Promise<boolean>;
   /** Removes the blob and every derived file; `false` when there was no blob. */
   remove(hash: string): Promise<boolean>;
+  /**
+   * Removes the derived files of a blob — the one called `name`, or every one of them when no
+   * name is given — and leaves the blob; the next read renders them again. How many went.
+   */
+  removeDerived(hash: string, name?: string): Promise<number>;
   /** Writes (or replaces) a derived file of an existing blob; returns its path. */
   putDerived(hash: string, name: string, data: Buffer | Readable): Promise<string>;
   /** A readable of a derived file. Throws `BlobNotFoundError` (with `derived`). */

@@ -10,7 +10,7 @@ export const MENU_COLLECTION = "menu";
 
 /** The icon of each collection's node in a `udc:collections` branch; the rest get `lucide:table`. */
 export const MENU_COLLECTION_ICONS: Record<string, string> = {
-  files: "lucide:files",
+  files: "lucide:folder-open",
   menu: "lucide:list-tree",
 };
 

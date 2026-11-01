@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.6",
+    "@fastify/static": "^10.1.8",
     "@fastify/websocket": "^11.3.5",
     "@jsudc/core": "0.2.0",
     "@jsudc/server": "0.2.1",

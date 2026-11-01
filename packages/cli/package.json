@@ -35,6 +35,7 @@
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
+    "@vola/client": "workspace:*",
     "@vola/core": "workspace:*",
     "@vola/lookups": "workspace:*",
     "@vola/server": "workspace:*",

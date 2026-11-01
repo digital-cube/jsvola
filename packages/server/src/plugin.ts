@@ -7,7 +7,7 @@ import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
-import type { Config } from "./config.js";
+import type { Config, ExamplesConfig } from "./config.js";
 import {
   EncryptionUnavailableError,
   IntegrityError,
@@ -17,6 +17,7 @@ import {
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
+import { type ExamplesRoutesDeps, examplesRoutes } from "./examples/routes.js";
 import { type JobsMode, resolveJobsMode } from "./jobs/availability.js";
 import { type JobDispatcher, QueuedJobDispatcher } from "./jobs/dispatcher.js";
 import { ProcessingQueue } from "./jobs/queue.js";
@@ -160,6 +161,15 @@ export interface VolaPluginOptions {
    * vola routes and for tests.
    */
   extend?: ((app: FastifyInstance) => Promise<void> | void) | undefined;
+  /**
+   * The examples site's demo routes (plan 8.1, `/examples/*`). Default: `config.examples`
+   * (`VOLA_EXAMPLES=true` with the two demo keys); `false`: none, whatever the config.
+   */
+  examples?: ExamplesConfig | false | undefined;
+  /** Overrides of the demo routes' dependencies (tests: a limiter, a clock, a known tenant). */
+  examplesDeps?:
+    | Partial<Pick<ExamplesRoutesDeps, "limiter" | "now" | "tenant" | "jobsMode">>
+    | undefined;
 }
 
 /**
@@ -264,7 +274,10 @@ export function requestId(header: string | string[] | undefined): string {
  * `{ error: { code, message } }`, framework errors map by status, anything else is a logged
  * `500 internal_error`; unknown routes answer `404 not_found`.
  */
-export function installErrorHandling(app: FastifyInstance): void {
+export function installErrorHandling(
+  app: FastifyInstance,
+  options: { notFound?: boolean } = {},
+): void {
   app.addHook("onSend", async (request, reply) => {
     reply.header(REQUEST_ID_HEADER, request.id);
   });
@@ -297,6 +310,7 @@ export function installErrorHandling(app: FastifyInstance): void {
     return reply.status(500).send(errorResponse("internal_error", "internal server error"));
   });
 
+  if (options.notFound === false) return; // the host sets its own (the UI's page fallback)
   app.setNotFoundHandler((request, reply) =>
     reply
       .status(404)
@@ -419,8 +433,9 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db, audit });
+  let keyringsDeps: KeyringsDeps | null = null;
   if (options.keyrings !== false && crypto) {
-    const keyrings: KeyringsDeps = {
+    keyringsDeps = {
       db: options.db,
       unlocks,
       peppers: new KeyFile(options.config.pepperFile, app.log),
@@ -430,7 +445,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       logger: app.log,
       ...(options.keyrings ?? {}),
     };
-    await app.register(keyringRoutes, { keyrings });
+    await app.register(keyringRoutes, { keyrings: keyringsDeps });
   }
   await app.register(adminRoutes, { db: options.db, events, audit, crypto });
   await app.register(lookupRoutes, { db: options.db, lookups });
@@ -524,6 +539,21 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       });
       await app.register(subscribeRoutes, { hub });
     }
+  }
+  // The examples site's demo routes (plan 8.1): only with VOLA_EXAMPLES=true.
+  const examples =
+    options.examples === undefined ? options.config.examples : options.examples || null;
+  if (examples) {
+    await app.register(examplesRoutes, {
+      config: examples,
+      db: options.db,
+      storage,
+      events,
+      keyrings: keyringsDeps,
+      keys: keyFile,
+      jobsMode,
+      ...(options.examplesDeps ?? {}),
+    });
   }
   if (options.extend) await options.extend(app);
 };
