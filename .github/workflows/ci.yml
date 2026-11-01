@@ -1,0 +1,126 @@
+# Pull requests (and every push to main): lint, type check, build, unit tests with coverage,
+# E2E — then the Docker image is built and checked against docker-compose.yaml.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint, type check, build, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vola
+          POSTGRES_PASSWORD: vola
+          POSTGRES_DB: vola_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vola -d vola_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      VOLA_DATABASE_URL_TEST: postgresql://vola:vola@localhost:5432/vola_test
+      VOLA_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint (Biome)
+        run: pnpm lint
+      - name: Type check
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+      - name: Unit tests + coverage (≥ 80 % per package)
+        run: pnpm test:coverage
+      - name: E2E (built server, PostgreSQL, Redis)
+        run: pnpm test:e2e
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "| package | lines | statements | functions | branches |"
+            echo "|---|---|---|---|---|"
+            for f in packages/*/coverage/coverage-summary.json; do
+              [ -f "$f" ] || continue
+              node -e '
+                const t = require(process.argv[1]).total;
+                const p = process.argv[1].split("/")[1];
+                console.log(`| @vola/${p} | ${t.lines.pct} % | ${t.statements.pct} % | ${t.functions.pct} % | ${t.branches.pct} % |`);
+              ' "$PWD/$f"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage reports (HTML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: packages/*/coverage/
+          if-no-files-found: ignore
+
+  docker:
+    name: Docker image + E2E against docker-compose.yaml
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VOLA_IMAGE: jsvola:ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: jsvola:ci
+          build-args: VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start the stack
+        run: docker compose -f docker-compose.yaml up -d --wait --no-build
+      - name: Health
+        run: |
+          curl -fsS localhost:8300/vola/health/live
+          curl -fsS localhost:8300/vola/health/ready
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: E2E against the container
+        env:
+          VOLA_E2E_URL: http://localhost:8300/vola
+        run: pnpm test:e2e
+      - name: Bundled CLI works
+        run: docker compose -f docker-compose.yaml exec -T vola vola --version
+      - name: Container logs
+        if: failure()
+        run: docker compose -f docker-compose.yaml logs
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f docker-compose.yaml down -v

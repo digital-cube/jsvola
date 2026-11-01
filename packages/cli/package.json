@@ -1,0 +1,44 @@
+{
+  "name": "@vola/cli",
+  "version": "1.0.0",
+  "description": "JSVola CLI: tenants, API keys and migrations for @vola/server.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digital-cube/jsvola.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/digital-cube/jsvola#readme",
+  "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "bin": {
+    "vola": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "@vola/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "tsx --conditions=@vola/source src/main.ts",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@vola/core": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

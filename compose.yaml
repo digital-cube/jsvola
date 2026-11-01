@@ -1,0 +1,33 @@
+# Local infrastructure for JSVola: PostgreSQL + Redis.
+#   docker compose up -d        (or: podman-compose up -d)
+# The init script also creates the `<POSTGRES_DB>_test` database the tests use.
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vola}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vola}
+      POSTGRES_DB: ${POSTGRES_DB:-vola}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

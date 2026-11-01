@@ -1,0 +1,36 @@
+{
+  "name": "@vola/lookups",
+  "version": "1.0.0",
+  "description": "JSVola lookups: controlled vocabularies (instance types, job kinds, …) from YAML, with CSV translations.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digital-cube/jsvola.git",
+    "directory": "packages/lookups"
+  },
+  "homepage": "https://github.com/digital-cube/jsvola#readme",
+  "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@vola/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

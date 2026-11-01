@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+.git
+.thilo
+.claude
+.worktrees
+**/.env
+**/.env.*
+!**/.env.example
+var

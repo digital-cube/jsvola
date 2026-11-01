@@ -1,0 +1,37 @@
+{
+  "name": "jsvola",
+  "private": true,
+  "type": "module",
+  "description": "JSVola — self-hosted, multi-tenant content-addressable file storage (monorepo: @vola/core, @vola/server, @vola/cli, @vola/client, @vola/react)",
+  "license": "MIT",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:cov": "turbo run test:cov",
+    "test:coverage": "turbo run test:cov",
+    "test:e2e": "turbo run test:e2e",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "dev": "pnpm --filter @vola/server dev",
+    "db:up": "docker compose up -d postgres redis",
+    "db:generate": "pnpm --filter @vola/server db:generate",
+    "db:migrate": "pnpm --filter @vola/server db:migrate",
+    "db:migrate:test": "pnpm --filter @vola/server db:migrate:test",
+    "vola": "pnpm --filter @vola/cli exec tsx --conditions=@vola/source src/main.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^24",
+    "@vitest/coverage-v8": "^5.0.5",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  },
+  "version": "1.0.0"
+}

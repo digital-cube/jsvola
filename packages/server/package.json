@@ -1,0 +1,54 @@
+{
+  "name": "@vola/server",
+  "version": "1.0.0",
+  "description": "JSVola server: Fastify plugin and standalone server, Drizzle/PostgreSQL storage, Redis, tenant isolation, API key auth.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digital-cube/jsvola.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/digital-cube/jsvola#readme",
+  "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "@vola/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch --conditions=@vola/source src/server.ts",
+    "start": "node dist/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --conditions=@vola/source src/migrate-cli.ts",
+    "db:migrate:test": "MIGRATE_TARGET=test tsx --conditions=@vola/source src/migrate-cli.ts",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@vola/core": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

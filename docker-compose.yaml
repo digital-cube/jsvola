@@ -1,0 +1,71 @@
+# Production-like JSVola stack: the vola server + PostgreSQL + Redis.
+#   docker compose -f docker-compose.yaml up -d --build
+#   curl localhost:8300/vola/health/live
+# (compose.yaml next to it is the development infrastructure: PostgreSQL + Redis only.)
+# Every ${VAR} can be set in the shell or in a .env file next to this file.
+name: jsvola
+
+services:
+  vola:
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      VOLA_DATABASE_URL: postgresql://${POSTGRES_USER:-vola}:${POSTGRES_PASSWORD:-vola}@postgres:5432/${POSTGRES_DB:-vola}
+      VOLA_REDIS_URL: redis://redis:6379/0
+      VOLA_PORT: 8300
+      VOLA_PREFIX: ${VOLA_PREFIX:-/vola}
+      VOLA_LOG_LEVEL: ${VOLA_LOG_LEVEL:-info}
+      VOLA_STORAGE_PATH: /data/storage
+    ports:
+      - "${VOLA_HOST_PORT:-8300}:8300"
+    volumes:
+      # the content-addressable blobs (VOLA_STORAGE_PATH=/data/storage)
+      - vola-data:/data
+    healthcheck:
+      test: ["CMD", "vola-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  postgres:
+    image: docker.io/library/postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vola}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vola}
+      POSTGRES_DB: ${POSTGRES_DB:-vola}
+    ports:
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_BIND:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  vola-data:
+  postgres-data:
+  redis-data:

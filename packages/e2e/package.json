@@ -1,0 +1,16 @@
+{
+  "name": "@vola/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JSVola end-to-end tests: the built server against real PostgreSQL + Redis, over HTTP.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:e2e": "vitest run"
+  },
+  "dependencies": {
+    "@vola/core": "workspace:*",
+    "@vola/server": "workspace:*"
+  }
+}

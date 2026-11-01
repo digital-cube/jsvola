@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+# Dependencies whose install scripts may run (pnpm refuses the rest).
+allowBuilds:
+  esbuild: true

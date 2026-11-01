@@ -1,0 +1,37 @@
+{
+  "name": "@vola/core",
+  "version": "1.0.0",
+  "description": "JSVola protocol: Zod schemas, inferred types and helpers shared by server, CLI and clients.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/digital-cube/jsvola.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/digital-cube/jsvola#readme",
+  "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@vola/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

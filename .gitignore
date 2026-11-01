@@ -1,3 +1,11 @@
 # thilo-runner: scaffolding this runner creates in the checkout
 .worktrees/
 *~
+# jsvola
+node_modules/
+dist/
+coverage/
+.turbo/
+.env
+*.tsbuildinfo
+var/
