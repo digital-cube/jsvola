@@ -6,6 +6,7 @@ import {
   type ThumbnailCrop,
   type ThumbnailSize,
   thumbnailSupported,
+  workerHoldsKey,
 } from "@vola/core";
 import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
@@ -28,11 +29,12 @@ export type DispatchableFile = Pick<FileRow, "id" | "tenantId" | "mimeType" | "e
 export interface JobDispatcher {
   /**
    * After `finalizeUpload`: one `THUMBNAIL` job per size (64, 128, 256, 512; crop `cover`) for
-   * a raster image or PDF that is not encrypted, plus one `OCR` job when OCR is on and the
-   * file is eligible (`isOcrEligible`: a raster image that is not SVG or GIF, or a PDF, not
-   * encrypted) — nothing for anything else (no `SKIPPED` rows either). Never throws: a queue
-   * failure is logged, the upload already succeeded. Returns the `processing_status` the new
-   * file has now (`PENDING`, or `null`).
+   * a raster image or PDF that is plain or `tenant`-encrypted, plus one `OCR` job when OCR is
+   * on and the file is eligible (`isOcrEligible`: a raster image that is not SVG or GIF, or a
+   * PDF, plain or `tenant`) — nothing for anything else (no `SKIPPED` rows either; the MIME
+   * type of an encrypted file is the REAL one here, the upload had the key). Never throws: a
+   * queue failure is logged, the upload already succeeded. Returns the `processing_status`
+   * the new file has now (`PENDING`, or `null`).
    */
   afterUpload(file: DispatchableFile): Promise<ProcessingStatus | null>;
   /**
@@ -60,9 +62,13 @@ export interface QueuedJobDispatcherOptions {
   now?: (() => Date) | undefined;
 }
 
-/** `true` when the worker will render thumbnails of this file: supported type, not encrypted. */
+/**
+ * `true` when the worker will render thumbnails of this file: a supported type, plain or
+ * `tenant`-encrypted (the worker holds the key file; a `keyring` / `caller` file is rendered
+ * in the request that holds its key — `routes/thumbnails.ts` — and a `client` file never).
+ */
 export function thumbnailable(file: Pick<FileRow, "mimeType" | "encryption">): boolean {
-  return file.encryption === "none" && thumbnailSupported(file.mimeType);
+  return workerHoldsKey(file.encryption) && thumbnailSupported(file.mimeType);
 }
 
 /** The dispatcher of `async` mode: rows in `vola_processing_job`, jobs in the BullMQ queue. */

@@ -322,6 +322,8 @@ describe.skipIf(!hasTesseract)("OCR with tesseract", () => {
       isAdmin: false,
       userId: null,
       unlockToken: null,
+      contentKey: null,
+      browserOrigin: null,
     };
     const subscription = await runWithTenant(context, () =>
       source.subscribe(inType({ field: "ocr", op: "contains", value: "pelican" }) as never, {
@@ -362,7 +364,7 @@ describe("OCR without tesseract (scripts stand in for the tools)", () => {
     extraQueues.push(q);
     const dispatcher = new QueuedJobDispatcher({ db: handle.db, queue: q, ocr: true });
     expect(dispatcher.ocr).toBe(true);
-    const encrypted = await seedFile(await pngFixture(), "image/png", "tenant");
+    const encrypted = await seedFile(await pngFixture(), "image/png", "keyring");
     expect(await dispatcher.afterUpload(encrypted)).toBeNull();
     expect(await listProcessingJobs(handle.db, encrypted.id)).toEqual([]);
     const gif = await seedFile(Buffer.from("GIF89a"), "image/gif");
@@ -425,13 +427,13 @@ describe("OCR without tesseract (scripts stand in for the tools)", () => {
       text_preview: null,
     });
 
-    // The same worker skips a file that was encrypted meanwhile — before any tool runs.
+    // The same worker skips a file that was encrypted meanwhile under a key it does not hold — before any tool runs.
     const enc = await seedFile(await pngFixture(), "image/png", "none", "enc.png");
-    await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, enc.id));
-    await dispatcher.requestOcr({ ...enc, encryption: "tenant" });
+    await handle.db.update(files).set({ encryption: "keyring" }).where(eq(files.id, enc.id));
+    await dispatcher.requestOcr({ ...enc, encryption: "keyring" });
     const skipped = await ocrSettled(enc.id);
     expect(skipped.status).toBe("SKIPPED");
-    expect(skipped.error).toBe("encrypted file");
+    expect(skipped.error).toBe("encrypted under a key the worker does not hold");
   }, 30_000);
 
   it("a worker with OCR off, or in auto mode without tesseract, skips the job with the reason", async () => {

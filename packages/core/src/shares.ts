@@ -18,6 +18,19 @@ export const SHARE_TOKEN_BYTES = 32;
 /** The token as it appears in a URL: base64url of `SHARE_TOKEN_BYTES` random bytes. */
 export const ShareTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
+/**
+ * The secret `S` of a share grant (plan 6.3, an encrypted file's share): the link carries it in
+ * the URL FRAGMENT (`/s/<token>#<S>`), which a browser never sends; the client puts it in this
+ * header on every request. Missing → `401 share_secret_required`; wrong → `409 vola_integrity`.
+ */
+export const SHARE_SECRET_HEADER = "x-share-secret";
+export const SHARE_SECRET_REQUIRED_CODE = "share_secret_required";
+/** Bytes of a share secret; the fragment is their base64url (43 characters). */
+export const SHARE_SECRET_BYTES = 32;
+export const ShareSecretSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+/** `409`: the file is encrypted in a mode the server cannot make a grant for (`caller` without `fk_share_ct`, `client`). */
+export const ENCRYPTED_SHARE_REQUIRES_GRANT_CODE = "encrypted_share_requires_grant";
+
 /** The password of a protected share travels in this header … */
 export const SHARE_PASSWORD_HEADER = "x-share-password";
 /** … or in this query parameter (`?password=`). */
@@ -53,10 +66,24 @@ export const ShareCreateSchema = z
     password: SharePasswordSchema.optional(),
     expires_at: TimestampSchema.optional(),
     max_downloads: z.number().int().positive().optional(),
+    /**
+     * A `caller`-encrypted file only (plan 6.3): the file key wrapped by the CALLER under the
+     * link secret `S` — `nonce ∥ AES-256-GCM(S, FK, AAD "<file id>:key:share:caller")`, base64
+     * — since the server never holds that key. The `url` then has no fragment: the caller
+     * appends `#<S>` itself.
+     */
+    fk_share_ct: z
+      .string()
+      .regex(/^[A-Za-z0-9+/_-]+={0,2}$/)
+      .max(256)
+      .optional(),
   })
   .strict()
   .refine((body) => (body.file_id === undefined) !== (body.folder === undefined), {
     message: "exactly one of file_id or folder is required",
+  })
+  .refine((body) => body.fk_share_ct === undefined || body.file_id !== undefined, {
+    message: "fk_share_ct goes with file_id",
   });
 export type ShareCreate = z.infer<typeof ShareCreateSchema>;
 
@@ -76,13 +103,15 @@ export const ShareInfoSchema = z.object({
   created_by: z.string().nullable(),
   created_at: TimestampSchema,
   revoked_at: TimestampSchema.nullable(),
+  /** `true` for the share GRANT of an encrypted file (plan 6.3): the link needs its `#secret`. */
+  encrypted: z.boolean(),
 });
 export type ShareInfo = z.infer<typeof ShareInfoSchema>;
 
 /** The `201` of `POST /shares`: the info plus the token and the public URL, this once. */
 export const ShareCreatedSchema = ShareInfoSchema.extend({
   token: ShareTokenSchema,
-  /** `<public url><prefix>/s/<token>`. */
+  /** `<public url><prefix>/s/<token>` — for an encrypted file with `#<S>` appended (the share secret, never stored). */
   url: z.string().url(),
 });
 export type ShareCreated = z.infer<typeof ShareCreatedSchema>;

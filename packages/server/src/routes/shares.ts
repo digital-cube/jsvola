@@ -10,6 +10,7 @@ import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
+import type { EncryptionService } from "../services/encryption.js";
 import {
   createShare,
   findShare,
@@ -28,6 +29,8 @@ export interface ShareRoutesDeps {
    */
   publicUrl?: string | null | undefined;
   audit?: AuditLog | undefined;
+  /** Encryption (plan 6.3): the share grant of an encrypted file; absent → `409` for encrypted files. */
+  crypto?: EncryptionService | undefined;
   logger?: FastifyBaseLogger | undefined;
   now?: (() => Date) | undefined;
 }
@@ -40,9 +43,19 @@ interface ListQuery {
   [INCLUDE_REVOKED_QUERY]?: string;
 }
 
-/** `<origin><prefix>/s/<token>`: the URL a share is reached at. */
-export function shareUrl(origin: string, prefix: string, token: string): string {
-  return `${origin.replace(/\/+$/, "")}${prefix}/s/${token}`;
+/**
+ * `<origin><prefix>/s/<token>`: the URL a share is reached at — with `#<secret>` for the grant
+ * of an encrypted file: the fragment never reaches a server, the client sends it as
+ * `X-Share-Secret`.
+ */
+export function shareUrl(
+  origin: string,
+  prefix: string,
+  token: string,
+  secret: string | null = null,
+): string {
+  const base = `${origin.replace(/\/+$/, "")}${prefix}/s/${token}`;
+  return secret ? `${base}#${secret}` : base;
 }
 
 /** The origin of the request as the client sent it (`request.protocol` honours `trustProxy`). */
@@ -56,8 +69,10 @@ export function requestOrigin(request: FastifyRequest): string {
  *
  * - `POST /shares` `{file_id | folder: {instance_type, instance_id, path}, password?,
  *   expires_at?, max_downloads?, scope?}` → `201` with the info, the `token` (this once) and
- *   the public `url`; `501 not_implemented` for a scope other than `PUBLIC_LINK`,
- *   `409 encrypted_share_requires_grant` for an encrypted file;
+ *   the public `url`; `501 not_implemented` for a scope other than `PUBLIC_LINK`. An
+ *   encrypted file (`tenant`, or `keyring` with the owner's `X-Vola-Unlock`) gets a share
+ *   GRANT and a `url` ending in `#<secret>`; a `caller` file only with the caller's own
+ *   `fk_share_ct`, a `client` file never (`409 encrypted_share_requires_grant`);
  * - `GET /shares[?file_id=|folder_id=][&include_revoked=1]` — newest first, never the token;
  * - `GET /shares/:id`;
  * - `DELETE /shares/:id` — revoke (idempotent); the link answers `410 share_gone` from then on.
@@ -67,6 +82,7 @@ export const shareRoutes: FastifyPluginAsync<ShareRoutesDeps> = async (app, deps
     db: deps.db,
     logger: deps.logger ?? app.log,
     audit: deps.audit,
+    crypto: deps.crypto,
     now: deps.now,
   };
 
@@ -81,7 +97,7 @@ export const shareRoutes: FastifyPluginAsync<ShareRoutesDeps> = async (app, deps
         `${issue?.path.join(".") || "body"}: ${issue?.message ?? "invalid"}`,
       );
     }
-    const { share, token } = await createShare(service, {
+    const { share, token, secret } = await createShare(service, {
       tenantId: tenant.tenantId,
       body: parsed.data,
       userId: tenant.userId,
@@ -89,7 +105,7 @@ export const shareRoutes: FastifyPluginAsync<ShareRoutesDeps> = async (app, deps
     const response: ShareCreated = {
       ...share,
       token,
-      url: shareUrl(deps.publicUrl ?? requestOrigin(request), app.prefix, token),
+      url: shareUrl(deps.publicUrl ?? requestOrigin(request), app.prefix, token, secret),
     };
     return reply.status(201).send(response);
   });

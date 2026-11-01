@@ -215,17 +215,28 @@ describe("POST /shares — happy path", () => {
     expect(await handle.db.$count(shareLinks, eq(shareLinks.fileId, info.id))).toBe(0);
   });
 
-  it("refuses an encrypted file with 409 encrypted_share_requires_grant (plan 6.3)", async () => {
+  it("refuses a caller- or client-encrypted file with 409 encrypted_share_requires_grant (the grant of a tenant/keyring file is in test/share-grant.test.ts)", async () => {
     const { info } = await uploaded(Buffer.from("secret"), "secret.bin");
+    for (const mode of ["caller", "client"]) {
+      await handle.db.update(files).set({ encryption: mode }).where(eq(files.id, info.id));
+      const response = await app.inject({
+        method: "POST",
+        url: "/vola/shares",
+        headers: bearer(fx.full.key),
+        payload: { file_id: info.id },
+      });
+      expect(response.statusCode, mode).toBe(409);
+      expect(response.json().error.code).toBe("encrypted_share_requires_grant");
+    }
+    // A file encrypted by hand under a mode whose key the server would hold, but without a key record: 409.
     await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, info.id));
-    const response = await app.inject({
+    const noKey = await app.inject({
       method: "POST",
       url: "/vola/shares",
       headers: bearer(fx.full.key),
       payload: { file_id: info.id },
     });
-    expect(response.statusCode).toBe(409);
-    expect(response.json().error.code).toBe("encrypted_share_requires_grant");
+    expect([409, 503]).toContain(noKey.statusCode);
   });
 
   it("is tenant-scoped: another tenant's file or folder is 404, and so is a soft-deleted file", async () => {

@@ -9,6 +9,27 @@ export {
   newFileKey,
   TAG_BYTES,
 } from "./aead.js";
+export { CALLER_FK_CT_BYTES, CallerWrapProvider, parseContentKey } from "./caller.js";
+export {
+  ENC_DERIVED_PREFIX,
+  encryptedThumbnailName,
+  headAad,
+  OCR_RECORD_VERSION,
+  type OcrRecord,
+  ocrAad,
+  openHead,
+  openOcr,
+  openPartial,
+  openThumbnail,
+  PARTIAL_PREFIX_BYTES,
+  partialAad,
+  partialNonce,
+  sealHead,
+  sealOcr,
+  sealPartial,
+  sealThumbnail,
+  thumbnailAad,
+} from "./derived.js";
 export {
   EncryptionUnavailableError,
   INTEGRITY_MESSAGE,
@@ -95,6 +116,7 @@ export {
   openMeta,
   sealMeta,
 } from "./meta.js";
+export { ResumableSha256, type Sha256State } from "./sha256.js";
 export {
   DEFAULT_KEY_FILE,
   deriveTenantKek,

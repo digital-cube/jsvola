@@ -18,8 +18,13 @@ export const FILE_KINDS = [
 export const FileKindSchema = z.enum(FILE_KINDS);
 export type FileKind = z.infer<typeof FileKindSchema>;
 
-/** How the bytes of a file are protected; `none` until phase 6. */
-export const FILE_ENCRYPTIONS = ["none", "tenant", "keyring", "caller"] as const;
+/**
+ * How the bytes of a file are protected (`docs/CRYPTO.md`): `none`; `tenant` — a key the
+ * server holds (6.1); `keyring` — a principal's PIN (6.2); `caller` — a key the caller sends
+ * with every request in `X-Vola-Content-Key` (6.3); `client` — the CLIENT produced the `JSV`
+ * blob and the wrapped key itself, the server stores and serves them as opaque bytes (6.3).
+ */
+export const FILE_ENCRYPTIONS = ["none", "tenant", "keyring", "caller", "client"] as const;
 export const FileEncryptionSchema = z.enum(FILE_ENCRYPTIONS);
 export type FileEncryption = z.infer<typeof FileEncryptionSchema>;
 
@@ -122,6 +127,17 @@ export const INTEGRITY_ERROR_MESSAGE = "The file could not be decrypted.";
 export const ENCRYPTION_UNAVAILABLE_CODE = "encryption_unavailable";
 /** What the row (and the storage) says the type of an encrypted file is: nothing. */
 export const ENCRYPTED_STORED_MIME = "application/octet-stream";
+/**
+ * The `caller` mode's key (plan 6.3): 32 bytes, base64, on the upload and on every read of a
+ * `caller` file. Server-to-server only: a request that carries an `Origin` header (a browser)
+ * is refused with `400 caller_key_from_browser`. Needs the `encryption:caller` scope.
+ */
+export const CONTENT_KEY_HEADER = "x-vola-content-key";
+export const CALLER_KEY_FROM_BROWSER_CODE = "caller_key_from_browser";
+/** On every download of an encrypted file: its `encryption` mode (`client` tells a reader the body is a `JSV` blob). */
+export const ENCRYPTION_RESPONSE_HEADER = "x-vola-encryption";
+/** `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` when unset: the largest encrypted file a derivative is made of in a request. */
+export const DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES = 25 * 1024 * 1024;
 
 /** `?download=1` on a download forces `Content-Disposition: attachment`. */
 export const FORCE_DOWNLOAD_QUERY = "download";

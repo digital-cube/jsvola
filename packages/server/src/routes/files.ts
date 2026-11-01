@@ -403,17 +403,25 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
         ? await findFile(service, scope, request.params.fileId, { includeDeleted: true })
         : await findReadableFile(service, scope, request.params.fileId);
       const full = (request.query.ocr ?? "").toLowerCase() === OCR_QUERY_FULL;
-      if (row.encryption !== "none") {
+      let fk: Buffer | null = null;
+      if (row.encryption === "client") {
+        // Opaque by design: the row is the answer, nothing of it opens here.
+        reply.header("cache-control", "no-store");
+      } else if (row.encryption !== "none") {
         if (!deps.crypto)
           throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
-        await deps.crypto.open(row); // 503 / 409 here, loudly, rather than a masked answer
+        fk = (await deps.crypto.open(row)).fk; // 503 / 409 / 423 here, loudly, rather than a masked answer
         reply.header("cache-control", "no-store");
       }
-      const [info, ocr] = await Promise.all([
-        withProcessingStatus(service, row),
-        ocrInfoOf(deps.db, row.id, { full }),
-      ]);
-      return { ...info, ocr };
+      try {
+        const [info, ocr] = await Promise.all([
+          withProcessingStatus(service, row),
+          ocrInfoOf(deps.db, row.id, { full, fk, logger: service.logger }),
+        ]);
+        return { ...info, ocr };
+      } finally {
+        fk?.fill(0);
+      }
     },
   );
 

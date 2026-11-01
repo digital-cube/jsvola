@@ -152,7 +152,10 @@ export const folders = pgTable(
  * `extension` NULL, `kind` `other`, `metadata` `{}`; `size` is the PLAINTEXT length (quotas
  * and the UI count what the user stored, not the 16 B per segment of GCM tags) and `hash` is
  * the SHA-256 of the CIPHERTEXT (the plaintext hash is never stored). `keyring_id` names the
- * `vola_keyring` whose master key wraps `fk_ct` of a `keyring` file (6.2); NULL otherwise.
+ * `vola_keyring` whose master key wraps `fk_ct` of a `keyring` file (6.2); NULL otherwise. A
+ * `caller` file's `fk_ct` is under the key the caller sends with every request, a `client`
+ * file's `fk_ct` and `meta_ct` are whatever the client handed over (6.3): the server opens
+ * neither.
  * `folder_id` (NULL: the instance root) points at a `vola_folder`; `parent_id` at the
  * previous version of the same file (the chain `GET …/versions` walks).
  */
@@ -185,7 +188,7 @@ export const files = pgTable(
     }),
     isPublic: boolean("is_public").notNull().default(false),
     isGlobalPublic: boolean("is_global_public").notNull().default(false),
-    /** `none` | `tenant` | `keyring` | `caller`. */
+    /** `none` | `tenant` | `keyring` | `caller` | `client`. */
     encryption: varchar("encryption", { length: 16 }).notNull().default("none"),
     encFormat: smallint("enc_format"),
     keyringId: uuid("keyring_id"),
@@ -216,7 +219,7 @@ export const files = pgTable(
     check("vola_file_size_check", sql`${t.size} >= 0`),
     check(
       "vola_file_encryption_check",
-      sql`${t.encryption} in ('none', 'tenant', 'keyring', 'caller')`,
+      sql`${t.encryption} in ('none', 'tenant', 'keyring', 'caller', 'client')`,
     ),
   ],
 );
@@ -228,9 +231,12 @@ export const files = pgTable(
  * through the same `finalizeUpload` as a plain `POST /files` and `completed_file_id` points at
  * the row it became. An upload belongs to the TENANT (any `files:write` key of it may resume
  * it); `api_key_id` only records which key created it. Rows past `expires_at` are swept with
- * their part files. `encryption` is decided at creation (`none` | `tenant`; NULL in rows from
- * before phase 6.1 means `none`) and applied when the upload completes; `enc_state` is for
- * phase 6.3 (segment-wise encryption of the incoming bytes) and NULL until then.
+ * their part files. `encryption` is decided at creation (NULL in rows from before phase 6.1
+ * means `none`); for anything but `none` the part file is the `JSV` blob from its first byte
+ * and `enc_state` (`services/upload-crypto.ts`) holds what sealing the next segment needs —
+ * the future file id, the wrapped key, the nonce prefix, the segment size, how many segments
+ * are sealed, the sealed tail's size and nonce counter, the running hash and the sealed
+ * sniffing head; for `client` only the file id and the records the client handed over.
  */
 export const uploads = pgTable(
   "vola_upload",
@@ -261,9 +267,9 @@ export const uploads = pgTable(
     completedFileId: uuid("completed_file_id").references(() => files.id, {
       onDelete: "set null",
     }),
-    /** `none` | `tenant` (phase 6.1; `keyring` | `caller` later); NULL in old rows = `none`. */
+    /** `none` | `tenant` | `keyring` | `caller` | `client`; NULL in old rows = `none`. */
     encryption: varchar("encryption", { length: 16 }),
-    /** Phase 6.3: segment cipher state (`fk_ct`, `nonce_prefix`, `segment_size`, `next_index`). */
+    /** The segment cipher state of an encrypted upload (`EncState` / `ClientEncState`); NULL for a plain one. */
     encState: jsonb("enc_state").$type<Record<string, unknown>>(),
   },
   (t) => [
@@ -324,8 +330,10 @@ export const processingJobs = pgTable(
  * PDF (`tesseract`), the language set it ran with (`eng+srp+deu`), how many pages were read
  * and when. `ocr_tsv` is generated from the text (`simple` configuration: no stemming, every
  * language alike) and GIN-indexed for the `ocr` filter of the UDC `files` collection
- * (`plainto_tsquery('simple', …)`). One row per file, gone with the file. An encrypted file
- * never gets one (phase 6.3 keeps its OCR under the file key).
+ * (`plainto_tsquery('simple', …)`). One row per file, gone with the file. An ENCRYPTED file
+ * (phase 6.3) keeps its result sealed under the file key in `ocr_ct` — text, language and
+ * page count together — while `ocr_text`, `ocr_lang` and `ocr_pages` stay NULL: `ocr_tsv` is
+ * then empty and the file is not in the full-text search (`docs/CRYPTO.md` § 11).
  */
 export const fileMetadata = pgTable(
   "vola_file_metadata",
@@ -343,6 +351,8 @@ export const fileMetadata = pgTable(
     /** Pages read (1 for an image; at most VOLA_OCR_MAX_PAGES of a PDF). */
     ocrPages: integer("ocr_pages"),
     ocrAt: timestamp("ocr_at", { withTimezone: true }),
+    /** Phase 6.3: `nonce ∥ AES-GCM(FK, {v, text, lang, pages}, "<file id>:ocr")` of an encrypted file. */
+    ocrCt: bytea("ocr_ct"),
     ocrTsv: tsvector("ocr_tsv").generatedAlwaysAs(
       (): SQL =>
         sql`to_tsvector('simple', left(coalesce(ocr_text, ''), ${sql.raw(String(OCR_TSV_MAX_CHARS))}))`,

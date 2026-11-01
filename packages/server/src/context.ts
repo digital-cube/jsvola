@@ -22,6 +22,17 @@ export interface TenantContext {
    * keyring, or `null`. Resolved only when a `keyring` file is touched; never logged.
    */
   unlockToken: string | null;
+  /**
+   * The `X-Vola-Content-Key` of the request (plan 6.3): the 32-byte key of the `caller`
+   * encryption mode, or `null`. Used only when a `caller` file is touched; never logged,
+   * never stored, zeroed by the auth layer when the response is out.
+   */
+  contentKey: Buffer | null;
+  /**
+   * The `Origin` header, when the request carried one — a browser did. The `caller` mode
+   * refuses such a request (`400 caller_key_from_browser`): the content key is server-to-server.
+   */
+  browserOrigin: string | null;
 }
 
 /** A context with a tenant selected: what `requireTenant()` returns. */

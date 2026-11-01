@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { type Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -30,9 +30,12 @@ export interface AppendResult {
 /**
  * The partial files of resumable uploads: `<dir>/<upload id>.part`, one per upload, written
  * strictly sequentially at the committed offset. Nothing here knows about segment sizes —
- * a PATCH of any length is appended as it comes, so phase 6.3 can cut the same byte stream
- * into fixed 1 MiB segments without changing the protocol. `dir` sits under the storage
- * root so a finished part can be hard-linked into the blob store instead of copied.
+ * a PATCH of any length is appended as it comes (`append`), and the encrypted upload of
+ * plan 6.3 writes its sealed segments through `writeAt` / `truncate` and keeps the sealed,
+ * incomplete last segment in `<dir>/<upload id>.partial` (`writePartial` / `readPartial`),
+ * so a `.part` of an encrypted upload is ciphertext from its first byte. `dir` sits under
+ * the storage root so a finished part can be hard-linked into the blob store instead of
+ * copied.
  */
 export class PartStore {
   readonly dir: string;
@@ -123,9 +126,76 @@ export class PartStore {
     }
   }
 
-  /** Removes the part file; nothing happens when there is none. */
+  /** Removes the part file (and the sealed partial segment, if any); nothing happens when there is none. */
   async remove(uploadId: string): Promise<void> {
     await rm(this.path(uploadId), { force: true });
+    await rm(this.partialPath(uploadId), { force: true });
+  }
+
+  // --- the encrypted upload (plan 6.3) ---------------------------------------------------
+
+  /** Where the sealed incomplete segment of `uploadId` is (or would be). */
+  partialPath(uploadId: string): string {
+    return `${this.path(uploadId)}ial`; // `<id>.partial`
+  }
+
+  /** Cuts the part file back to `size` bytes (a PATCH that died after writing but before committing). */
+  async truncate(uploadId: string, size: number): Promise<void> {
+    const handle = await open(this.path(uploadId), "r+");
+    try {
+      await handle.truncate(size);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /**
+   * A handle for writing sealed segments at their offsets; `fsync` and close through
+   * `handle.sync()` / `handle.close()` (the caller owns it).
+   */
+  async openForWrite(uploadId: string): Promise<import("node:fs/promises").FileHandle> {
+    return open(this.path(uploadId), "r+");
+  }
+
+  /** Writes `data` at `offset` of the part file and `fsync`s (the header of an encrypted upload). */
+  async writeAt(uploadId: string, offset: number, data: Buffer): Promise<void> {
+    const handle = await open(this.path(uploadId), "r+");
+    try {
+      await handle.write(data, 0, data.length, offset);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /** The sealed incomplete segment, or `null` when there is none. */
+  async readPartial(uploadId: string): Promise<Buffer | null> {
+    try {
+      return await readFile(this.partialPath(uploadId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  }
+
+  /** Replaces the sealed incomplete segment atomically (write to a sibling, `fsync`, rename). */
+  async writePartial(uploadId: string, sealed: Buffer): Promise<void> {
+    const target = this.partialPath(uploadId);
+    const tmp = `${target}.tmp`;
+    await writeFile(tmp, sealed, { mode: 0o600, flag: "w" });
+    const handle = await open(tmp, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(tmp, target);
+  }
+
+  /** Removes the sealed incomplete segment; nothing happens when there is none. */
+  async removePartial(uploadId: string): Promise<void> {
+    await rm(this.partialPath(uploadId), { force: true });
+    await rm(`${this.partialPath(uploadId)}.tmp`, { force: true });
   }
 
   /**

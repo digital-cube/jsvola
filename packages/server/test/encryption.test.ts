@@ -240,7 +240,7 @@ describe("encrypted upload (encryption=tenant)", () => {
     expect(plain.response.json()).toMatchObject({ encryption: "none", hash: sha256(SECRET) });
   });
 
-  it("refuses an encryption field that arrives after the file part and disagrees (422), unknown modes (422), keyring without Redis (503) and later phases (501)", async () => {
+  it("refuses an encryption field that arrives after the file part and disagrees (422), unknown modes (422), keyring without Redis (503), client outside /uploads (422) and caller without its key (423)", async () => {
     const late = await http.upload(SECRET, "late.txt", { fields: { encryption: "tenant" } });
     expect(late.response.statusCode, late.response.body).toBe(422);
     expect(late.response.json().error.message).toContain("before the file part");
@@ -256,10 +256,17 @@ describe("encrypted upload (encryption=tenant)", () => {
     // This app has no Redis: the keyring provider does not exist here (test/keyrings.test.ts has it).
     expect(keyring.response.statusCode).toBe(503);
     expect(keyring.response.json().error.code).toBe("encryption_unavailable");
+    const client = await http.upload(SECRET, "cl.txt", {
+      headers: { "x-vola-encryption": "client" },
+    });
+    expect(client.response.statusCode).toBe(422);
+    expect(client.response.json().error.message).toContain("POST /uploads");
+    // The fixture's key lacks `encryption:caller`: forbidden (test/encryption3.test.ts has the mode).
     const caller = await http.upload(SECRET, "c.txt", {
       headers: { "x-vola-encryption": "caller" },
     });
-    expect(caller.response.statusCode).toBe(501);
+    expect(caller.response.statusCode).toBe(403);
+    expect(caller.response.json().error.code).toBe("forbidden");
     // Nothing of the refused ones was left behind in the temporary area.
     expect(await readdir(storage.tmpDir)).toEqual([]);
   });
@@ -305,7 +312,7 @@ describe("encrypted upload (encryption=tenant)", () => {
       await setTenantDefaultEncryption(handle.db, fx.tenant.slug, "none");
     }
     await expect(
-      setTenantDefaultEncryption(handle.db, fx.tenant.slug, "caller"),
+      setTenantDefaultEncryption(handle.db, fx.tenant.slug, "client"),
     ).rejects.toMatchObject({
       code: "validation_error",
     });
@@ -526,7 +533,7 @@ describe("encrypted metadata in info, lists and UDC", () => {
     ]);
   });
 
-  it("UDC list and read show the real name; filters and the row's download_url still work; no thumbnail", async () => {
+  it("UDC list and read show the real name; filters and the row's download_url still work; the thumbnail is rendered under the key", async () => {
     const instanceId = randomUUID();
     const { info } = await uploadEncrypted(await pngFixture(), "cover.png", { instanceId });
     await http.upload(Buffer.from("plain"), "plain.txt", { instanceId });
@@ -565,9 +572,20 @@ describe("encrypted metadata in info, lists and UDC", () => {
       },
     })) as { rows: Row[] };
     expect(byName.rows.map((r) => r.id)).toEqual([info.id]);
+    // 6.3: the server holds the key, so the thumbnail exists — sealed on disk, decrypted here, never cached.
     const thumb = await http.get(url(instanceId, info.id, "/thumb/256"));
-    expect(thumb.statusCode).toBe(404);
-    expect(thumb.json().error.code).toBe("no_thumbnail");
+    expect(thumb.statusCode, thumb.body).toBe(200);
+    expect(thumb.headers["cache-control"]).toBe("no-store");
+    expect(thumb.headers["x-thumbnail-status"]).toBe("ready");
+    expect(
+      (
+        await keyless.inject({
+          method: "GET",
+          url: url(instanceId, info.id, "/thumb/256"),
+          headers: bearer(fx.full.key),
+        })
+      ).statusCode,
+    ).toBe(503);
   });
 
   it("a subscription gets the decrypted row of an encrypted upload", async () => {
@@ -591,6 +609,8 @@ describe("encrypted metadata in info, lists and UDC", () => {
       isAdmin: false,
       userId: null,
       unlockToken: null,
+      contentKey: null,
+      browserOrigin: null,
     };
     const subscription = await runWithTenant(tenant, () =>
       source.subscribe(
@@ -643,7 +663,7 @@ describe("encrypted metadata in info, lists and UDC", () => {
 // --- visibility, shares ----------------------------------------------------------------
 
 describe("what an encrypted file can never be", () => {
-  it("globally public (409 encrypted_not_public; /public answers 404) or plainly shared (409)", async () => {
+  it("globally public (409 encrypted_not_public; /public answers 404); a share is a grant with #secret (6.3), 503 without the key file", async () => {
     const { info, instanceId } = await uploadEncrypted(SECRET, "nope.txt");
     const patched = await http.patch(url(instanceId, info.id), { is_global_public: true });
     expect(patched.statusCode).toBe(409);
@@ -657,8 +677,16 @@ describe("what an encrypted file can never be", () => {
       headers: bearer(fx.full.key),
       payload: { file_id: info.id },
     });
-    expect(share.statusCode).toBe(409);
-    expect(share.json().error.code).toBe("encrypted_share_requires_grant");
+    expect(share.statusCode, share.body).toBe(201);
+    expect(share.json().url).toMatch(/#[A-Za-z0-9_-]{43}$/);
+    expect(share.json().encrypted).toBe(true);
+    const withoutKey = await keyless.inject({
+      method: "POST",
+      url: "/vola/shares",
+      headers: bearer(fx.full.key),
+      payload: { file_id: info.id },
+    });
+    expect(withoutKey.statusCode).toBe(503);
   });
 });
 
@@ -753,11 +781,13 @@ describe("resumable upload with encryption=tenant", () => {
           instance_type: TYPE,
           instance_id: randomUUID(),
           filename: "x.bin",
-          encryption: "caller",
+          encryption: "client",
         }),
       },
     });
-    expect(later.statusCode).toBe(501);
+    // `client` without its `fk_ct` pair: nothing to store the key as.
+    expect(later.statusCode).toBe(422);
+    expect(later.json().error.message).toContain("fk_ct");
     const keylessCreate = await keyless.inject({
       method: "POST",
       url: "/vola/uploads",

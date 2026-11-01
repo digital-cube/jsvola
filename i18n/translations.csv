@@ -27,3 +27,4 @@ EncryptionModes,NONE,Not encrypted,Nije šifrovano
 EncryptionModes,TENANT,Tenant key,Ključ tenanta
 EncryptionModes,KEYRING,Keyring (PIN),Privezak (PIN)
 EncryptionModes,CALLER,Caller key,Ključ pozivaoca
+EncryptionModes,CLIENT,Client-side (opaque),Šifrovano na klijentu (neprozirno)

@@ -1,4 +1,4 @@
-import { errorResponse, FORCE_DOWNLOAD_QUERY } from "@vola/core";
+import { ENCRYPTION_RESPONSE_HEADER, errorResponse, FORCE_DOWNLOAD_QUERY } from "@vola/core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type CiphertextSource, createDecryptStream } from "../crypto/index.js";
 import type { FileRow } from "../db/schema.js";
@@ -11,7 +11,7 @@ import {
   rangeLength,
 } from "../files/byte-range.js";
 import { contentDisposition, dispositionFor } from "../files/content-disposition.js";
-import { encryptionUnavailable } from "../services/encryption.js";
+import { encryptionUnavailable, type OpenedFile } from "../services/encryption.js";
 import { type FilesDeps, openFile, touchLastAccessed } from "../services/files.js";
 import { BlobNotFoundError } from "../storage/index.js";
 
@@ -24,6 +24,11 @@ export interface SendFileOptions {
   cacheControl?: string | undefined;
   /** Who downloads (for `last_accessed_by`); `null` for an anonymous reader. */
   userId: string | null;
+  /**
+   * An encrypted file ALREADY opened by the caller — the share grant (plan 6.3) opens the key
+   * under the link secret, not under the request's material. Absent: `crypto.open(row)`.
+   */
+  opened?: OpenedFile | undefined;
 }
 
 export const flag = (value: string | undefined): boolean => value === "1" || value === "true";
@@ -66,6 +71,8 @@ export async function sendFile(
   row: FileRow,
   options: SendFileOptions,
 ): Promise<FastifyReply> {
+  if (row.encryption === "client")
+    return sendOpaqueCiphertext(service, request, reply, row, options);
   if (row.encryption !== "none") return sendEncryptedFile(service, request, reply, row, options);
   const isHead = request.method === "HEAD";
   const size = Number(row.size);
@@ -148,7 +155,7 @@ export async function sendEncryptedFile(
 ): Promise<FastifyReply> {
   const crypto = service.crypto;
   if (!crypto) throw encryptionUnavailable(row.encryption);
-  const { fk, meta } = await crypto.open(row);
+  const { fk, meta } = options.opened ?? (await crypto.open(row));
   try {
     const isHead = request.method === "HEAD";
     const size = Number(row.size);
@@ -162,6 +169,7 @@ export async function sendEncryptedFile(
       .header("accept-ranges", "bytes")
       .header("x-content-type-options", "nosniff")
       .header("cache-control", ENCRYPTED_CACHE_CONTROL)
+      .header(ENCRYPTION_RESPONSE_HEADER, row.encryption)
       .header("last-modified", row.createdAt.toUTCString())
       .header(
         "content-disposition",
@@ -205,6 +213,52 @@ export async function sendEncryptedFile(
   } finally {
     fk.fill(0);
   }
+}
+
+/**
+ * The download of a `client`-encrypted file (plan 6.3, `docs/CRYPTO.md` § 13): the `JSV`
+ * blob EXACTLY as the client uploaded it — the server has no key and decrypts nothing.
+ * `Content-Type: application/octet-stream`, `X-Vola-Encryption: client`, `Content-Length`
+ * and `Range` in CIPHERTEXT bytes (the blob's), `ETag` the blob hash, `Cache-Control:
+ * no-store`, `Content-Disposition: attachment; filename="<file id>.jsv"`.
+ */
+export async function sendOpaqueCiphertext(
+  service: FilesDeps,
+  request: FastifyRequest<{ Querystring: DownloadQuery }>,
+  reply: FastifyReply,
+  row: FileRow,
+  options: SendFileOptions,
+): Promise<FastifyReply> {
+  const isHead = request.method === "HEAD";
+  const found = await service.storage.stat(row.hash);
+  if (!found) throw new VolaError("blob_missing", 500, "the stored bytes of this file are missing");
+  const size = found.size;
+  const etag = `"${row.hash}"`;
+  reply
+    .header("etag", etag)
+    .header("accept-ranges", "bytes")
+    .header("x-content-type-options", "nosniff")
+    .header("cache-control", ENCRYPTED_CACHE_CONTROL)
+    .header(ENCRYPTION_RESPONSE_HEADER, row.encryption)
+    .header("last-modified", row.createdAt.toUTCString())
+    .header("content-disposition", contentDisposition(`${row.id}.jsv`, "attachment"));
+  if (ifNoneMatchMatches(request.headers["if-none-match"], etag)) {
+    return reply.status(304).send();
+  }
+  const range = resolveRange(request, reply, size);
+  if (range === "unsatisfiable") return reply.send(isHead ? undefined : unsatisfiable(size));
+  if (!isHead) touchLastAccessed(service, row.id, options.userId);
+  reply.type("application/octet-stream");
+  if (range) {
+    reply
+      .status(206)
+      .header("content-range", contentRange(range, size))
+      .header("content-length", String(rangeLength(range)));
+  } else {
+    reply.header("content-length", String(size));
+  }
+  if (isHead) return reply.send();
+  return reply.send(await openFile(service, row, range ?? undefined));
 }
 
 /** The blob of `row` as the decryptor reads it; a blob missing from disk is `500 blob_missing`. */

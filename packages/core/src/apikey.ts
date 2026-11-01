@@ -136,7 +136,7 @@ export const TenantSchema = z.object({
   slug: SlugSchema,
   name: z.string().min(1).max(200),
   is_active: z.boolean(),
-  /** How an upload without an explicit `encryption` is stored: `none` (default) or `tenant`. */
+  /** How an upload without an explicit `encryption` is stored: `none` (default), `tenant`, `keyring` or `caller`. */
   default_encryption: z.enum(["none", "tenant", "keyring", "caller"]),
   created_at: TimestampSchema,
 });

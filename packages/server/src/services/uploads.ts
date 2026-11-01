@@ -1,10 +1,19 @@
 import { createReadStream } from "node:fs";
+import { open } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import type { FileEncryption, FileInfo } from "@vola/core";
 import { and, eq, lt } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
+import {
+  HEADER_BYTES,
+  IntegrityError,
+  type JsvHeader,
+  parseHeader,
+  plaintextLengthOf,
+} from "../crypto/index.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, type UploadRow, uploads } from "../db/schema.js";
+import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import { sanitizeFilename } from "../files/filename.js";
@@ -12,7 +21,7 @@ import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
 import type { StorageBackend } from "../storage/index.js";
 import { PartOverflowError, type PartStore } from "../uploads/part-store.js";
-import type { EncryptionService } from "./encryption.js";
+import { type EncryptionService, encryptionUnavailable } from "./encryption.js";
 import {
   type FilesDeps,
   finalizeUpload,
@@ -31,6 +40,16 @@ import {
   parsePath,
   resolveFolderId,
 } from "./folders.js";
+import {
+  type AnyEncState,
+  appendEncrypted,
+  type ClientEncState,
+  createEncState,
+  ENC_STATE_VERSION,
+  type EncState,
+  finishEncrypted,
+  parseEncState,
+} from "./upload-crypto.js";
 
 export interface UploadsDeps {
   db: Database;
@@ -47,7 +66,7 @@ export interface UploadsDeps {
   events?: FileEventBus | undefined;
   /** Background jobs of the completed file (`async` mode). */
   jobs?: JobDispatcher | undefined;
-  /** Encryption (plan 6.1): an upload created with `encryption = tenant` is encrypted at completion. */
+  /** Encryption (plans 6.1–6.3): an upload created with `encryption != none` is encrypted segment by segment as its bytes arrive. */
   crypto?: EncryptionService | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
@@ -119,14 +138,47 @@ export interface CreateUploadInput {
   contentType?: string | undefined;
   /** The `metadata` pair: a JSON object as text. */
   metadata?: string | undefined;
-  /** The `encryption` pair or `X-Vola-Encryption`: `none` | `tenant` | `keyring`; absent: the folder policy, else the tenant default. */
+  /** The `encryption` pair or `X-Vola-Encryption`: `none` | `tenant` | `keyring` | `caller` | `client`; absent: the folder policy, else the tenant default. */
   encryption?: string | undefined;
+  /** `client` mode: the `fk_ct` pair (base64), required. */
+  fkCt?: string | undefined;
+  /** `client` mode: the `meta_ct` pair (base64), optional. */
+  metaCt?: string | undefined;
 }
 
 export interface CreatedUpload {
   upload: UploadRow;
   /** Set when the upload was complete at creation (`Upload-Length: 0`). */
   file: FileInfo | null;
+  /** The id the file WILL have (an encrypted upload draws it at creation: it is in every AAD). */
+  fileId: string | null;
+}
+
+/** The id the completed file of `row` has or will have (`Vola-File-Id`). */
+export function futureFileId(row: UploadRow): string | null {
+  if (row.completedFileId) return row.completedFileId;
+  const enc = row.encState as { file_id?: unknown } | null;
+  return typeof enc?.file_id === "string" ? enc.file_id : null;
+}
+
+const B64_RE = /^[A-Za-z0-9+/_-]+={0,2}$/;
+/** The longest `fk_ct` / `meta_ct` a client may hand over (base64 decoded). */
+const CLIENT_FK_CT_MAX_BYTES = 256;
+const CLIENT_META_CT_MAX_BYTES = 256 * 1024;
+
+/** A base64 record a `client` upload hands over, decoded and bounded; `422` otherwise. */
+function clientRecord(raw: string | undefined, name: string, max: number, required: boolean) {
+  if (raw === undefined || raw === "") {
+    if (required) throw validation(`${name}: required for encryption=client (base64)`);
+    return null;
+  }
+  const value = raw.trim();
+  if (!B64_RE.test(value)) throw validation(`${name}: base64 is required`);
+  const bytes = Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  if (bytes.length < 28 || bytes.length > max) {
+    throw validation(`${name}: between 28 and ${max} bytes`);
+  }
+  return bytes;
 }
 
 /**
@@ -164,25 +216,51 @@ export async function createUpload(
   }
   // Decided at creation (and checked to be servable), so a client knows before it sends a
   // byte: a folder policy (6.2) outranks the explicit mode; `keyring` needs the unlock NOW
-  // (and again at completion, when the key is wrapped).
+  // (and on every PATCH: each one unwraps the file key), `caller` the content key likewise.
   let encryption: FileEncryption = "none";
+  let policy: string | null = null;
   if (deps.crypto) {
-    const policy =
+    policy =
       folderPath === null
         ? await effectiveKeyringId(foldersDeps(deps), scope, parent?.folderId ?? null)
         : await effectiveKeyringIdOfPath(foldersDeps(deps), scope, folderPath);
     encryption = await deps.crypto.resolveMode(
       scope.tenantId,
-      deps.crypto.parseMode(input.encryption),
+      deps.crypto.parseMode(input.encryption, { client: true }),
       policy,
     );
-    if (encryption !== "none") await deps.crypto.assertUploadable(encryption, policy);
+    if (encryption !== "none" && encryption !== "client") {
+      await deps.crypto.assertUploadable(encryption, policy);
+    }
   } else if (
     input.encryption !== undefined &&
     input.encryption !== "" &&
     input.encryption !== "none"
   ) {
     throw new VolaError("encryption_unavailable", 503, "encryption is not configured");
+  }
+  // A `client` blob comes with its wrapped key; `fk_ct` without `client` is a mistake worth naming.
+  let client: ClientEncState | null = null;
+  if (encryption === "client") {
+    if (policy) {
+      throw validation(
+        "encryption: this folder's policy encrypts under a keyring; a client-encrypted blob cannot go there",
+      );
+    }
+    const fkCt = clientRecord(input.fkCt, "fk_ct", CLIENT_FK_CT_MAX_BYTES, true) as Buffer;
+    const metaCt = clientRecord(input.metaCt, "meta_ct", CLIENT_META_CT_MAX_BYTES, false);
+    if (input.length < HEADER_BYTES + 16) {
+      throw validation("Upload-Length: a JSV blob is at least 40 bytes (header and one tag)");
+    }
+    client = {
+      v: ENC_STATE_VERSION,
+      mode: "client",
+      file_id: uuidv7(),
+      fk_ct: fkCt.toString("base64"),
+      meta_ct: metaCt ? metaCt.toString("base64") : null,
+    };
+  } else if (input.fkCt !== undefined || input.metaCt !== undefined) {
+    throw validation("fk_ct / meta_ct: only with encryption=client");
   }
   const now = clock(deps);
   const [row] = await deps.db
@@ -201,15 +279,35 @@ export async function createUpload(
       length: input.length,
       offset: 0,
       encryption,
+      encState: client as Record<string, unknown> | null,
       createdBy: input.userId,
       createdAt: now,
       expiresAt: new Date(now.getTime() + deps.ttlMs),
     })
     .returning();
-  const upload = row as UploadRow;
+  let upload = row as UploadRow;
   try {
     await deps.parts.create(upload.id);
+    // A server-encrypted upload: the file key, the blob header and the hash start NOW, so
+    // the first PATCH has nothing to decide and the part file is ciphertext from byte 0.
+    if (encryption !== "none" && encryption !== "client") {
+      if (!deps.crypto) throw encryptionUnavailable(encryption);
+      const enc = await createEncState(deps.crypto, deps.parts, {
+        uploadId: upload.id,
+        tenantId: scope.tenantId,
+        mode: encryption,
+        keyringId: policy,
+        length: input.length,
+      });
+      const [stored] = await deps.db
+        .update(uploads)
+        .set({ encState: enc as unknown as Record<string, unknown> })
+        .where(eq(uploads.id, upload.id))
+        .returning();
+      upload = stored as UploadRow;
+    }
   } catch (error) {
+    await deps.parts.remove(upload.id).catch(() => undefined);
     await deps.db.delete(uploads).where(eq(uploads.id, upload.id));
     throw error;
   }
@@ -222,12 +320,29 @@ export async function createUpload(
     },
     "upload created",
   );
-  if (upload.length > 0) return { upload, file: null };
+  if (upload.length > 0) return { upload, file: null, fileId: futureFileId(upload) };
   const file = await deps.db.transaction(async (tx) => {
     const locked = await lockUpload(tx, scope.tenantId, upload.id);
+    // An encrypted empty file is one empty, sealed last segment: the "flush" writes it.
+    const enc = parseEncState(locked.encState);
+    if (enc && enc.mode !== "client" && deps.crypto) {
+      const flushed = await appendEncrypted(deps.crypto, deps.parts, enc, {
+        uploadId: locked.id,
+        tenantId: scope.tenantId,
+        length: 0,
+        offset: 0,
+        body: null,
+        room: 0,
+      });
+      await tx
+        .update(uploads)
+        .set({ encState: flushed.enc as unknown as Record<string, unknown> })
+        .where(eq(uploads.id, locked.id));
+      locked.encState = flushed.enc as unknown as Record<string, unknown>;
+    }
     return completeLocked(deps, tx, locked);
   });
-  return { upload: { ...upload, completedFileId: file.id }, file };
+  return { upload: { ...upload, completedFileId: file.id }, file, fileId: file.id };
 }
 
 // --- lookup ------------------------------------------------------------------------------
@@ -339,9 +454,24 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
       );
     }
     if ((await deps.parts.size(row.id)) === null) throw uploadLost();
-    let appended: { size: number; error: Error | null };
+    const enc = parseEncState(row.encState);
+    let appended: { size: number; error: Error | null; encState?: EncState };
     try {
-      appended = await deps.parts.append(row.id, row.offset, input.body, room);
+      if (enc && enc.mode !== "client") {
+        // Segment by segment, under the key of THIS request (423 / 409 / 503 before a byte).
+        if (!deps.crypto) throw encryptionUnavailable(enc.mode);
+        const result = await appendEncrypted(deps.crypto, deps.parts, enc, {
+          uploadId: row.id,
+          tenantId: row.tenantId,
+          length: row.length,
+          offset: row.offset,
+          body: input.body,
+          room,
+        });
+        appended = { size: result.offset, error: result.error, encState: result.enc };
+      } else {
+        appended = await deps.parts.append(row.id, row.offset, input.body, room);
+      }
     } catch (error) {
       if (error instanceof PartOverflowError) {
         throw new VolaError(
@@ -354,7 +484,12 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
     }
     const [updated] = await tx
       .update(uploads)
-      .set({ offset: appended.size })
+      .set({
+        offset: appended.size,
+        ...(appended.encState
+          ? { encState: appended.encState as unknown as Record<string, unknown> }
+          : {}),
+      })
       .where(eq(uploads.id, row.id))
       .returning();
     const upload = updated as UploadRow;
@@ -381,12 +516,13 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
  * Runs with the upload row locked. The folder path is resolved (created when missing) and
  * the parent looked up again HERE, since either may have changed since creation.
  *
- * An upload created with `encryption != none` (or whose folder has a keyring policy by now)
- * is encrypted NOW: the (plaintext) part file is streamed through the same `stageUpload` as
- * a multipart body — with the length the header
- * can carry, since it is known — and removed once the ciphertext is committed. Until phase
- * 6.3 cuts the incoming stream into segments, the part file is plaintext on disk for the
- * life of the upload (`docs/CRYPTO.md` § What is not covered).
+ * An upload created with `encryption != none` already IS the `JSV` blob (`upload-crypto.ts`
+ * sealed every segment as it arrived): its hash comes out of the running state, nothing is
+ * read twice, and the part is hard-linked into the store. A `client` upload is checked to be
+ * a well-formed `JSV` blob (header, lengths) and stored opaque. A folder whose keyring policy
+ * was set AFTER a PLAIN upload was created is honoured the 6.2 way — the part file is
+ * encrypted now and removed — but a policy that disagrees with an upload already encrypted
+ * under another mode or keyring is `422`: the segments cannot be re-sealed.
  */
 async function completeLocked(
   deps: UploadsDeps,
@@ -404,7 +540,8 @@ async function completeLocked(
       : await resolveFolderId(foldersDeps(deps), scope, row.folderPath, actor);
   const partSize = await deps.parts.size(row.id);
   if (partSize === null) throw uploadLost();
-  if (partSize !== row.length) {
+  const enc: AnyEncState | null = parseEncState(row.encState);
+  if (!enc && partSize !== row.length) {
     throw new VolaError(
       "upload_lost",
       410,
@@ -418,17 +555,52 @@ async function completeLocked(
     scope,
     folderId === undefined ? (parent?.folderId ?? null) : folderId,
   );
-  if (policy) encryption = "keyring";
+  if (policy && (enc?.mode !== "keyring" || enc.keyring_id !== policy)) {
+    if (enc) {
+      throw validation(
+        "the folder's encryption policy changed after this upload was created; delete it and start a new one",
+      );
+    }
+    encryption = "keyring";
+  }
   let upload: StagedUpload;
-  if (encryption === "none") {
+  let plaintextPartToRemove = false;
+  if (enc && enc.mode === "client") {
+    upload = await stageClientBlob(deps, row, enc, partSize);
+  } else if (enc) {
+    if (!deps.crypto) throw encryptionUnavailable(enc.mode);
+    const finished = await finishEncrypted(deps.crypto, deps.parts, enc, {
+      uploadId: row.id,
+      tenantId: row.tenantId,
+      length: row.length,
+    });
+    upload = {
+      staged: {
+        hash: finished.hash,
+        size: finished.ciphertextLength,
+        tmpPath: deps.parts.path(row.id),
+      },
+      head: finished.head,
+      encrypted: {
+        mode: enc.mode,
+        fileId: enc.file_id,
+        fk: finished.fk,
+        keyringId: enc.keyring_id,
+        plaintextLength: row.length,
+        format: finished.format,
+      },
+    };
+  } else if (encryption === "none") {
     upload = await deps.parts.stage(row.id);
   } else {
+    // The 6.2 path: a plain part file that a policy set meanwhile wants encrypted.
     upload = await stageUpload(filesDeps(deps), createReadStream(deps.parts.path(row.id)), {
       encryption,
       keyringId: policy,
       plaintextLength: row.length,
       maxBytes: deps.maxUploadBytes,
     });
+    plaintextPartToRemove = true;
   }
   const file = await finalizeUpload(filesDeps(deps), {
     scope,
@@ -445,8 +617,8 @@ async function completeLocked(
     .update(uploads)
     .set({ completedFileId: file.id, folderId: file.folder_id, offset: row.length })
     .where(eq(uploads.id, row.id));
-  // The plaintext part file of an encrypted upload: the ciphertext is committed, it goes now.
-  if (encryption !== "none") await deps.parts.remove(row.id).catch(() => undefined);
+  // The plaintext part file of a 6.2-style late encryption: the ciphertext is committed, it goes now.
+  if (plaintextPartToRemove) await deps.parts.remove(row.id).catch(() => undefined);
   deps.logger?.info(
     {
       upload: row.id,
@@ -459,6 +631,66 @@ async function completeLocked(
     "upload completed",
   );
   return file;
+}
+
+/**
+ * A finished `client` upload as a staged blob: the part is hashed once (it is the blob) and
+ * checked to be a `JSV` blob whose arithmetic works out — the header parses, the ciphertext
+ * length is a whole number of segments. `422 client_blob_invalid` otherwise. The server
+ * cannot verify a tag (it has no key): a blob that is well-formed but does not decrypt is
+ * the client's problem, exactly as a `caller` file whose key is lost.
+ */
+async function stageClientBlob(
+  deps: UploadsDeps,
+  row: UploadRow,
+  enc: ClientEncState,
+  partSize: number,
+): Promise<StagedUpload> {
+  if (partSize !== row.length) {
+    throw new VolaError(
+      "upload_lost",
+      410,
+      `the part file holds ${partSize} bytes, the upload expects ${row.length}`,
+    );
+  }
+  let header: JsvHeader;
+  let plaintextLength: number;
+  try {
+    const handle = await open(deps.parts.path(row.id), "r");
+    let head: Buffer;
+    try {
+      head = Buffer.alloc(HEADER_BYTES);
+      await handle.read(head, 0, HEADER_BYTES, 0);
+    } finally {
+      await handle.close();
+    }
+    header = parseHeader(head);
+    plaintextLength = plaintextLengthOf(header, partSize);
+  } catch (error) {
+    if (error instanceof IntegrityError) {
+      throw new VolaError(
+        "client_blob_invalid",
+        422,
+        `the uploaded bytes are not a JSV blob: ${error.reason}`,
+      );
+    }
+    throw error;
+  }
+  const staged = await deps.parts.stage(row.id);
+  return {
+    staged: staged.staged,
+    head: Buffer.alloc(0),
+    encrypted: {
+      mode: "client",
+      fileId: enc.file_id,
+      fk: null,
+      fkCt: Buffer.from(enc.fk_ct, "base64"),
+      metaCt: enc.meta_ct ? Buffer.from(enc.meta_ct, "base64") : null,
+      keyringId: null,
+      plaintextLength,
+      format: header.version,
+    },
+  };
 }
 
 // --- delete ------------------------------------------------------------------------------

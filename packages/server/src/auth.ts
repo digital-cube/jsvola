@@ -1,4 +1,5 @@
 import {
+  CONTENT_KEY_HEADER,
   displayApiKey,
   extractApiKey,
   extractSubprotocolKey,
@@ -11,6 +12,7 @@ import {
 } from "@vola/core";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { hasTenant, runWithTenant, type TenantContext, tenantRequired } from "./context.js";
+import { parseContentKey } from "./crypto/caller.js";
 import type { Database } from "./db/index.js";
 import { VolaError } from "./errors.js";
 import { authenticateApiKey, LastUsedThrottle, touchLastUsed } from "./services/apikeys.js";
@@ -77,10 +79,25 @@ function headerValue(request: FastifyRequest, name: string): string | null {
 }
 
 /**
+ * `X-Vola-Content-Key`, decoded (32 bytes); `null` when absent. `400 bad_request` for a value
+ * that is not a key. Nothing of it is logged, not even its length.
+ */
+export function requestContentKey(request: FastifyRequest): Buffer | null {
+  try {
+    return parseContentKey(headerValue(request, CONTENT_KEY_HEADER));
+  } catch (error) {
+    if (error instanceof RangeError) throw new VolaError("bad_request", 400, error.message);
+    throw error;
+  }
+}
+
+/**
  * Authenticates `request` and builds its `TenantContext`. Throws `unauthorized` for a
  * missing or unusable key, `tenant_not_found` for an admin's unknown or inactive
- * `X-Tenant-Slug`, `bad_request` for an invalid `X-User-Id`. The `X-Vola-Unlock` header is
- * carried along unchecked (the keyring provider resolves it when a keyring file is touched).
+ * `X-Tenant-Slug`, `bad_request` for an invalid `X-User-Id` or `X-Vola-Content-Key`. The
+ * `X-Vola-Unlock` header is carried along unchecked (the keyring provider resolves it when a
+ * keyring file is touched), the content key likewise (the `caller` provider checks the scope
+ * and the `Origin` rule when a `caller` file is touched, `EncryptionService.callerKey`).
  */
 export async function authenticateRequest(
   request: FastifyRequest,
@@ -114,6 +131,8 @@ export async function authenticateRequest(
     isAdmin: found.key.isAdmin,
     userId: requestUserId(request),
     unlockToken: headerValue(request, UNLOCK_HEADER),
+    contentKey: requestContentKey(request),
+    browserOrigin: headerValue(request, "origin"),
   };
 }
 
@@ -172,5 +191,13 @@ export function installAuth(
   app.addHook("preHandler", (request, _reply, done) => {
     if (request.vola) runWithTenant(request.vola, done);
     else done();
+  });
+
+  // The caller's content key lives for one request: gone from memory as far as Node allows.
+  app.addHook("onResponse", async (request) => {
+    request.vola?.contentKey?.fill(0);
+  });
+  app.addHook("onError", async (request) => {
+    request.vola?.contentKey?.fill(0);
   });
 }

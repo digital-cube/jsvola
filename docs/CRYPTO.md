@@ -6,15 +6,18 @@ something answers `409`, `423`, `429` or `503`. The model comes from the thilo N
 document departs from Notes is the **segmented blob format** (§ 6.8 there), which is what makes
 `Range` requests and constant memory possible. Phase 6.1 (TCKK5UTHJX) ships the format, the
 per-file key and the `tenant` provider; phase 6.2 (TCKFT692JH) the `keyring` provider (§ 8: a
-PIN per principal, unlock tokens, recovery, brute force, reset, encrypted folders); `caller`
-(phase 6.3) plugs into the same format and the same `WrapProvider` interface.
+PIN per principal, unlock tokens, recovery, brute force, reset, encrypted folders); phase 6.3
+(TCKQ7JWCRJ) the `caller` provider (§ 9), the resumable upload sealed segment by segment
+(§ 10), encrypted thumbnails and OCR (§ 11), the share grant (§ 12) and `client` blobs (§ 13).
 
-Code: `packages/server/src/crypto/` (pure, no I/O, unit-tested in `test/crypto.test.ts` and
-`test/keyring-crypto.test.ts`), `packages/server/src/services/encryption.ts` (the row-level
-operations and the HTTP mapping), `services/keyrings.ts` and `services/unlock.ts` (the keyring
-rows and the tokens), `routes/send-file.ts` (download), `services/files.ts` (upload),
-`services/transfer.ts` (re-wrap). Integration tests: `test/encryption.test.ts`,
-`test/keyrings.test.ts` (a real Redis).
+Code: `packages/server/src/crypto/` (pure, no I/O, unit-tested in `test/crypto.test.ts`,
+`test/keyring-crypto.test.ts` and `test/crypto3.test.ts`), `packages/server/src/services/
+encryption.ts` (the row-level operations and the HTTP mapping), `services/keyrings.ts` and
+`services/unlock.ts` (the keyring rows and the tokens), `routes/send-file.ts` (download),
+`services/files.ts` (upload), `services/upload-crypto.ts` (the resumable upload),
+`services/derivatives.ts` (thumbnails and OCR of encrypted files), `services/shares.ts` (the
+grant), `services/transfer.ts` (re-wrap). Integration tests: `test/encryption.test.ts`,
+`test/keyrings.test.ts`, `test/encryption3.test.ts` (a real Redis and a real worker).
 
 ## 1. Keys
 
@@ -118,7 +121,8 @@ interface WrapProvider {
 |---|---|---|---|---|
 | `tenant` | the tenant's KEK from `VOLA_KEY_FILE` | a dump of disk, database and backups taken without the key file | nothing | 6.1 |
 | `keyring` | a principal's master key, itself behind a PIN (Argon2id + pepper) and a recovery key | the above plus a database operator; opened only during an unlock | `X-Vola-Unlock` | 6.2, § 8 |
-| `caller` | a 32-byte key the caller sends on every request; nothing is kept | everything vola itself holds | `X-Vola-Content-Key` | phase 6.3 |
+| `caller` | a 32-byte key the caller sends on every request; nothing is kept | everything vola itself holds | `X-Vola-Content-Key` (scope `encryption:caller`, never from a browser) | 6.3, § 9 |
+| `client` | nobody here: the CLIENT made the blob and wrapped the key; the server stores both opaque | everything, the server included | nothing — it is bytes | 6.3, § 13 |
 
 The `unwrap` result's `rewrapped` is how rotation retires old keys lazily (§ 4): the service
 stores it on the row (`UPDATE … WHERE fk_ct = <old>`, so a concurrent re-wrap cannot clobber)
@@ -129,8 +133,8 @@ Choosing the mode: a folder with an encryption policy (§ 8.6) decides first; th
 to disk while the part streams; a field after the part is accepted only when it agrees, `422`
 otherwise), the `X-Vola-Encryption` header, the `encryption` pair of `Upload-Metadata` (tus), or
 the tenant's `default_encryption` (`vola tenant-set --slug acme --default-encryption
-none|tenant|keyring`). `caller` answers `501 not_implemented` until phase 6.3; anything else
-`422`.
+none|tenant|keyring|caller`). `client` is accepted only on `POST /uploads` with its `fk_ct`
+pair (§ 13); anything else is `422`.
 
 ## 4. The key file and rotation
 
@@ -183,11 +187,11 @@ vola tenant-set --slug acme --default-encryption tenant
 
 What is **not** authenticated: the row's structural columns (`folder_id`, `slug`, `size`,
 `is_public`, …) — someone writing to the database can move a file or change its recorded size
-(a wrong `size` makes the download `409`), as in Notes. What is **not** covered yet: a resumable
-upload keeps its plaintext part file on disk until it completes (phase 6.3 encrypts segment by
-segment as the bytes arrive); thumbnails and OCR of encrypted files do not exist (6.3 makes them
-encrypted siblings under the same FK); a share link of an encrypted file (6.3's share grant). The
-model protects dumps and backups, not a live server that is compromised while it holds the key.
+(a wrong `size` makes the download `409`), as in Notes. What the disk shows since 6.3: next to
+an encrypted blob its **sealed** derivatives (`<blob>.enc-<file id>-thumb-…`, § 11), and under
+`uploads/` the ciphertext `.part` and the sealed `.partial` of an upload in flight (§ 10) — a
+derivative or a part file never holds a byte of plaintext. The model protects dumps and
+backups, not a live server that is compromised while it holds the key.
 
 ## 6. HTTP behaviour
 
@@ -198,11 +202,14 @@ model protects dumps and backups, not a live server that is compromised while it
 | `Content-Disposition` | `inline` for images, video, audio, PDF | `inline` ONLY for a PNG / JPEG / GIF / WebP the **bytes** identified; everything else `attachment; filename*=` with the decrypted name |
 | `Range` | `206`, `Content-Range` in file bytes | the same, in **plaintext** coordinates; the blob is read in whole segments |
 | `/public/:fileId`, `is_global_public` | — | never: `409 encrypted_not_public`, the public route answers `404` |
-| `/thumb/:size` | `200` / `202` | `404 no_thumbnail` |
-| share link | — | `409 encrypted_share_requires_grant` |
+| `/thumb/:size` | `200` / `202` | `200` decrypted from the sealed sibling, `no-store`, `ETag` of the file id; `202` only for a `tenant` file the worker is rendering; `404 no_thumbnail` for a `client` file or one above `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` (§ 11) |
+| share link | — | a share GRANT: the `url` ends in `#<secret>`, the download needs `X-Share-Secret` (§ 12); `409 encrypted_share_requires_grant` for `caller` without `fk_share_ct` and for `client` |
+| `X-Vola-Encryption` on a download | — | the mode (`client`: the body is the `JSV` blob itself) |
 | UDC `files` row | real values | real `filename`, `mime_type`, `extension`, `kind` when the server holds the key; `<encrypted>` / null otherwise; filters, sorts and cursors always see the mask |
 | `PATCH {filename}` | `409 file_exists` on a collision | the metadata record is re-sealed; no collision rule (the stored name stays `<id>.bin`) |
-| a `keyring` file without the owner's `X-Vola-Unlock` | — | download, `info`, `PATCH {filename}`: `423 vola_locked`; lists, UDC rows and subscriptions: the mask (`<encrypted>`), never an error |
+| a `keyring` file without the owner's `X-Vola-Unlock` | — | download, `info`, `PATCH {filename}`, `/thumb`, `POST /shares`, every PATCH of a resumable upload: `423 vola_locked`; lists, UDC rows and subscriptions: the mask (`<encrypted>`), never an error |
+| a `caller` file without `X-Vola-Content-Key` | — | the same `423`; with an `Origin` header `400 caller_key_from_browser`; without the `encryption:caller` scope `403` |
+| a `client` file | — | download: the blob as uploaded (`application/octet-stream`, `Range` in ciphertext bytes); `info`, lists: the mask; `/thumb` `404`; share `409`; `PATCH {filename}` `409 client_opaque` |
 
 ## 7. Troubleshooting
 
@@ -230,7 +237,27 @@ went away or lost the line; `…/info` on that file says which (`503` or `409`).
 the `file` part and it disagrees with what was stored (the tenant default). Send the header
 `X-Vola-Encryption` or put the field first.
 
-**`501 not_implemented`** — `caller` was asked for; it arrives with phase 6.3.
+**`423 vola_locked` on a `caller` file** — the request carried no `X-Vola-Content-Key` (or an
+empty one). A wrong key is `409 vola_integrity`. **`400 caller_key_from_browser`** — the
+request had an `Origin` header: the caller mode is server-to-server, a browser never holds that
+key. **`403 forbidden` with `required: ["encryption:caller"]`** — the API key lacks the scope
+(`vola key-create --scopes files:read,files:write,encryption:caller`).
+
+**`410 upload_lost` on a PATCH of an encrypted upload** — the sealed tail (`<id>.partial`) or the
+sealed head does not match the state the database committed (a crash between the two writes,
+or a restore of one without the other): start a new upload. **`422 client_blob_invalid`** — a
+`client` upload completed with bytes that are not a `JSV` blob (magic, version, segment size)
+or whose lengths do not add up (the header promised more than arrived).
+
+**`401 share_secret_required`** — the share is a grant (an encrypted file) and the request
+carried no `X-Share-Secret`: the secret is the part after `#` in the link. A wrong secret is
+`409 vola_integrity`.
+
+**`SKIPPED` with "encrypted under a key the worker does not hold"** — a `keyring`, `caller` or
+`client` file got a job (someone called `requestThumbnail` / `requestOcr` by hand): the worker
+has no such key; `/thumb` renders those inline under the request's key. **"encrypted file above
+VOLA_ENC_INLINE_DERIVE_MAX_BYTES"** — raise the limit (the whole plaintext is decrypted into
+memory for a render) or live without the derivative.
 
 **`503 encryption_unavailable` on a keyring route or a `keyring` file** — one of three things is
 missing: Redis (`VOLA_REDIS_URL`; the unlock tokens live there, and without it the keyring
@@ -420,3 +447,231 @@ Where this phase departs from the ticket's text: the ticket lists the delays as 
 5–9 → 30 s, 10 → 1 h — the document's table is implemented (`FREE_ATTEMPTS = 3` means fewer
 than three cost nothing). `kdf.pepper_line` holds the `kid` of the line, not its index, because
 an index changes when a line is prepended.
+
+## 9. The `caller` provider (phase 6.3)
+
+The third wrap provider over the same blob and the same `WrapProvider` interface
+(`crypto/caller.ts`): the file key is wrapped under a 32-byte key the **caller** sends with every
+request, and vola keeps nothing but `fk_ct`.
+
+```
+X-Vola-Content-Key (32 B, base64) ──AES-256-GCM, AAD "<file id>:key:caller:<tenant id>"──► fk_ct (60 B: nonce ∥ ct ∥ tag)
+FK ──► meta_ct, the JSV blob                                                              (exactly as for a tenant file)
+```
+
+| | |
+|---|---|
+| who may | an API key with `files:write` / `files:read` **and `encryption:caller`**; a key without the scope is `403 forbidden` with `required: ["encryption:caller"]` |
+| from where | server-to-server only: a request that carries an `Origin` header (a browser) is `400 caller_key_from_browser`, key or no key |
+| on which requests | the upload (`POST /files`, `PUT …/slug`, and **every** `PATCH` of a resumable upload — each one unwraps the file key to seal its segments, § 10) and every read: download, `info`, `/thumb`, `PATCH {filename}`, the UDC `read` |
+| without the key | `423 vola_locked` — the same answer a `keyring` file gives without its unlock; lists, UDC rows and subscriptions show the mask (`<encrypted>`), never an error |
+| a wrong key | `409 vola_integrity`, the one fixed sentence |
+| a malformed header | `400 bad_request` ("X-Vola-Content-Key: base64 of 32 bytes is required"), on every route |
+| where the key goes | nowhere: not a column, not Redis, not a log line (the logger redacts `*.headers["x-vola-content-key"]` wherever a library logs request headers — `@fastify/multipart` does at `trace`; `test/encryption3.test.ts` reads every line of a trace-level logger for the key in base64, base64url and hex), not an error message. The request context's buffer is zeroed when the response is out (`auth.ts`, `onResponse`) — as far as Node lets a buffer be forgotten |
+| rotation, recovery | none: there is no "active key" to move to and nobody but the caller holds the one there is. A caller that loses its key has lost the file, by design |
+| share | `409 encrypted_share_requires_grant` — the server has no key to wrap under a secret at creation time. The exception: the caller sends its own grant, `fk_share_ct` = `nonce ∥ AES-256-GCM(S, FK, AAD "<file id>:key:share:caller")` (base64) in `POST /shares`; the `url` then carries no fragment and the caller appends `#<S base64url>` itself (§ 12) |
+| transfer | `409 encrypted_transfer_unsupported`, like `keyring` (§ 4) |
+| derivatives | made **in the request that holds the key** (`/thumb` renders inline), never by the worker; no OCR (§ 11) |
+| tenant default | `vola tenant-set --slug acme --default-encryption caller` is allowed: every upload of that tenant then needs the key |
+
+What a dump reveals for a `caller` file: database + disk + Redis + key file + pepper file open
+**nothing** — the 60 bytes of `fk_ct` are under a key that never touched the server's storage.
+The one place the key exists on the server is process memory, for the life of one request.
+
+## 10. The encrypted resumable upload (phase 6.3)
+
+Since 6.3 a resumable upload with `encryption != none` (`services/upload-crypto.ts`) seals the
+incoming plaintext **segment by segment, as it arrives**: the part file is the `JSV` blob from
+its first byte and the disk never holds more than one segment of the file outside the blob —
+and that one sealed too. The 6.1/6.2 behaviour (a plaintext part file encrypted at
+completion) remains only for the one case it has to: an upload created plain whose folder got a
+keyring policy afterwards.
+
+### 10.1 What one upload keeps between PATCHes
+
+```
+<uploads>/<upload id>.part     header (24 B) ∥ sealed segment 0 ∥ … ∥ sealed segment next_index − 1
+<uploads>/<upload id>.partial  AES-256-GCM(FK, nonce = partial_prefix ∥ partial_writes, plaintext tail,
+                               AAD "<file id>:partial:<next_index>:<partial_writes>")   — absent when the tail is empty
+vola_upload.enc_state          {v: 1, mode, file_id, fk_ct, keyring_id, nonce_prefix, segment_size, next_index,
+                               partial_bytes, partial_prefix, partial_writes, hash, head_ct}
+vola_upload.offset             next_index · S + partial_bytes  — the PLAINTEXT offset `HEAD` reports
+```
+
+| field | what |
+|---|---|
+| `file_id` | the id the file will have — drawn at creation because it is in the AAD of every segment; `Vola-File-Id` on the `201` of the creation and on every `HEAD` |
+| `fk_ct` | the file key wrapped under the mode's provider (base64), exactly as it will sit in `vola_file.fk_ct`; a `tenant` key that opened under an older key-file line is re-wrapped here too (lazy rotation) |
+| `nonce_prefix`, `segment_size` | the blob header's (§ 2); the header itself is written into `.part` at creation and carries the real plaintext length (`Upload-Length` is known) |
+| `next_index` | segments sealed and on disk |
+| `partial_bytes`, `partial_prefix`, `partial_writes` | the sealed tail: how many plaintext bytes, the 8-byte random prefix of ITS nonces (never the blob's), how many times it was sealed |
+| `hash` | the blob's SHA-256 midstate (`crypto/sha256.ts`: eight words, the unprocessed tail, the byte count) after the header and every sealed segment |
+| `head_ct` | the first 4100 bytes of the plaintext sealed under FK (AAD `<file id>:head`): what MIME sniffing needs at completion |
+
+### 10.2 One PATCH
+
+1. The row is locked (`FOR UPDATE NOWAIT`, as before); the offset must match.
+2. The file key is unwrapped under **this request's** material: the key file (`tenant`), the
+   request's `X-Vola-Unlock` (`keyring` — `423` without the owner's token), the request's
+   `X-Vola-Content-Key` (`caller` — `423` without, `409` wrong). Before a byte of the body is read.
+3. The sealed tail is read back and opened; the sealed head likewise. Either not matching the
+   committed state (a crash between the file write and the row commit, a restore of one without
+   the other) is `410 upload_lost`: start a new upload.
+4. The part file is cut back to `24 + next_index · (S + 16)` (a PATCH that died after writing a
+   segment but before committing it).
+5. The body is appended to the tail in memory. Segment `i` is complete at `S` bytes — the last
+   one (`i = n − 1`, known from `Upload-Length`) at `L − (n − 1)·S` — and is sealed at once as
+   `AES-256-GCM(FK, nonce_prefix ∥ i, plaintext, aad_i)` with the AAD of § 2 (`last = 1` and `L`
+   on the last), written at its offset, and added to the running hash. The plaintext buffer is
+   zeroed after sealing.
+6. What is left (less than a segment) is sealed into `.partial` under the nonce
+   `partial_prefix ∥ (partial_writes + 1)` — a counter, so re-sealing the growing tail never
+   reuses a nonce under FK, neither with an earlier version of itself nor with the full segment
+   it becomes (a different prefix). An empty tail removes the file.
+7. The row commits `next_index`, the tail's size and counter, the hash state, the head, and the
+   plaintext offset. A body that fails mid-way commits what arrived (the segments, the tail) and
+   then reports the error, so the next `HEAD` is exact and the next PATCH resumes **from that
+   byte** — not from the last segment boundary.
+8. The key is zeroed.
+
+Memory per PATCH: one segment plus one chunk. A body longer than the room left is
+`400 upload_overflow` and nothing of it is committed (as for a plain upload).
+
+### 10.3 Completion
+
+`offset = length` completes the upload in the same transaction as the last PATCH: the state must
+say `next_index = n` and `partial_bytes = 0` and the part must be exactly
+`24 + L + 16·n` bytes (`410` otherwise); the hash comes out of the midstate — **nothing is read
+twice** —, the head out of `head_ct`, and the part file is hard-linked into the store like any
+staged blob (`storage.commit`). The row is written as in 6.1: `size` the plaintext length,
+`hash` the blob's, `fk_ct` freshly wrapped by the mode's provider, `meta_ct` sealed from the
+sniffed head and the metadata. A zero-length upload is one empty sealed last segment, written
+at creation.
+
+A folder whose keyring policy appeared after an **encrypted** upload was created — or names
+another keyring than the one the segments are under — cannot be honoured: `422` at completion,
+delete the upload and start again. (A **plain** upload in that situation is encrypted at
+completion as in 6.2.)
+
+### 10.4 What a dump of `uploads/` reveals
+
+The `.part` of an encrypted upload is a `JSV` blob prefix: header (segment size, nonce prefix,
+length) and sealed segments. The `.partial` is `ct ∥ tag` of at most one segment, under a nonce
+and AAD only `enc_state` knows. Without the file key — a `tenant` key needs the key file, a
+`keyring` key its owner's PIN, a `caller` key the caller — nothing of either opens.
+`test/encryption3.test.ts` plants a random marker every 10 000 bytes of the plaintext and
+searches every file under `uploads/` and `tmp/` for it after every PATCH and after a cut
+connection.
+
+## 11. Thumbnails and OCR of encrypted files (phase 6.3)
+
+`notes-crypto-for-vola.md` § 6.6, taken as it is: a derivative is allowed only as a **sealed
+sibling under the same file key**, made by whoever holds that key, never in the clear on disk,
+in the database or in an index (`services/derivatives.ts`, `crypto/derived.ts`).
+
+```
+thumbnail  <blob>.enc-<file id>-thumb-<size>-<crop>  =  nonce ∥ AES-256-GCM(FK, webp, AAD "<file id>:thumb:<size>:<crop>")
+OCR        vola_file_metadata.ocr_ct                 =  nonce ∥ AES-256-GCM(FK, {v: 1, text, lang, pages}, AAD "<file id>:ocr")
+                                                        ocr_text / ocr_lang / ocr_pages stay NULL  →  ocr_tsv is empty
+```
+
+| mode | who holds the key | thumbnails | OCR |
+|---|---|---|---|
+| `tenant` | the server (the key file) — the **worker** too, it reads the same `VOLA_KEY_FILE` | by the worker in `async` mode (the four sizes after the upload, like a plain file; `/thumb` answers `202` while it renders), inline in `sync` mode or when the queue is unreachable | by the worker (`VOLA_OCR_ENABLED`, `tesseract`), the result sealed into `ocr_ct`; `…/info` shows `text_preview` / `?ocr=full` because the server has the key |
+| `keyring`, `caller` | only the request (the unlock, the content key) | **inline, in the request that holds the key**: the first `/thumb` with the token / key renders, seals and stores the sibling; every later one decrypts it. Never `202` — no worker holds that key; `423` without it | **none in v1.0.** A background pass needs the key, and nobody in the background has it; an inline pass at upload time would hold a tesseract run (seconds per page) inside a request that holds a PIN unlock or a caller's key — and the result could only be read back under that same key, so there is no search to feed either. A later phase may run it inline on demand (`?ocr=run`) if a host wants it |
+| `client` | nobody here | `404 no_thumbnail` | none |
+
+Common to every mode:
+
+- the plaintext is decrypted **into memory**, never onto disk: a raster image goes to sharp as a
+  buffer; a PDF is rasterised through `pdftoppm`'s stdin and stdout (`-` for the input, no
+  output root: `services/pdf-pages.ts`), page by page for OCR, and tesseract reads each page
+  through `stdin`. The temporary directory of the plain-file path is not used;
+- hence the limit `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` (default 25 MiB): the whole plaintext has
+  to be in memory. A larger file gets no derivative — `/thumb` is `404 no_thumbnail`, the worker
+  marks the job `SKIPPED` ("encrypted file above VOLA_ENC_INLINE_DERIVE_MAX_BYTES"). `0` turns
+  derivatives of encrypted files off;
+- `/thumb` of an encrypted file first opens the file (`503` / `409` / `423` / `400` as a
+  download would), checks the **real** MIME type from `meta_ct` (a text file is `404` whatever
+  its stored `application/octet-stream` says), then serves the sibling decrypted with
+  `Cache-Control: no-store` and an `ETag` of `"<file id>.thumb-<size>-<crop>.webp"` — never the
+  blob hash, never a content key. `304` on `If-None-Match` works; a shared cache never sees the
+  bytes;
+- the sealed sibling carries no WebP magic (`test/encryption3.test.ts` reads it from disk) and
+  opens for its file, size and crop only (the AAD);
+- **search**: an encrypted file's OCR text is not in `ocr_tsv`, so the UDC `ocr` filter never
+  matches it and the `ocr` flag says "no text". This is stated, not worked around: a full-text
+  index of the plaintext would be the plaintext. A host that needs search over encrypted
+  documents decrypts in its own process under its own key, as Notes does with titles;
+- **purge** removes the blob and every `<blob>.*` sibling with it; the **crypto-shred** (a
+  keyring reset, a purged row) covers the derivatives anyway — without FK a sibling is noise. An
+  encrypted blob is never shared between rows (random key and nonce), so the "another row still
+  cites this hash" rule of purge cannot keep a sealed sibling alive for a file that is gone.
+
+## 12. The share grant (phase 6.3)
+
+`notes-crypto-for-vola.md` § 6.7: a share of an encrypted file carries the file key **re-wrapped
+under a secret that lives only in the link**. The server makes the grant when it holds the key
+and forgets the secret at once; the recipient gets plaintext — that is what a share is for, and
+a UI must say so.
+
+```
+S (32 B random)  ──AES-256-GCM, AAD "<share id>:key"──►  fk_share_ct (vola_share_link, 60 B)     — S itself is NOT stored
+url = <origin>/vola/s/<token>#<S base64url>            — the fragment never reaches a server
+X-Share-Secret: <S base64url>                           — how the client sends it (never a query parameter)
+```
+
+| | |
+|---|---|
+| `POST /shares {file_id}` of a `tenant` file | the server unwraps FK under the key file, draws `S`, wraps, stores `fk_share_ct`, answers `201` with `url` ending in `#<S>` and `encrypted: true`; `503` without the key file |
+| … of a `keyring` file | the same under the owner's `X-Vola-Unlock` (`423` without — the share is made by the principal who can open the file); the **recipient** needs no token, no PIN: the grant is theirs |
+| … of a `caller` file | `409 encrypted_share_requires_grant`, unless the caller sends `fk_share_ct` it made itself (AAD `<file id>:key:share:caller`, § 9); then no fragment in `url` — the caller appends its own |
+| … of a `client` file | `409` always |
+| `GET /s/<token>` of a grant | password (`X-Share-Password`), expiry and revocation first, exactly as 5.1; then **`401 share_secret_required`** without `X-Share-Secret`, **`409 vola_integrity`** for one that does not open the grant (or is not 43 base64url characters); then `max_downloads` is consumed — a wrong secret is not a download — and the file is decrypted segment by segment: `Range` in plaintext coordinates, `Cache-Control: no-store`, `Content-Disposition` with the real name |
+| `DELETE /shares/:id` | `revoked_at` **and `fk_share_ct = NULL`**: the crypto-shred of the grant. Whoever kept the link and its secret has nothing left to open; the owner's own `fk_ct` is untouched, the file reads on |
+| `GET /shares`, `GET /shares/:id` | `encrypted: true` marks a grant; the secret is in no listing, no row, no log (`*.headers["x-share-secret"]` is redacted) |
+| folder shares | unchanged: an encrypted file inside a shared folder is **not listed** and `404` by path — there is no grant per file in a folder |
+| the AAD | `<share id>:key`: the share id is drawn before the insert, so a grant cannot be moved to another share row; a caller-made grant is bound to the file id instead (the caller cannot know the share id) and so could be copied between two grants of the SAME file — both open the same bytes, nothing is gained |
+
+What a dump reveals: `vola_share_link` holds `fk_share_ct` as ciphertext under 256 bits the
+server never had. A copy of the database, the disk and every key file opens no share grant. The
+window that exists: a link **with** its fragment, in a mail or a chat — the thing the share was
+made to send.
+
+## 13. `client` mode — a blob the client made (phase 6.3)
+
+The door § 6.1 of the Notes document asked to leave open: `encryption = client` on
+`POST /uploads` stores a `JSV` blob the **client** produced and a wrapped key the client made,
+and serves both back as they came. Nothing in the format depends on a server secret — only on
+the file id, which the client learns from the creation (`Vola-File-Id`).
+
+```
+POST /uploads   Upload-Length: <blob length>   Upload-Metadata: …, encryption client, fk_ct <base64>, meta_ct <base64>?
+                → 201, Vola-File-Id: <the id to put into every AAD>
+PATCH …         the JSV blob (header with the real length or deferred; S between 64 KiB and 64 MiB)
+GET …/:fileId   the blob, byte for byte: application/octet-stream, X-Vola-Encryption: client,
+                Content-Length and Range in CIPHERTEXT bytes, ETag "<blob hash>", no-store,
+                Content-Disposition: attachment; filename="<file id>.jsv"
+```
+
+- `fk_ct` (28–256 bytes) is **whatever the client's own key management produced** — the server
+  never opens it; `meta_ct` (optional, ≤ 256 KiB) likewise: the row shows `<id>.bin` /
+  `application/octet-stream` and `info`, lists and UDC rows stay masked for everyone;
+- at completion the server checks what it can without a key: the header parses (magic, version
+  1, a legal segment size) and the lengths add up — a header that promises more plaintext than
+  the segments hold is `422 client_blob_invalid`. A tag it cannot verify: a blob that is
+  well-formed but does not decrypt is the client's problem, as a lost `caller` key is;
+- `size` is the plaintext length derived from the blob's arithmetic (quotas count what the
+  user stored), `hash` the blob's SHA-256, `enc_format` the header's version;
+- no thumbnail (`404`), no OCR, no share (`409`), no rename (`409 client_opaque`), no transfer
+  (`409`), no `is_global_public` (`409`); `client` is not a tenant default (it needs a key per
+  upload) and not accepted on a multipart upload (`422`: it goes through `/uploads`);
+- a folder with a keyring policy refuses a `client` upload (`422`): the policy cannot be applied
+  to bytes the server cannot open.
+
+The client side (`@vola/client`) does not seal blobs yet: the server half is what this phase
+ships, and `test/encryption3.test.ts` produces the blob with the server's own `encryptBuffer`
+(the format is the same code). A follow-up for the client library: `createEncryptStream` in
+WebCrypto (`AES-GCM`, 12-byte nonce `prefix ∥ index`, the AAD of § 2) and a `uploadEncrypted()`
+that creates the upload, reads `Vola-File-Id`, seals and PATCHes — about 150 lines, no new
+dependency; the wrapped key stays the host's concern.

@@ -314,7 +314,7 @@ async function refuseUnmovable(tx: Tx, plan: Plan, instance: TransferInstance): 
     throw new VolaError(
       "encrypted_transfer_unsupported",
       409,
-      `instance ${instance.instance_type}/${instance.instance_id} holds ${encryptedFiles} keyring- or caller-encrypted file(s); only tenant-encrypted files can be transferred yet`,
+      `instance ${instance.instance_type}/${instance.instance_id} holds ${encryptedFiles} keyring-, caller- or client-encrypted file(s); only tenant-encrypted files can be transferred (the server holds no other key to re-wrap)`,
       {
         instance_type: instance.instance_type,
         instance_id: instance.instance_id,

@@ -37,7 +37,7 @@ databases), `pnpm test:e2e` (the built server against PostgreSQL + Redis).
 Every route except health needs an API key: `Authorization: Bearer <key>`, `X-Api-Key: <key>`,
 or — for WebSockets — the subprotocol `bearer.<key>`. A key belongs to one tenant and holds
 scopes (`files:read`, `files:write`, `folders:read`, `folders:write`, `shares:write`,
-`keys:write`, `keyrings:write`); an admin key (`vola_admin_…`, scope `admin`) belongs to no
+`keys:write`, `keyrings:write`, `encryption:caller`); an admin key (`vola_admin_…`, scope `admin`) belongs to no
 tenant and selects one per request with `X-Tenant-Slug`. `X-User-Id` names the principal of
 the host application (recorded as `created_by`, later for attribution and keyrings).
 
@@ -86,7 +86,7 @@ curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets
 
 | route | scope | notes |
 |---|---|---|
-| `POST /vola/files/:type/:id` | `files:write` | `file` part + optional `metadata`; `folder_path` (created when missing) or `folder_id` places it; `parent_id` makes it a new version; `encryption` field (before the `file` part) or `X-Vola-Encryption` header: `none` / `tenant` — see [Encryption at rest](#encryption-at-rest); `413 file_too_large` over `VOLA_MAX_UPLOAD_BYTES` (512 MiB); `a.pdf` → `a (1).pdf` on a name collision in the same folder |
+| `POST /vola/files/:type/:id` | `files:write` | `file` part + optional `metadata`; `folder_path` (created when missing) or `folder_id` places it; `parent_id` makes it a new version; `encryption` field (before the `file` part) or `X-Vola-Encryption` header: `none` / `tenant` / `keyring` / `caller` — see [Encryption at rest](#encryption-at-rest); `413 file_too_large` over `VOLA_MAX_UPLOAD_BYTES` (512 MiB); `a.pdf` → `a (1).pdf` on a name collision in the same folder |
 | `PUT /vola/files/:type/:id/slug/:slug` | `files:write` | upsert of a named file |
 | `GET\|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` | `files:read` | `Accept-Ranges: bytes`, single `Range` → `206`, outside → `416`; `ETag: "<sha256>"`, `If-None-Match` → `304`; `X-Content-Type-Options: nosniff`; `?download=1`; `last_accessed_*` once a minute (GET only); by id also another tenant's `is_public` file. An encrypted file is decrypted segment by segment for the requested range: `ETag: "<file id>"`, `Cache-Control: no-store`, `inline` only for a sniffed raster image; `503 encryption_unavailable` without the key file, `409 vola_integrity` for a damaged blob or key |
 | `GET …/:fileId/info` | `files:read` | metadata, never `fk_ct`/`meta_ct` (an encrypted file's real name, type and metadata, decrypted; `503` / `409` as a download); `?include_deleted=1`; the `ocr` block (`status`, `lang`, `pages`, `text_preview` = the first 500 characters), `?ocr=full` adds `ocr.text` — see [OCR](#ocr--tesseract-in-the-worker) |
@@ -95,7 +95,7 @@ curl -X DELETE -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets
 | `PATCH …/:fileId` | `files:write` | `{folder_path}` moves (`""` = root), `{filename}` renames (`409 file_exists`; an encrypted file's name is re-sealed into `meta_ct`), `{is_public}`, `{is_global_public}` (`409 encrypted_not_public` on an encrypted file) |
 | `DELETE …/:fileId` | `files:write` | soft delete (`deleted_at`, `deleted_by`), idempotent |
 | `DELETE …/:fileId/purge` | `files:write` | removes the row and its whole version chain; the blob and its derived files (thumbnails) leave the disk only when no row of any tenant references them |
-| `GET\|HEAD …/:fileId/thumb/:size?crop=` | `files:read` | WebP thumbnail, `size` 64 / 128 / 256 / 512 (`400 invalid_size`), `crop` `cover` (default) / `fit` / `attention` (`400 invalid_crop`); **`200` ready or `202` generating** — see [Thumbnails](#thumbnails--get-thumbsize-answers-202-too); `404 no_thumbnail` for anything but a raster image or PDF, and for an encrypted file |
+| `GET\|HEAD …/:fileId/thumb/:size?crop=` | `files:read` | WebP thumbnail, `size` 64 / 128 / 256 / 512 (`400 invalid_size`), `crop` `cover` (default) / `fit` / `attention` (`400 invalid_crop`); **`200` ready or `202` generating** — see [Thumbnails](#thumbnails--get-thumbsize-answers-202-too); `404 no_thumbnail` for anything but a raster image or PDF; an encrypted file's thumbnail is rendered under its key and served `no-store` (see [Encryption at rest](#encryption-at-rest)) |
 | `GET\|HEAD /vola/public/:fileId` | — | anonymous download of an `is_global_public` file (`Cache-Control: public, max-age=300`); anything else is `404` |
 
 MIME is detected from the magic bytes (`file-type`), then the extension, then the declared type;
@@ -138,8 +138,8 @@ Rules for consumers:
 
 Two more answers: a file that cannot be rendered (broken bytes, `pdftoppm` missing) is `200` with
 the grey placeholder, `X-Thumbnail-Status: failed` and `no-cache` — its jobs are `FAILED` after 3
-tries and `processing_status` says so; a file that has no thumbnail by nature (text, video, SVG, an
-encrypted file until phase 6.3) is `404 no_thumbnail`. If the queue cannot be reached, the server
+tries and `processing_status` says so; a file that has no thumbnail by nature (text, video, SVG, a
+`client`-encrypted blob) is `404 no_thumbnail`. If the queue cannot be reached, the server
 renders inline and answers `200` — the worker is an optimisation, not a requirement. The same
 rules hold for every size: `[64, 128, 256, 512]`, anything else is `400`.
 
@@ -183,8 +183,10 @@ every OCR job, as after every thumbnail).
 
 The Docker image ships `tesseract-ocr` with `eng`, `srp` and `deu`; a worker on another host
 needs the same (`apt-get install tesseract-ocr tesseract-ocr-eng tesseract-ocr-srp
-tesseract-ocr-deu poppler-utils`). Out of scope here: encrypted files (phase 6.3 runs OCR under
-the file key), an AI summary, EXIF.
+tesseract-ocr-deu poppler-utils`). A `tenant`-encrypted file is OCRed too — decrypted into memory,
+read through tesseract's stdin, the text sealed into `ocr_ct` under the file key and therefore
+**not** in the full-text search (`docs/CRYPTO.md` § 11); `keyring` / `caller` files get no OCR.
+Out of scope here: an AI summary, EXIF.
 
 #### Deployment without a worker (`VOLA_WORKER_ENABLED`)
 
@@ -296,10 +298,11 @@ are sealed under the file key (`meta_ct`) and come back decrypted in `…/info`,
 and the `Content-Disposition` of a download. `size` is the plaintext length, `hash` the SHA-256
 of the ciphertext — two uploads of the same bytes are two blobs, there is no deduplication of
 encrypted files. `Range` works in plaintext coordinates and reads only the segments it needs.
-The worker never touches an encrypted file (no thumbnail, no OCR), it cannot be
-`is_global_public` or shared with a plain link, and a transfer between tenants re-wraps its key.
-`docs/CRYPTO.md` has the format byte by byte, the key hierarchy, what a dump reveals and the
-troubleshooting of `503 encryption_unavailable` / `409 vola_integrity`.
+It cannot be `is_global_public`; a transfer between tenants re-wraps its key; its thumbnails and
+OCR are **sealed siblings** under the same file key, made by whoever holds it (the worker for
+`tenant`, the request for `keyring` / `caller`) and served `no-store`; a share of it is a
+[share grant](#share-links). `docs/CRYPTO.md` has the format byte by byte, the key hierarchy,
+what a dump reveals and the troubleshooting of `503 encryption_unavailable` / `409 vola_integrity`.
 
 ```sh
 vola keys-generate                 # VOLA_KEY_FILE (default /run/secrets/vola.key), 0600, refuses to overwrite
@@ -309,8 +312,43 @@ vola keys-status                   # files per key line; rotate by PREPENDING a 
 ```
 
 Without the key file the server starts and serves plain files; anything encrypted answers
-`503 encryption_unavailable` until the file is there (no restart needed). `caller` (a key per
-request) is phase 6.3 and answers `501` today.
+`503 encryption_unavailable` until the file is there (no restart needed).
+
+**A resumable upload** (`POST /vola/uploads` with `encryption`) is sealed **segment by segment as
+the bytes arrive**: the part file is the `JSV` blob from byte 0, the incomplete last segment is
+kept sealed apart, `HEAD` reports the plaintext offset, an interrupted PATCH resumes from the exact
+byte, and the blob hash is carried along incrementally — no plaintext ever sits in `uploads/`
+(`docs/CRYPTO.md` § 10). A `keyring` upload needs the owner's `X-Vola-Unlock` and a `caller` upload
+the `X-Vola-Content-Key` on **every** PATCH; `Vola-File-Id` is on the `201` already.
+
+#### `caller` — a key per request (`encryption=caller`)
+
+The caller sends a 32-byte key (base64) in `X-Vola-Content-Key` on the upload and on every read;
+vola wraps the file key under it and keeps nothing but the wrapped key. Server-to-server only: the
+API key needs the `encryption:caller` scope (`403` otherwise) and a request with an `Origin`
+header is `400 caller_key_from_browser`. Without the key a `caller` file is `423 vola_locked`
+(lists show `<encrypted>`), with a wrong one `409 vola_integrity`. No rotation, no recovery, no
+share from the server (the caller may hand over its own `fk_share_ct`), no OCR; thumbnails
+render inline under the key. The key is never logged (trace-level header dumps are redacted,
+see `LOG_REDACT`) and is zeroed when the response is out. `docs/CRYPTO.md` § 9.
+
+```sh
+vola key-create --tenant acme --name backend --scopes files:read,files:write,encryption:caller
+KEY_B64=$(openssl rand -base64 32)
+curl -X POST -H "Authorization: Bearer $KEY" -H "X-Vola-Encryption: caller" -H "X-Vola-Content-Key: $KEY_B64" \
+  -F file=@secret.pdf "http://localhost:8300/vola/files/tickets/$ID"      # 201
+curl -H "Authorization: Bearer $KEY" -H "X-Vola-Content-Key: $KEY_B64" \
+  "http://localhost:8300/vola/files/tickets/$ID/$FILE"                    # the bytes; 423 without the key
+```
+
+#### `client` — a blob the client sealed (`encryption=client`)
+
+`POST /vola/uploads` with `encryption client` and a `fk_ct` pair (the wrapped key the client
+made, base64; optionally `meta_ct`) stores a `JSV` blob the **client** produced — the file id to
+put into every AAD comes back as `Vola-File-Id` on the `201` — and serves it back byte for byte
+(`application/octet-stream`, `X-Vola-Encryption: client`, `Range` in ciphertext bytes). The server
+checks only the structure (`422 client_blob_invalid`), opens nothing, and can offer no thumbnail,
+OCR, share or rename for it. `docs/CRYPTO.md` § 13 has the format a client has to produce.
 
 ### Keyrings — a PIN per principal (`encryption=keyring`)
 
@@ -356,8 +394,18 @@ vola pepper-status                                             # keyrings per pe
 A share link gives anyone with its token access to one file or one folder — no API key, no
 tenant. Only the SHA-256 of the token is stored (the plaintext is in the `201` once); a password
 is stored as argon2id; `expires_at` ends the link, `max_downloads` caps how many downloads may
-*start* through it, `DELETE` revokes it. A share of an encrypted file is a share grant (phase
-6.3) and is refused here with `409 encrypted_share_requires_grant`.
+*start* through it, `DELETE` revokes it.
+
+**A share of an encrypted file is a share grant** (`docs/CRYPTO.md` § 12): the server wraps the
+file key under a 32-byte secret it draws and forgets, and the `url` ends in `#<secret>` — a
+fragment, which a browser never sends. The recipient's client sends it as `X-Share-Secret`:
+missing → `401 share_secret_required`, wrong → `409 vola_integrity`, right → the file decrypted
+(the recipient gets **plaintext** — say so in the dialog), with `Range`, `no-store`, and the
+password / expiry / `max_downloads` rules above. A `keyring` file's grant is made under the
+owner's `X-Vola-Unlock` (`423` without); the recipient needs no token. Revoking a grant also
+drops the wrapped key (`fk_share_ct`): nothing is left to open. A `caller` file is `409
+encrypted_share_requires_grant` unless the caller sends its own `fk_share_ct`; a `client` file
+always. Folder shares never list encrypted files.
 
 ```sh
 curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
@@ -436,7 +484,7 @@ pnpm vola transfer --from acme --to beta --instance tickets:$TICKET --instance t
 
 | route | scope | notes |
 |---|---|---|
-| `POST /vola/admin/transfer` | `admin` (an admin key; a tenant key is `403`; `X-Tenant-Slug` is ignored) | `{from_tenant, to_tenant, instances: [{instance_type, instance_id}], user_map?: {old: new}, dry_run?}` → the counts; `404 tenant_not_found` for either slug (the destination must exist); a `tenant`-encrypted file's key is re-wrapped for the destination in the same transaction (`503 encryption_unavailable` without `VOLA_KEY_FILE`, `409 vola_integrity` for a key that does not open); `409 encrypted_transfer_unsupported` when an instance holds a `keyring` file (a keyring is a principal's of ONE tenant: download under an unlock and upload in the destination instead) or a `caller` file (6.3); `409 uploads_in_progress` when a resumable upload of the instance is still running (finish, delete or let it expire first); `422` for the same tenant twice or no instances |
+| `POST /vola/admin/transfer` | `admin` (an admin key; a tenant key is `403`; `X-Tenant-Slug` is ignored) | `{from_tenant, to_tenant, instances: [{instance_type, instance_id}], user_map?: {old: new}, dry_run?}` → the counts; `404 tenant_not_found` for either slug (the destination must exist); a `tenant`-encrypted file's key is re-wrapped for the destination in the same transaction (`503 encryption_unavailable` without `VOLA_KEY_FILE`, `409 vola_integrity` for a key that does not open); `409 encrypted_transfer_unsupported` when an instance holds a `keyring`, `caller` or `client` file (the server holds no key to re-wrap: download under the key and upload in the destination instead); `409 uploads_in_progress` when a resumable upload of the instance is still running (finish, delete or let it expire first); `422` for the same tenant twice or no instances |
 
 Rules: a folder whose path already exists for the same instance on the destination is
 **merged** into that folder (its files, subfolders and share links re-pointed, the source row

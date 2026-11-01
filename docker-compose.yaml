@@ -33,8 +33,9 @@ services:
       # the content-addressable blobs (VOLA_STORAGE_PATH=/data/storage)
       - vola-data:/data
       # Encryption at rest (docs/CRYPTO.md): mount the key file made with `vola keys-generate`
-      # read-only at VOLA_KEY_FILE (default /run/secrets/vola.key) — in BOTH services. Without
-      # it the server starts and serves plain files; encrypted ones answer 503.
+      # read-only at VOLA_KEY_FILE (default /run/secrets/vola.key) — in BOTH services (the worker
+      # needs it for the thumbnails and OCR of tenant-encrypted files, § 11). Without it the
+      # server starts and serves plain files; encrypted ones answer 503.
       # - ./secrets/vola.key:/run/secrets/vola.key:ro
       # Keyrings (PIN per principal, docs/CRYPTO.md § 8): the pepper file made with
       # `vola pepper-generate` at VOLA_PEPPER_FILE (default /run/secrets/vola.pepper) — the

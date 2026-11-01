@@ -9,6 +9,63 @@ share one version.
 
 ### Added
 
+- Encryption at rest, part III (plan 6.3, `docs/CRYPTO.md` § 9–13).
+  - The **`caller` provider**: the file key is wrapped under a 32-byte key the caller sends in
+    `X-Vola-Content-Key` on the upload and on every read (AAD `<file id>:key:caller:<tenant id>`,
+    `fk_ct` 60 B); the server keeps nothing but the wrapped key, logs nothing of it (`LOG_REDACT`
+    covers every place a library dumps request headers) and zeroes it when the response is out.
+    Needs the new scope **`encryption:caller`** (`403` otherwise); a request with an `Origin`
+    header is `400 caller_key_from_browser`; without the key `423 vola_locked`, with a wrong one
+    `409 vola_integrity`; `info` / lists / UDC show the real name only with the key. Share and
+    transfer are `409` (a caller may hand over its own `fk_share_ct`). `vola tenant-set
+    --default-encryption caller` is allowed.
+  - The **resumable upload is sealed segment by segment** as the bytes arrive, for `tenant`,
+    `keyring` and `caller` (`services/upload-crypto.ts`): the part file is the `JSV` blob from
+    byte 0, the incomplete last segment is kept sealed in `<id>.partial` under a nonce that is
+    never reused (its own prefix and a write counter in `enc_state`), the blob hash runs along in
+    an exportable SHA-256 midstate (`crypto/sha256.ts`), the sniffing head is sealed too; `HEAD`
+    reports the plaintext offset, an interrupted PATCH resumes from the exact byte, nothing is
+    read twice at completion. Every PATCH unwraps the key under the request's material
+    (`X-Vola-Unlock` / `X-Vola-Content-Key` on each one). `Vola-File-Id` is on the `201` of an
+    encrypted upload already (the id is in every AAD). A keyring policy that appears after an
+    encrypted upload was created is `422` at completion.
+  - **`client` mode** (`POST /uploads` with `encryption client` + `fk_ct` [+ `meta_ct`]
+    pairs): the client seals the `JSV` blob itself against the `Vola-File-Id` of the creation,
+    the server checks the structure (`422 client_blob_invalid`), stores key and blob opaque and
+    serves the ciphertext back as is (`application/octet-stream`, `X-Vola-Encryption: client`,
+    `Range` in ciphertext bytes). No thumbnail, OCR, share, rename (`409 client_opaque`) or
+    transfer; never a tenant default; `422` on multipart. `EncryptionModes` gains `CLIENT`.
+  - **Encrypted derivatives**: thumbnails and OCR of encrypted files are sealed siblings under
+    the file key — `<blob>.enc-<file id>-thumb-<size>-<crop>` (AAD `<file id>:thumb:<size>:
+    <crop>`) and `vola_file_metadata.ocr_ct` (AAD `<file id>:ocr`; `ocr_text` stays NULL, so an
+    encrypted file is **not** in the full-text search). The worker renders and OCRs `tenant`
+    files (it reads `VOLA_KEY_FILE`; `ProcessingWorkerOptions.crypto`), decrypting into memory
+    and feeding `pdftoppm` / `tesseract` through stdin and stdout — nothing of the plaintext
+    touches the disk; `keyring` and `caller` files render **inline in the request that holds the
+    key** (never `202`), and get no OCR in v1.0 (documented why). `/thumb` of an encrypted file
+    needs the key (`423` without), answers `Cache-Control: no-store` with an `ETag` of the file
+    id, and is `404 no_thumbnail` above the new **`VOLA_ENC_INLINE_DERIVE_MAX_BYTES`** (default
+    25 MiB). Purge and the crypto-shred remove the siblings.
+  - The **share grant**: `POST /shares` of a `tenant` or `keyring` file (the latter under the
+    owner's `X-Vola-Unlock`) wraps the file key under a 32-byte secret `S` (AAD `<share id>:key`,
+    `fk_share_ct`) and answers `url = …/s/<token>#<S>`; `S` is never stored. The public download
+    takes `X-Share-Secret` (`401 share_secret_required` without, `409 vola_integrity` wrong,
+    then the decrypted stream with `Range` and `no-store`; password, expiry and `max_downloads`
+    as before — a wrong secret is not a download). Revoking drops `fk_share_ct`. `ShareInfo`
+    gains `encrypted`; `ShareCreate` takes `fk_share_ct` for a `caller` file.
+  - `X-Vola-Encryption: <mode>` on every download of an encrypted file; `LOG_REDACT` exported
+    from `@vola/server` for hosts that embed the plugin under their own logger.
+  - Migration `0009_encryption_iii`: `vola_file_metadata.ocr_ct`, `client` in the
+    `vola_file.encryption` CHECK.
+
+### Changed
+
+- `409 encrypted_share_requires_grant` now only for `caller` (without `fk_share_ct`) and
+  `client` files; `/thumb` no longer answers `404` for encrypted files the request can open;
+  `isOcrEligible` and `thumbnailable` are true for `tenant` files; `TENANT_DEFAULT_ENCRYPTIONS`
+  includes `caller`; `TenantContext` gained `contentKey` and `browserOrigin`; `parseMode` takes
+  `{client}`; `EncryptedStage.fk` is nullable (`client`).
+
 - Encryption at rest, part II — the **`keyring` provider** (plan 6.2, `docs/CRYPTO.md` § 8;
   the thilo Notes model taken as it is). A keyring belongs to one principal (`X-User-Id`) of one
   tenant (`vola_keyring`, migration `0008_keyrings`; unique per live `(tenant_id, principal)`)

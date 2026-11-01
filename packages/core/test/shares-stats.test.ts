@@ -70,6 +70,7 @@ describe("share schemas", () => {
         created_by: null,
         created_at: "2026-11-01T10:00:00.000Z",
         revoked_at: null,
+        encrypted: false,
         token,
         url: `http://localhost:8300/vola/s/${token}`,
       }).success,

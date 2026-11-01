@@ -18,6 +18,7 @@ import {
 import sharp, { type ResizeOptions } from "sharp";
 import { VolaError } from "../errors.js";
 import { BlobNotFoundError, type BlobStat, type StorageBackend } from "../storage/index.js";
+import { PdfPageError, pdfPageFromBuffer } from "./pdf-pages.js";
 
 export { thumbnailDerivedName, thumbnailSupported };
 
@@ -197,6 +198,69 @@ export async function renderThumbnail(
     if (error instanceof BlobNotFoundError) {
       throw new ThumbnailError("blob_missing", "the stored bytes are missing", { cause: error });
     }
+    const message = error instanceof Error ? error.message : String(error);
+    if (/timeout/i.test(message)) {
+      throw new ThumbnailError("timeout", "rendering exceeded the time limit", { cause: error });
+    }
+    throw new ThumbnailError("render_failed", `rendering failed: ${message}`, { cause: error });
+  }
+}
+
+/**
+ * The first page of a PDF held IN MEMORY as a PNG, through `pdftoppm`'s stdin and stdout
+ * (`pdfPageFromBuffer`): nothing of the document or the page touches the disk — what an
+ * ENCRYPTED PDF needs (`docs/CRYPTO.md` § 11): its plaintext is never a file.
+ */
+export async function pdfFirstPageFromBuffer(
+  pdf: Buffer,
+  options: { timeoutMs: number; pdftoppm: string },
+): Promise<Buffer> {
+  try {
+    const png = await pdfPageFromBuffer(pdf, 1, { ...options, dpi: 72 });
+    if (!png) throw new ThumbnailError("render_failed", "pdftoppm rendered no page");
+    return png;
+  } catch (error) {
+    if (error instanceof PdfPageError) {
+      throw new ThumbnailError(
+        error.code === "timeout" ? "timeout" : "render_failed",
+        error.message,
+        {
+          cause: error,
+        },
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * `renderThumbnail` for bytes held in memory (the decrypted plaintext of an encrypted file):
+ * a raster image goes to sharp as a buffer, a PDF through `pdfFirstPageFromBuffer`. Nothing
+ * is written to disk. The same `ThumbnailError`s as `renderThumbnail`.
+ */
+export async function renderThumbnailFromBuffer(
+  plain: Buffer,
+  mimeType: string,
+  size: ThumbnailSize,
+  crop: ThumbnailCrop,
+  options: RenderOptions = {},
+): Promise<Buffer> {
+  if (!thumbnailSupported(mimeType)) {
+    throw new ThumbnailError("unsupported", `no thumbnail for ${mimeType}`);
+  }
+  const timeoutMs = options.timeoutMs ?? DEFAULT_THUMBNAIL_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  try {
+    const input =
+      mimeType === "application/pdf"
+        ? await pdfFirstPageFromBuffer(plain, {
+            timeoutMs,
+            pdftoppm: options.pdftoppm ?? "pdftoppm",
+          })
+        : plain;
+    return await encode(input, size, crop, Math.max(1000, deadline - Date.now()));
+  } catch (error) {
+    if (error instanceof ThumbnailError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     if (/timeout/i.test(message)) {
       throw new ThumbnailError("timeout", "rendering exceeded the time limit", { cause: error });

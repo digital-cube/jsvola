@@ -16,6 +16,8 @@ const tenant: BoundTenantContext = {
   isAdmin: false,
   userId: null,
   unlockToken: null,
+  contentKey: null,
+  browserOrigin: null,
 };
 
 /** A socket whose `send` callbacks fire only when the test says so. */

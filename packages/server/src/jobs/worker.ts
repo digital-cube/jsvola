@@ -1,4 +1,7 @@
-import type { ProcessingStatus } from "@vola/core";
+import {
+  DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES as DEFAULT_ENC_DERIVE_MAX,
+  type ProcessingStatus,
+} from "@vola/core";
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
@@ -6,7 +9,16 @@ import type { Redis } from "ioredis";
 import { AuditDeliveryError, type AuditSink } from "../audit/memento.js";
 import type { Database } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
+import { VolaError } from "../errors.js";
 import { type FileEventBus, publishProcessingStatus } from "../events/bus.js";
+import {
+  type DerivativesDeps,
+  DerivativeTooLargeError,
+  derivativeUnrecoverable,
+  generateEncryptedThumbnail,
+  ocrEncrypted,
+} from "../services/derivatives.js";
+import type { EncryptionService, OpenedFile } from "../services/encryption.js";
 import {
   DEFAULT_PDFTOPPM,
   DEFAULT_TESSERACT,
@@ -97,8 +109,21 @@ export interface ProcessingWorkerOptions {
    * Without one — the worker lacks `VOLA_MEMENTO_*` — audit jobs are dropped with one WARN line.
    */
   audit?: AuditSink | undefined;
+  /**
+   * Encryption (plan 6.3): the `tenant` provider on the key file, so the worker can render
+   * the thumbnails and run the OCR of `tenant`-encrypted files (decrypted into memory, the
+   * results sealed under the file key). Without it, or for any other encrypted mode, such
+   * jobs are `SKIPPED`.
+   */
+  crypto?: EncryptionService | undefined;
+  /** `VOLA_ENC_INLINE_DERIVE_MAX_BYTES`: the largest encrypted file a derivative is made of. Default 25 MiB. */
+  encDeriveMaxBytes?: number | undefined;
   now?: (() => Date) | undefined;
 }
+
+/** Why an encrypted file's job was skipped (stored in `error`, never a name). */
+const SKIP_NO_KEY = "encrypted under a key the worker does not hold";
+const SKIP_TOO_LARGE = "encrypted file above VOLA_ENC_INLINE_DERIVE_MAX_BYTES";
 
 /** The second process of `@vola/server`: consumes `vola-processing` and records every outcome. */
 export class ProcessingWorker {
@@ -298,9 +323,10 @@ export class ProcessingWorker {
       log?.debug({ job: jobId, file: row.fileId }, "thumbnail job skipped: file gone");
       return;
     }
-    if (file.encryption !== "none") {
-      // The worker never touches encrypted bytes (plan 6.3 renders those under the key).
-      await markSkipped(this.deps, jobId, "encrypted file");
+    // Only a `tenant` file's key is the worker's to hold (the key file); the rest is skipped.
+    const opened = file.encryption === "none" ? null : await this.openEncrypted(file);
+    if (file.encryption !== "none" && !opened) {
+      await markSkipped(this.deps, jobId, SKIP_NO_KEY);
       await this.announce(file, "SKIPPED");
       return;
     }
@@ -308,14 +334,31 @@ export class ProcessingWorker {
     const attempts = job.opts.attempts ?? 1;
     await markRunning(this.deps, jobId, attempt);
     try {
-      await generateThumbnail(this.options.storage, file, size, crop, {
-        timeoutMs: this.options.jobTimeoutMs,
-        pdftoppm: this.options.pdftoppm,
-      });
+      if (opened) {
+        await generateEncryptedThumbnail(this.derivatives(), file, opened, size, crop, {
+          timeoutMs: this.options.jobTimeoutMs,
+          pdftoppm: this.options.pdftoppm,
+        });
+      } else {
+        await generateThumbnail(this.options.storage, file, size, crop, {
+          timeoutMs: this.options.jobTimeoutMs,
+          pdftoppm: this.options.pdftoppm,
+        });
+      }
     } catch (error) {
+      if (error instanceof DerivativeTooLargeError) {
+        await markSkipped(this.deps, jobId, SKIP_TOO_LARGE);
+        await this.announce(file, "SKIPPED");
+        log?.info(
+          { job: jobId, file: file.id, size: file.size },
+          "thumbnail skipped: file too large",
+        );
+        return;
+      }
       const unrecoverable =
-        error instanceof ThumbnailError &&
-        (error.code === "unsupported" || error.code === "blob_missing");
+        derivativeUnrecoverable(error) ||
+        (error instanceof ThumbnailError &&
+          (error.code === "unsupported" || error.code === "blob_missing"));
       const final = unrecoverable || attempt >= attempts;
       await markFailed(this.deps, jobId, shortError(error), final);
       await this.announce(file, final ? "FAILED" : "PENDING");
@@ -327,10 +370,42 @@ export class ProcessingWorker {
         throw new UnrecoverableError(error instanceof Error ? error.message : String(error));
       }
       throw error;
+    } finally {
+      opened?.fk.fill(0);
     }
     await markDone(this.deps, jobId);
     await this.announce(file, "DONE");
     log?.info({ job: jobId, file: file.id, size, crop, attempt }, "thumbnail ready");
+  }
+
+  /**
+   * The key and metadata of a `tenant` file, from the key file; `null` for any other mode
+   * (nobody in the background holds a keyring's or a caller's key) and when the crypto
+   * service is absent or the key does not open (logged: the file stays `SKIPPED`, a person
+   * looks at `keys-status`).
+   */
+  private async openEncrypted(file: FileRow): Promise<OpenedFile | null> {
+    if (file.encryption !== "tenant" || !this.options.crypto) return null;
+    try {
+      return await this.options.crypto.open(file);
+    } catch (error) {
+      if (error instanceof VolaError) {
+        this.options.logger?.warn(
+          { file: file.id, code: error.code },
+          "encrypted file not opened by the worker",
+        );
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private derivatives(): DerivativesDeps {
+    return {
+      storage: this.options.storage,
+      maxBytes: this.options.encDeriveMaxBytes ?? DEFAULT_ENC_DERIVE_MAX,
+      logger: this.options.logger,
+    };
   }
 
   /**
@@ -353,14 +428,16 @@ export class ProcessingWorker {
       log?.debug({ job: jobId, file: row.fileId }, "OCR job skipped: file gone");
       return;
     }
-    if (file.encryption !== "none") {
-      await markSkipped(this.deps, jobId, "encrypted file");
+    const opened = file.encryption === "none" ? null : await this.openEncrypted(file);
+    if (file.encryption !== "none" && !opened) {
+      await markSkipped(this.deps, jobId, SKIP_NO_KEY);
       await this.announce(file, "SKIPPED");
       return;
     }
     const ocr = this.options.ocr;
     const state = this.ocrState;
     if (!state.enabled || !ocr) {
+      opened?.fk.fill(0);
       await markSkipped(this.deps, jobId, state.enabled ? "OCR not configured" : state.reason);
       await this.announce(file, "SKIPPED");
       log?.info({ job: jobId, file: file.id }, "OCR job skipped: OCR is off in this worker");
@@ -371,21 +448,32 @@ export class ProcessingWorker {
     await markRunning(this.deps, jobId, attempt);
     const started = Date.now();
     try {
-      const result = await extractText(this.options.storage, file, {
+      const run = {
         langs: state.langs,
         maxPages: ocr.maxPages,
         timeoutMs: ocr.timeoutS * 1000,
         tesseract: ocr.tesseract ?? DEFAULT_TESSERACT,
         pdftoppm: ocr.pdftoppm ?? this.options.pdftoppm ?? DEFAULT_PDFTOPPM,
-      });
-      await saveOcrResult(this.options.db, {
-        fileId: file.id,
-        tenantId: file.tenantId,
-        text: result.text,
-        lang: result.lang,
-        pages: result.pages,
-        at: (this.options.now ?? (() => new Date()))(),
-      });
+      };
+      const at = (this.options.now ?? (() => new Date()))();
+      let result: { text: string; lang: string; pages: number };
+      if (opened) {
+        // Decrypted into memory, read through stdin, the text sealed under the file key.
+        result = await ocrEncrypted(this.derivatives(), this.options.db, file, opened, {
+          ...run,
+          at,
+        });
+      } else {
+        result = await extractText(this.options.storage, file, run);
+        await saveOcrResult(this.options.db, {
+          fileId: file.id,
+          tenantId: file.tenantId,
+          text: result.text,
+          lang: result.lang,
+          pages: result.pages,
+          at,
+        });
+      }
       await markDone(this.deps, jobId);
       await this.announce(file, "DONE");
       log?.info(
@@ -401,11 +489,18 @@ export class ProcessingWorker {
         "OCR done",
       );
     } catch (error) {
+      if (error instanceof DerivativeTooLargeError) {
+        await markSkipped(this.deps, jobId, SKIP_TOO_LARGE);
+        await this.announce(file, "SKIPPED");
+        log?.info({ job: jobId, file: file.id, size: file.size }, "OCR skipped: file too large");
+        return;
+      }
       const unrecoverable =
-        error instanceof OcrError &&
-        (error.code === "unsupported" ||
-          error.code === "blob_missing" ||
-          error.code === "tool_missing");
+        derivativeUnrecoverable(error) ||
+        (error instanceof OcrError &&
+          (error.code === "unsupported" ||
+            error.code === "blob_missing" ||
+            error.code === "tool_missing"));
       const final = unrecoverable || attempt >= attempts;
       await markFailed(this.deps, jobId, shortError(error), final);
       await this.announce(file, final ? "FAILED" : "PENDING");
@@ -417,6 +512,8 @@ export class ProcessingWorker {
         throw new UnrecoverableError(error instanceof Error ? error.message : String(error));
       }
       throw error;
+    } finally {
+      opened?.fk.fill(0);
     }
   }
 

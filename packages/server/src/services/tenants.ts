@@ -83,13 +83,13 @@ export async function setTenantActive(
   return serializeTenant(row);
 }
 
-/** The default encryption modes a tenant may be set to now (`caller` comes with 6.3). */
-export const TENANT_DEFAULT_ENCRYPTIONS = ["none", "tenant", "keyring"] as const;
+/** The default encryption modes a tenant may be set to (`client` needs a key per upload: never a default). */
+export const TENANT_DEFAULT_ENCRYPTIONS = ["none", "tenant", "keyring", "caller"] as const;
 export type TenantDefaultEncryption = (typeof TENANT_DEFAULT_ENCRYPTIONS)[number];
 
 /**
  * Sets how an upload of the tenant that names no `encryption` is stored (`vola tenant-set
- * --default-encryption`). `validation_error` for anything but `none` / `tenant`.
+ * --default-encryption`). `validation_error` for anything but `TENANT_DEFAULT_ENCRYPTIONS`.
  */
 export async function setTenantDefaultEncryption(
   db: Database,

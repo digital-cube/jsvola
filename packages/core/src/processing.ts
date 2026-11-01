@@ -130,9 +130,18 @@ export function ocrSupported(mimeType: string): boolean {
   return mimeType.startsWith("image/") && mimeType !== "image/svg+xml" && mimeType !== "image/gif";
 }
 
-/** `true` when the worker will OCR this file: a supported type that is not encrypted. */
+/**
+ * `true` when the worker will OCR this file: a supported type, plain or `tenant`-encrypted
+ * (the worker holds that key; `keyring`, `caller` and `client` files get no OCR — nobody who
+ * runs in the background has their key, see `docs/CRYPTO.md` § 11).
+ */
 export function isOcrEligible(file: { mimeType: string; encryption: string }): boolean {
-  return file.encryption === "none" && ocrSupported(file.mimeType);
+  return workerHoldsKey(file.encryption) && ocrSupported(file.mimeType);
+}
+
+/** The encryption modes whose key the WORKER has: none, and `tenant` (the key file). */
+export function workerHoldsKey(encryption: string): boolean {
+  return encryption === "none" || encryption === "tenant";
 }
 
 /**

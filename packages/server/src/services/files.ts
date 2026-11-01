@@ -222,12 +222,19 @@ export interface EncryptedStage {
   mode: FileEncryption;
   /** The id of the row to come: it is in the AAD of every segment, so it is drawn BEFORE encryption. */
   fileId: string;
-  /** The random file key; wrapped into `fk_ct` by `finalizeUpload`, never stored in the clear. */
-  fk: Buffer;
+  /**
+   * The random file key; wrapped into `fk_ct` by `finalizeUpload`, never stored in the clear.
+   * `null` for `client` mode: the server never has it (`fkCt` and `metaCt` come as they are).
+   */
+  fk: Buffer | null;
   /** For `keyring`: the keyring the key will be wrapped under (checked against the unlock at staging). */
   keyringId: string | null;
   plaintextLength: number;
   format: number;
+  /** `client` mode (6.3): the wrapped key the client made, stored as given. */
+  fkCt?: Buffer | undefined;
+  /** `client` mode: the client's sealed metadata record, stored as given (`null`: none). */
+  metaCt?: Buffer | null | undefined;
 }
 
 /** A blob in the temporary area plus the bytes needed to tell its type. */
@@ -414,12 +421,24 @@ export async function finalizeUpload(
   let committed = false;
 
   // An encrypted file: the row shows nothing but the id, the real values are sealed under the
-  // file key, and the key is wrapped by the mode's provider BEFORE anything is committed.
+  // file key, and the key is wrapped by the mode's provider BEFORE anything is committed. A
+  // `client` blob arrives with its key already wrapped and its metadata already sealed (or
+  // not at all): both are stored as they came, the server opens neither.
   const enc = upload.encrypted;
-  let sealed: { fkCt: Buffer; keyringId: string | null; metaCt: Buffer; meta: FileMeta } | null =
-    null;
-  if (enc) {
-    if (!deps.crypto) {
+  let sealed: {
+    fkCt: Buffer;
+    keyringId: string | null;
+    metaCt: Buffer | null;
+    meta: FileMeta | null;
+  } | null = null;
+  if (enc && enc.mode === "client") {
+    if (!enc.fkCt) {
+      await deps.storage.discard(upload.staged);
+      throw new VolaError("validation_error", 422, "a client-encrypted upload needs its fk_ct");
+    }
+    sealed = { fkCt: enc.fkCt, keyringId: null, metaCt: enc.metaCt ?? null, meta: null };
+  } else if (enc) {
+    if (!deps.crypto || !enc.fk) {
       await deps.storage.discard(upload.staged);
       throw encryptionUnavailable(enc.mode);
     }
@@ -525,7 +544,7 @@ export async function finalizeUpload(
             )
             .returning();
           const info = serializeFile(row as FileRow);
-          return { info: sealed ? revealFile(info, sealed.meta) : info, replaced };
+          return { info: sealed?.meta ? revealFile(info, sealed.meta) : info, replaced };
         });
         // Best effort, after the commit: a value the vocabulary does not know is queued for review.
         await recordFileCandidates(deps.lookups, info);
@@ -837,6 +856,13 @@ async function renameEncrypted(
   row: FileRow,
   patch: FilePatchInput,
 ): Promise<FileInfo> {
+  if (row.encryption === "client") {
+    throw new VolaError(
+      "client_opaque",
+      409,
+      "the name of a client-encrypted file is inside its sealed metadata: vola cannot change it",
+    );
+  }
   if (!deps.crypto) throw encryptionUnavailable(row.encryption);
   const { fk, meta } = await deps.crypto.open(row);
   const filename = sanitizeFilename(patch.filename);

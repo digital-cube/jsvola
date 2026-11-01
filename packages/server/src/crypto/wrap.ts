@@ -6,7 +6,11 @@
  * - `tenant` (this phase, `tenant.ts`): under a KEK derived from the server's key file and
  *   the tenant id — protects a dump of disk and database;
  * - `keyring` (phase 6.2): under a principal's master key, itself behind a PIN;
- * - `caller` (phase 6.3): under a key the caller sends with every request, kept nowhere.
+ * - `caller` (phase 6.3, `caller.ts`): under a key the caller sends with every request, kept
+ *   nowhere.
+ *
+ * `client` (6.3) has NO provider: the client wrapped the key itself and the server never opens
+ * it — `fk_ct` and the blob are opaque bytes handed back as they came.
  *
  * The wrap AAD is `<file id>:key:<mode>:<tenant id | keyring id>`, so an `fk_ct` cannot be
  * moved to another file, another mode or another tenant: a transfer between tenants has to

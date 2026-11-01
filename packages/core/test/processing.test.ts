@@ -71,12 +71,16 @@ describe("OCR vocabulary (plan 4.2)", () => {
     ["audio/mpeg", "none", false],
     ["application/zip", "none", false],
     ["", "none", false],
-    ["image/png", "tenant", false],
+    ["image/png", "tenant", true], // the worker holds the key file (6.3)
+    ["image/gif", "tenant", false],
     ["application/pdf", "keyring", false],
     ["application/pdf", "caller", false],
+    ["application/pdf", "client", false],
   ])("isOcrEligible(%s, %s) is %s", (mimeType, encryption, expected) => {
     expect(isOcrEligible({ mimeType, encryption })).toBe(expected);
-    expect(ocrSupported(mimeType)).toBe(expected || encryption !== "none");
+    expect(ocrSupported(mimeType)).toBe(
+      expected || (encryption !== "none" && encryption !== "tenant"),
+    );
   });
 
   it("parses VOLA_OCR_LANGS against OcrLanguages", () => {

@@ -1,17 +1,22 @@
 /**
- * The encryption side of the file services (plans 6.1 and 6.2; `docs/CRYPTO.md`): which
- * wrap providers exist, which mode an upload gets, how a stored row's file key and metadata
- * are opened — and how the crypto layer's failures become HTTP: `IntegrityError` →
+ * The encryption side of the file services (plans 6.1–6.3; `docs/CRYPTO.md`): which wrap
+ * providers exist, which mode an upload gets, how a stored row's file key and metadata are
+ * opened — and how the crypto layer's failures become HTTP: `IntegrityError` →
  * `409 vola_integrity` with its one fixed sentence, `EncryptionUnavailableError` →
  * `503 encryption_unavailable`, `LockedError` → `423 vola_locked`. For a `keyring` file the
  * master key comes from the request's `X-Vola-Unlock` (the tenant context) through the
  * `UnlockStore`; a token that is not the principal's, not this keyring's, expired or absent
- * is the same `423`. Nothing here logs a name, a MIME type, a key or a token.
+ * is the same `423`. For a `caller` file the key is the request's `X-Vola-Content-Key`
+ * (`callerKey`): absent is the same `423`, a browser's request is `400`, a key without the
+ * `encryption:caller` scope `403`. A `client` file has no provider: the server never opens
+ * it. Nothing here logs a name, a MIME type, a key or a token.
  */
 import {
+  CALLER_KEY_FROM_BROWSER_CODE,
   ENCRYPTION_UNAVAILABLE_CODE,
   FILE_ENCRYPTIONS,
   type FileEncryption,
+  hasScope,
   INTEGRITY_ERROR_CODE,
   LOCKED_CODE,
 } from "@vola/core";
@@ -19,6 +24,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { currentContext } from "../context.js";
 import {
+  CallerWrapProvider,
   DEFAULT_SEGMENT_BYTES,
   EncryptionUnavailableError,
   type FileMeta,
@@ -32,6 +38,7 @@ import {
   LockedError,
   openMeta,
   TenantWrapProvider,
+  type Unwrapped,
   type WrapContext,
   type WrapProvider,
 } from "../crypto/index.js";
@@ -40,8 +47,40 @@ import { type FileRow, files, tenants } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { ResolvedUnlock, UnlockStore } from "./unlock.js";
 
-/** The modes this release accepts on an upload (`caller` arrives with 6.3). */
-export const AVAILABLE_ENCRYPTIONS: readonly FileEncryption[] = ["none", "tenant", "keyring"];
+/** The modes an upload may name. `client` only through `POST /uploads` with a `fk_ct` pair. */
+export const AVAILABLE_ENCRYPTIONS: readonly FileEncryption[] = [
+  "none",
+  "tenant",
+  "keyring",
+  "caller",
+  "client",
+];
+/** The modes whose file key the SERVER wraps (a `WrapProvider` exists for them). */
+export const SERVER_WRAPPED_ENCRYPTIONS: readonly FileEncryption[] = [
+  "tenant",
+  "keyring",
+  "caller",
+];
+/** The scope a key needs to send `X-Vola-Content-Key`. */
+export const CALLER_SCOPE = "encryption:caller";
+
+/** `400 caller_key_from_browser`: a request with an `Origin` header asked for the `caller` mode. */
+export function callerKeyFromBrowser(): VolaError {
+  return new VolaError(
+    CALLER_KEY_FROM_BROWSER_CODE,
+    400,
+    "the caller encryption mode is server-to-server: a request with an Origin header may not carry or use a content key",
+  );
+}
+
+/** `423 vola_locked` for a `caller` file whose request carries no `X-Vola-Content-Key`. */
+export function callerKeyMissing(): VolaError {
+  return new VolaError(
+    LOCKED_CODE,
+    423,
+    "this file is encrypted under a caller key: send it in X-Vola-Content-Key",
+  );
+}
 
 /** `423 vola_locked` — one answer for every missing, expired, foreign or wrong token. */
 export function keyringLocked(): VolaError {
@@ -115,28 +154,30 @@ export class EncryptionService {
 
   /**
    * The `encryption` an upload asked for: `undefined` when it named none (the folder policy
-   * or the tenant default applies), `none` / `tenant` / `keyring` otherwise; `501
-   * not_implemented` for `caller` (phase 6.3), `422 validation_error` for anything else.
+   * or the tenant default applies), one of `FILE_ENCRYPTIONS` otherwise, `422
+   * validation_error` for anything else. `client` is accepted only where the caller can hand
+   * over its wrapped key (`options.client`: the resumable upload); elsewhere it is `422` too.
    */
-  parseMode(raw: string | undefined | null): FileEncryption | undefined {
+  parseMode(
+    raw: string | undefined | null,
+    options: { client?: boolean | undefined } = {},
+  ): FileEncryption | undefined {
     if (raw === undefined || raw === null || raw.trim() === "") return undefined;
     const value = raw.trim().toLowerCase();
-    if (!(FILE_ENCRYPTIONS as readonly string[]).includes(value)) {
+    const accepted = AVAILABLE_ENCRYPTIONS.filter((m) => m !== "client" || options.client);
+    if (
+      !(FILE_ENCRYPTIONS as readonly string[]).includes(value) ||
+      !accepted.includes(value as FileEncryption)
+    ) {
       throw new VolaError(
         "validation_error",
         422,
-        `encryption: one of ${AVAILABLE_ENCRYPTIONS.join(", ")}`,
+        value === "client"
+          ? "encryption: client-side encryption goes through POST /uploads with a fk_ct pair"
+          : `encryption: one of ${accepted.join(", ")}`,
       );
     }
-    const mode = value as FileEncryption;
-    if (!AVAILABLE_ENCRYPTIONS.includes(mode)) {
-      throw new VolaError(
-        "not_implemented",
-        501,
-        `encryption "${mode}" arrives with a later phase (caller: 6.3)`,
-      );
-    }
-    return mode;
+    return value as FileEncryption;
   }
 
   /**
@@ -166,7 +207,7 @@ export class EncryptionService {
       .where(eq(tenants.id, tenantId))
       .limit(1);
     const mode = (row?.mode ?? "none") as FileEncryption;
-    return AVAILABLE_ENCRYPTIONS.includes(mode) ? mode : "none";
+    return mode !== "client" && AVAILABLE_ENCRYPTIONS.includes(mode) ? mode : "none";
   }
 
   /**
@@ -189,17 +230,46 @@ export class EncryptionService {
   }
 
   /**
-   * `assertAvailable` plus, for `keyring`, the unlock an upload needs: the request's token
-   * must open (`423` otherwise) and, when the folder policy names a keyring, it must be THAT
-   * keyring's. Checked before a byte is read. Returns the keyring the upload will be under.
+   * `assertAvailable` plus what the request must carry for the mode: for `keyring` the
+   * unlock (the request's token must open — `423` otherwise — and, when the folder policy
+   * names a keyring, it must be THAT keyring's); for `caller` the content key (`423`
+   * without, `400` from a browser, `403` without the scope). Checked before a byte is read.
+   * Returns the keyring the upload will be under.
    */
   async assertUploadable(mode: FileEncryption, keyringId?: string | null): Promise<string | null> {
     await this.assertAvailable(mode);
+    if (mode === "caller") {
+      this.callerKey();
+      return null;
+    }
     if (mode !== "keyring") return null;
     const unlock = await this.currentUnlock();
     unlock.mk.fill(0);
     if (keyringId && keyringId !== unlock.keyringId) throw keyringLocked();
     return unlock.keyringId;
+  }
+
+  /**
+   * The `X-Vola-Content-Key` of the request, for a `caller` file: `400 caller_key_from_browser`
+   * when the request carries an `Origin` header (whatever else it carries — the mode is
+   * server-to-server), `403 forbidden` when the API key lacks `encryption:caller`, `423
+   * vola_locked` when there is no key. The buffer belongs to the request (zeroed afterwards);
+   * callers do not copy it.
+   */
+  callerKey(): Buffer {
+    const context = currentContext();
+    if (!context) throw callerKeyMissing();
+    if (context.browserOrigin !== null) throw callerKeyFromBrowser();
+    if (!hasScope(context.scopes, CALLER_SCOPE)) {
+      throw new VolaError(
+        "forbidden",
+        403,
+        `the caller encryption mode needs the scope "${CALLER_SCOPE}" on the API key`,
+        { required: [CALLER_SCOPE] },
+      );
+    }
+    if (!context.contentKey) throw callerKeyMissing();
+    return context.contentKey;
   }
 
   /**
@@ -242,6 +312,7 @@ export class EncryptionService {
       }
       ctx = { ...ctx, keyringId: unlock.keyringId, unlock: unlock.mk };
     }
+    if (mode === "caller") ctx = { ...ctx, callerKey: this.callerKey() };
     try {
       return { fkCt: await provider.wrap(fk, ctx), keyringId: ctx.keyringId ?? null };
     } catch (error) {
@@ -260,32 +331,15 @@ export class EncryptionService {
   async fileKey(
     row: Pick<FileRow, "id" | "tenantId" | "encryption" | "fkCt" | "keyringId">,
   ): Promise<Buffer> {
-    const mode = row.encryption as FileEncryption;
-    const provider = this.provider(mode);
-    if (!provider) throw encryptionUnavailable(mode);
     if (!row.fkCt) {
       this.logger?.warn({ file: row.id }, "encrypted file without a wrapped key");
       throw integrityFailure();
     }
-    const ctx: WrapContext = { fileId: row.id, tenantId: row.tenantId, keyringId: row.keyringId };
-    let unlock: ResolvedUnlock | null = null;
-    if (mode === "keyring") {
-      unlock = await this.currentUnlock();
-      if (!row.keyringId || unlock.keyringId !== row.keyringId) {
-        unlock.mk.fill(0);
-        throw keyringLocked();
-      }
-      ctx.unlock = unlock.mk;
-    }
-    let fk: Buffer;
-    let rewrapped: Buffer | undefined;
-    try {
-      ({ fk, rewrapped } = await provider.unwrap(row.fkCt, ctx));
-    } catch (error) {
-      throw this.translate(error, mode, row.id);
-    } finally {
-      unlock?.mk.fill(0);
-    }
+    const { fk, rewrapped } = await this.unwrapKey(row.encryption as FileEncryption, row.fkCt, {
+      fileId: row.id,
+      tenantId: row.tenantId,
+      keyringId: row.keyringId,
+    });
     if (rewrapped) {
       // Best effort: the download must not fail because the rotation write did.
       await this.db
@@ -298,6 +352,36 @@ export class EncryptionService {
         );
     }
     return fk;
+  }
+
+  /**
+   * `fk_ct` → `fk` under the request's material, without touching any row: what `fileKey`
+   * and the resumable upload (whose key sits in `vola_upload.enc_state` until the file row
+   * exists) share. `503` without key material, `409` when the key does not open, `423` for a
+   * `keyring` file the request holds no unlock for (a token of ANOTHER keyring counts as none)
+   * or a `caller` file without its content key. `rewrapped` is set when an older key-file
+   * line opened a `tenant` key: the caller stores it (lazy rotation).
+   */
+  async unwrapKey(mode: FileEncryption, fkCt: Buffer, ctx: WrapContext): Promise<Unwrapped> {
+    const provider = this.provider(mode);
+    if (!provider) throw encryptionUnavailable(mode);
+    let unlock: ResolvedUnlock | null = null;
+    if (mode === "keyring") {
+      unlock = await this.currentUnlock();
+      if (!ctx.keyringId || unlock.keyringId !== ctx.keyringId) {
+        unlock.mk.fill(0);
+        throw keyringLocked();
+      }
+      ctx = { ...ctx, unlock: unlock.mk };
+    }
+    if (mode === "caller") ctx = { ...ctx, callerKey: this.callerKey() };
+    try {
+      return await provider.unwrap(fkCt, ctx);
+    } catch (error) {
+      throw this.translate(error, mode, ctx.fileId);
+    } finally {
+      unlock?.mk.fill(0);
+    }
   }
 
   /** The file key and the decrypted metadata of a stored encrypted row (`503` / `409`). */
@@ -325,7 +409,7 @@ export class EncryptionService {
   async reveal(
     row: Pick<FileRow, "id" | "tenantId" | "encryption" | "fkCt" | "metaCt" | "keyringId">,
   ): Promise<FileMeta | null> {
-    if (row.encryption === "none") return null;
+    if (row.encryption === "none" || row.encryption === "client") return null;
     if (!this.provider(row.encryption as FileEncryption) || !row.fkCt || !row.metaCt) return null;
     try {
       return (await this.open(row)).meta;
@@ -415,9 +499,10 @@ export interface CreateEncryptionServiceOptions {
 }
 
 /**
- * The service of a deployment: the `tenant` provider on `VOLA_KEY_FILE` and the `keyring`
+ * The service of a deployment: the `tenant` provider on `VOLA_KEY_FILE`, the `keyring`
  * provider over `unlocks` (a Redis-backed `UnlockStore`; without one every `keyring` file
- * is `503 encryption_unavailable`).
+ * is `503 encryption_unavailable`) and the `caller` provider (which needs nothing of the
+ * server's).
  */
 export function createEncryptionService(
   options: CreateEncryptionServiceOptions,
@@ -425,7 +510,7 @@ export function createEncryptionService(
   const keys = options.keys ?? new KeyFile(options.keyFile, options.logger);
   return new EncryptionService({
     db: options.db,
-    providers: [new TenantWrapProvider(keys), new KeyringWrapProvider()],
+    providers: [new TenantWrapProvider(keys), new KeyringWrapProvider(), new CallerWrapProvider()],
     unlocks: options.unlocks,
     segmentSize: options.segmentSize,
     logger: options.logger,

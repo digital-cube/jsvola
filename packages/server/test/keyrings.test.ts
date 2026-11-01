@@ -484,6 +484,8 @@ describe("unlock and files", () => {
       isAdmin: false,
       userId: principal,
       unlockToken,
+      contentKey: null,
+      browserOrigin: null,
     });
     const filter = {
       and: [
@@ -515,17 +517,18 @@ describe("unlock and files", () => {
     }
   });
 
-  it("a keyring file cannot be shared, made globally public, transferred or thumbnailed", async () => {
+  it("a keyring file cannot be made globally public or transferred; a share and a thumbnail need the token (6.3)", async () => {
     const { principal, token } = await owner();
     const { info, instanceId } = await storedFile(principal, token);
+    // A share is a grant made under the owner's unlock (test/encryption3.test.ts): locked without it.
     const share = await app.inject({
       method: "POST",
       url: "/vola/shares",
-      headers: bearer(fx.full.key),
+      headers: { ...bearer(fx.full.key), ...user(principal) },
       payload: { file_id: info.id },
     });
-    expect(share.statusCode).toBe(409);
-    expect(share.json().error.code).toBe("encrypted_share_requires_grant");
+    expect(share.statusCode).toBe(423);
+    expect(share.json().error.code).toBe("vola_locked");
     const pub = await http.patch(url(instanceId, info.id), { is_global_public: true });
     expect(pub.statusCode).toBe(409);
     const transfer = await app.inject({
@@ -540,7 +543,16 @@ describe("unlock and files", () => {
     });
     expect(transfer.statusCode, transfer.body).toBe(409);
     expect(transfer.json().error.code).toBe("encrypted_transfer_unsupported");
-    expect((await http.get(url(instanceId, info.id, "/thumb/256"))).statusCode).toBe(404);
+    // The thumbnail route opens the file first: locked without the token, and a text file has none with it.
+    expect(
+      (await http.get(url(instanceId, info.id, "/thumb/256"), user(principal))).statusCode,
+    ).toBe(423);
+    const noThumb = await http.get(
+      url(instanceId, info.id, "/thumb/256"),
+      user(principal, unlockHeader(token)),
+    );
+    expect(noThumb.statusCode).toBe(404);
+    expect(noThumb.json().error.code).toBe("no_thumbnail");
     // A rename re-seals the metadata — only with the token.
     const rename = await postJson(
       url(instanceId, info.id),

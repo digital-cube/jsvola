@@ -259,10 +259,10 @@ describe("processing jobs through the worker", () => {
     expect((await listProcessingJobs(handle.db, info.id)).length).toBe(4); // refreshed, not added
   });
 
-  it("skips a job of a file that became encrypted and keeps the aggregate clean", async () => {
+  it("skips a job of a file that became encrypted under a key the worker does not hold and keeps the aggregate clean", async () => {
     const { info } = await uploaded(await pngFixture(), "secret.png");
     await settled(info.id);
-    await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, info.id));
+    await handle.db.update(files).set({ encryption: "keyring" }).where(eq(files.id, info.id));
     const dispatcher = new QueuedJobDispatcher({ db: handle.db, queue });
     await dispatcher.requestThumbnail(
       { id: info.id, tenantId: fx.tenant.id, mimeType: "image/png", encryption: "none" },
@@ -278,7 +278,7 @@ describe("processing jobs through the worker", () => {
       },
       { label: "skipped job" },
     );
-    expect(skipped.error).toBe("encrypted file");
+    expect(skipped.error).toBe("encrypted under a key the worker does not hold");
     expect(await processingStatusOf(handle.db, info.id)).toBe("DONE"); // SKIPPED is ignored
   });
 

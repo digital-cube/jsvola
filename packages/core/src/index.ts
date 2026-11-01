@@ -39,8 +39,12 @@ export {
   REQUEST_ID_HEADER,
 } from "./errors.js";
 export {
+  CALLER_KEY_FROM_BROWSER_CODE,
+  CONTENT_KEY_HEADER,
+  DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES,
   ENCRYPTED_STORED_MIME,
   ENCRYPTION_HEADER,
+  ENCRYPTION_RESPONSE_HEADER,
   ENCRYPTION_UNAVAILABLE_CODE,
   FILE_ENCRYPTIONS,
   FILE_KINDS,
@@ -204,6 +208,7 @@ export {
   type ThumbnailStatus,
   thumbnailDerivedName,
   thumbnailSupported,
+  workerHoldsKey,
 } from "./processing.js";
 export {
   hasScope,
@@ -216,6 +221,7 @@ export {
   TenantScopeSchema,
 } from "./scopes.js";
 export {
+  ENCRYPTED_SHARE_REQUIRES_GRANT_CODE,
   IMPLEMENTED_SHARE_SCOPES,
   INCLUDE_REVOKED_QUERY,
   SHARE_PASSWORD_HEADER,
@@ -223,6 +229,9 @@ export {
   SHARE_PASSWORD_QUERY,
   SHARE_PASSWORD_WINDOW_S,
   SHARE_SCOPES,
+  SHARE_SECRET_BYTES,
+  SHARE_SECRET_HEADER,
+  SHARE_SECRET_REQUIRED_CODE,
   SHARE_TOKEN_BYTES,
   type ShareCreate,
   type ShareCreated,
@@ -243,6 +252,7 @@ export {
   SharePasswordSchema,
   type ShareScope,
   ShareScopeSchema,
+  ShareSecretSchema,
   ShareStateSchema,
   ShareTokenSchema,
 } from "./shares.js";

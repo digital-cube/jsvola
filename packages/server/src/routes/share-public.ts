@@ -1,14 +1,21 @@
-import { SHARE_PASSWORD_HEADER, SHARE_PASSWORD_QUERY, type SharedFolderListing } from "@vola/core";
+import {
+  SHARE_PASSWORD_HEADER,
+  SHARE_PASSWORD_QUERY,
+  SHARE_SECRET_HEADER,
+  type SharedFolderListing,
+} from "@vola/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Database } from "../db/index.js";
 import type { FileRow, ShareLinkRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
+import type { EncryptionService, OpenedFile } from "../services/encryption.js";
 import type { FilesDeps } from "../services/files.js";
 import type { SharePasswordLimiter } from "../services/share-password.js";
 import {
   consumeDownload,
   listSharedFolder,
+  openSharedEncryptedFile,
   resolveShare,
   resolveSharedPath,
   type SharesDeps,
@@ -25,6 +32,8 @@ export interface SharePublicRoutesDeps {
   /** Wrong-password counter; default: in memory, per process. */
   limiter?: SharePasswordLimiter | undefined;
   accessThrottle?: LastUsedThrottle | undefined;
+  /** Encryption (plan 6.3): decrypts the download of a share grant; absent → such a share is `503`. */
+  crypto?: EncryptionService | undefined;
   logger?: FastifyBaseLogger | undefined;
   now?: (() => Date) | undefined;
 }
@@ -41,6 +50,13 @@ interface PathParams extends TokenParams {
 }
 interface ShareQuery extends DownloadQuery {
   [SHARE_PASSWORD_QUERY]?: string;
+}
+
+/** The share secret of the request (`X-Share-Secret`); `undefined` when it carried none. Never a query parameter. */
+export function requestShareSecret(request: FastifyRequest): string | undefined {
+  const raw = request.headers[SHARE_SECRET_HEADER];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === undefined || value === "" ? undefined : value.trim();
 }
 
 /** The password of the request: the `X-Share-Password` header first, `?password=` otherwise. */
@@ -70,6 +86,12 @@ export function requestSharePassword(
  * continuation never do — and once the limit is reached, starting another download is
  * `410 share_gone` while `HEAD` and continuations still answer, so the last granted download
  * can be resumed. Answers carry `Cache-Control: private, no-store` and `X-Robots-Tag: noindex`.
+ *
+ * The share GRANT of an encrypted file (plan 6.3, `docs/CRYPTO.md` § 12): the link's fragment
+ * (`#<secret>`) never reaches the server — the client sends it as `X-Share-Secret`. Missing →
+ * `401 share_secret_required`; wrong → `409 vola_integrity`; right → the file decrypted
+ * segment by segment (`Range` in plaintext coordinates, `no-store`), after the password, the
+ * expiry and `max_downloads` had their say, and before the download is counted.
  */
 export const sharePublicRoutes: FastifyPluginAsync<SharePublicRoutesDeps> = async (app, deps) => {
   const logger = deps.logger ?? app.log;
@@ -79,6 +101,7 @@ export const sharePublicRoutes: FastifyPluginAsync<SharePublicRoutesDeps> = asyn
     storage: deps.storage,
     accessThrottle: deps.accessThrottle,
     logger,
+    crypto: deps.crypto,
     now: deps.now,
   };
   const PUBLIC = { auth: "none" } as const;
@@ -96,22 +119,33 @@ export const sharePublicRoutes: FastifyPluginAsync<SharePublicRoutesDeps> = asyn
     share: ShareLinkRow,
     file: FileRow,
   ): Promise<FastifyReply> {
-    if (startsDownload(request.method, request.headers.range)) {
-      const count = await consumeDownload(shares, share);
-      request.log.info(
-        {
-          share: share.id,
-          file: file.id,
-          download_count: count,
-          max_downloads: share.maxDownloads,
-        },
-        "share download",
-      );
+    // An encrypted file: the grant has to open under the request's secret BEFORE the
+    // download is counted — a wrong secret is not a download.
+    let opened: OpenedFile | undefined;
+    if (file.encryption !== "none") {
+      opened = openSharedEncryptedFile(share, file, requestShareSecret(request));
     }
-    return sendFile(filesService, request, reply, file, {
-      cacheControl: SHARE_CACHE_CONTROL,
-      userId: null,
-    });
+    try {
+      if (startsDownload(request.method, request.headers.range)) {
+        const count = await consumeDownload(shares, share);
+        request.log.info(
+          {
+            share: share.id,
+            file: file.id,
+            download_count: count,
+            max_downloads: share.maxDownloads,
+          },
+          "share download",
+        );
+      }
+      return await sendFile(filesService, request, reply, file, {
+        cacheControl: SHARE_CACHE_CONTROL,
+        userId: null,
+        opened,
+      });
+    } finally {
+      opened?.fk.fill(0);
+    }
   }
 
   app.route<{ Params: TokenParams; Querystring: ShareQuery }>({

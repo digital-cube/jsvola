@@ -133,6 +133,8 @@ describe("authentication", () => {
         isAdmin: false,
         userId: "user-42",
         unlockToken: null,
+        contentKey: null,
+        browserOrigin: null,
       });
       // requireTenant() (AsyncLocalStorage) sees the same context as request.vola.
       expect(seen.store).toBe(seen.context);

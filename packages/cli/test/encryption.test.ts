@@ -171,16 +171,17 @@ describe("vola tenant-set", () => {
       .from(schema.tenants)
       .where(eq(schema.tenants.slug, slug));
     expect(row?.defaultEncryption).toBe("tenant");
-    const caller = await vola(
+    // `client` needs a key per upload: never a default. `caller` is one (6.3).
+    const client = await vola(
       join(dir, "x.key"),
       "tenant-set",
       "--slug",
       slug,
       "--default-encryption",
-      "caller",
+      "client",
     );
-    expect(caller.code).toBe(1);
-    expect(caller.err).toContain("validation_error");
+    expect(client.code).toBe(1);
+    expect(client.err).toContain("validation_error");
     const nothing = await vola(join(dir, "x.key"), "tenant-set", "--slug", slug);
     expect(nothing.code).toBe(1);
     expect(nothing.err).toContain("nothing to set");

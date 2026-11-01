@@ -1,12 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  ENCRYPTED_SHARE_REQUIRES_GRANT_CODE,
   IMPLEMENTED_SHARE_SCOPES,
+  SHARE_SECRET_BYTES,
+  SHARE_SECRET_REQUIRED_CODE,
   SHARE_TOKEN_BYTES,
   type ShareCreate,
   type SharedFile,
   type SharedFolderListing,
   type ShareInfo,
   type ShareScope,
+  ShareSecretSchema,
   ShareTokenSchema,
   splitFilePath,
 } from "@vola/core";
@@ -14,6 +18,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
+import { aeadOpen, aeadSeal, IntegrityError, KEY_BYTES, openMeta } from "../crypto/index.js";
 import type { Database } from "../db/index.js";
 import {
   type FileRow,
@@ -23,7 +28,9 @@ import {
   type ShareLinkRow,
   shareLinks,
 } from "../db/schema.js";
+import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
+import { type EncryptionService, integrityFailure, type OpenedFile } from "./encryption.js";
 import {
   type FilesDeps,
   fileNotFound,
@@ -46,6 +53,8 @@ export interface SharesDeps {
   limiter?: SharePasswordLimiter | undefined;
   /** The audit trail (`VOLA_SHARE_CREATED`, `VOLA_SHARE_REVOKED`); never the token or the password. */
   audit?: AuditLog | undefined;
+  /** Encryption (plan 6.3): opens an encrypted file's key for its share grant; absent → `409` for encrypted files. */
+  crypto?: EncryptionService | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -77,6 +86,103 @@ export function sharePasswordRequired(): VolaError {
   );
 }
 
+/** `401 share_secret_required`: the share of an encrypted file was asked for without its secret. */
+export function shareSecretRequired(): VolaError {
+  return new VolaError(
+    SHARE_SECRET_REQUIRED_CODE,
+    401,
+    "this share link is of an encrypted file: send the secret after # in the link as X-Share-Secret",
+  );
+}
+
+/** `409 encrypted_share_requires_grant`: a share the server cannot make a grant for. */
+export function encryptedShareRequiresGrant(mode: string): VolaError {
+  return new VolaError(
+    ENCRYPTED_SHARE_REQUIRES_GRANT_CODE,
+    409,
+    mode === "caller"
+      ? "a caller-encrypted file's share needs the grant from the caller: send fk_share_ct (the file key wrapped under the link secret)"
+      : "a client-encrypted file cannot be shared: the server holds no key to grant",
+  );
+}
+
+// --- the share grant (plan 6.3) ----------------------------------------------------------
+
+/** `<share id>:key`: the AAD of a grant the SERVER made. */
+export function shareGrantAad(shareId: string): Buffer {
+  return Buffer.from(`${shareId}:key`, "utf8");
+}
+
+/** `<file id>:key:share:caller`: the AAD of a grant a CALLER made (it cannot know the share id). */
+export function callerGrantAad(fileId: string): Buffer {
+  return Buffer.from(`${fileId}:key:share:caller`, "utf8");
+}
+
+/** A fresh link secret `S` and its base64url form (the URL fragment). */
+export function newShareSecret(): { secret: Buffer; fragment: string } {
+  const secret = randomBytes(SHARE_SECRET_BYTES);
+  return { secret, fragment: secret.toString("base64url") };
+}
+
+/** `fk_share_ct` = `nonce ∥ AES-256-GCM(S, FK, "<share id>:key")`. */
+export function wrapShareGrant(secret: Buffer, fk: Buffer, shareId: string): Buffer {
+  return aeadSeal(secret, fk, shareGrantAad(shareId));
+}
+
+/**
+ * The file key behind a share's grant, under the secret the request sent. `null` for a
+ * request without a secret (the route answers `401`); a secret that does not open the grant —
+ * or a damaged grant — is `409 vola_integrity`, the one fixed sentence.
+ */
+export function openShareGrant(
+  share: Pick<ShareLinkRow, "id" | "fileId" | "fkShareCt">,
+  rawSecret: string | undefined,
+): Buffer | null {
+  if (rawSecret === undefined || rawSecret === "") return null;
+  if (!ShareSecretSchema.safeParse(rawSecret).success) throw integrityFailure();
+  const secret = Buffer.from(rawSecret, "base64url");
+  if (secret.length !== KEY_BYTES || !share.fkShareCt || !share.fileId) throw integrityFailure();
+  try {
+    // The server's grant first; a caller-made one is bound to the file id instead.
+    return aeadOpen(secret, share.fkShareCt, shareGrantAad(share.id));
+  } catch (first) {
+    if (!(first instanceof IntegrityError)) throw first;
+    try {
+      return aeadOpen(secret, share.fkShareCt, callerGrantAad(share.fileId));
+    } catch (second) {
+      if (second instanceof IntegrityError) throw integrityFailure();
+      throw second;
+    }
+  } finally {
+    secret.fill(0);
+  }
+}
+
+/**
+ * The key and metadata of the encrypted `file` of a share, from its grant and the request's
+ * secret (`X-Share-Secret`): `401 share_secret_required` without one, `409 vola_integrity` for
+ * a wrong one or a metadata record that does not open under it.
+ */
+export function openSharedEncryptedFile(
+  share: ShareLinkRow,
+  file: FileRow,
+  rawSecret: string | undefined,
+): OpenedFile {
+  const fk = openShareGrant(share, rawSecret);
+  if (!fk) throw shareSecretRequired();
+  if (!file.metaCt) {
+    fk.fill(0);
+    throw integrityFailure();
+  }
+  try {
+    return { fk, meta: openMeta(fk, file.id, file.metaCt) };
+  } catch (error) {
+    fk.fill(0);
+    if (error instanceof IntegrityError) throw integrityFailure();
+    throw error;
+  }
+}
+
 // --- token -------------------------------------------------------------------------------
 
 /** SHA-256 of a share token, lowercase hex: what the database stores and the limiter keys on. */
@@ -106,6 +212,7 @@ export function serializeShare(row: ShareLinkRow): ShareInfo {
     created_by: row.createdBy,
     created_at: row.createdAt.toISOString(),
     revoked_at: row.revokedAt?.toISOString() ?? null,
+    encrypted: row.fkShareCt !== null,
   };
 }
 
@@ -121,13 +228,26 @@ export interface CreatedShare {
   share: ShareInfo;
   /** The plaintext token: shown once, never stored. */
   token: string;
+  /**
+   * The link secret `S` of an encrypted file's share as base64url — the URL FRAGMENT: shown
+   * once, never stored (the server keeps only the file key wrapped under it). `null` for a
+   * plain file, and for a `caller` file whose grant the caller made itself (it holds `S`).
+   */
+  secret: string | null;
 }
 
 /**
  * Creates a share of the tenant's own live file (`file_id`) or folder (`folder`: instance and
  * path). A scope other than `PUBLIC_LINK` is `501 not_implemented`; another tenant's or a
- * deleted target is `404`; an encrypted file is `409 encrypted_share_requires_grant` (its
- * share is the grant of plan 6.3). The password is stored as argon2id, the token as SHA-256.
+ * deleted target is `404`. The password is stored as argon2id, the token as SHA-256.
+ *
+ * An ENCRYPTED file (plan 6.3, `docs/CRYPTO.md` § 12) gets a share GRANT: the request has
+ * to hold the file key — the key file for `tenant`, the owner's `X-Vola-Unlock` for `keyring`
+ * (`423` without) — the server draws a 32-byte secret `S`, wraps the key under it
+ * (`fk_share_ct`, AAD `<share id>:key`) and hands `S` back ONCE as the fragment of the URL;
+ * nothing of `S` is stored. A `caller` file is `409 encrypted_share_requires_grant` unless
+ * the caller sends its own `fk_share_ct` (it holds the key, the server never did); a `client`
+ * file is `409` always.
  */
 export async function createShare(
   deps: SharesDeps,
@@ -143,6 +263,7 @@ export async function createShare(
   }
   let fileId: string | null = null;
   let folderId: string | null = null;
+  let encrypted: FileRow | null = null;
   if (body.file_id !== undefined) {
     const [file] = await deps.db
       .select()
@@ -156,18 +277,48 @@ export async function createShare(
       )
       .limit(1);
     if (!file) throw fileNotFound();
-    if (file.encryption !== "none") {
-      throw new VolaError(
-        "encrypted_share_requires_grant",
-        409,
-        "an encrypted file is shared through a share grant, not a plain link",
-      );
-    }
     fileId = file.id;
+    encrypted = file;
   } else if (body.folder) {
     const scope = parseInstance(input.tenantId, body.folder.instance_type, body.folder.instance_id);
     const folder = await findFolder(folderDeps(deps), scope, body.folder.path);
     folderId = folder.id;
+  }
+  if (body.fk_share_ct !== undefined && encrypted?.encryption !== "caller") {
+    throw new VolaError(
+      "validation_error",
+      422,
+      "fk_share_ct: only a caller-encrypted file takes a grant made by the caller",
+    );
+  }
+  // The share id is drawn HERE: a server-made grant is bound to it through the AAD.
+  const shareId = uuidv7();
+  let fkShareCt: Buffer | null = null;
+  let secret: string | null = null;
+  if (encrypted && encrypted.encryption !== "none") {
+    const mode = encrypted.encryption;
+    if (mode === "caller" && body.fk_share_ct !== undefined) {
+      fkShareCt = Buffer.from(body.fk_share_ct.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+      if (fkShareCt.length < 60 || fkShareCt.length > 256) {
+        throw new VolaError(
+          "validation_error",
+          422,
+          "fk_share_ct: nonce ∥ ct ∥ tag of a 32-byte key",
+        );
+      }
+    } else if (mode === "caller" || mode === "client" || !deps.crypto) {
+      throw encryptedShareRequiresGrant(mode);
+    } else {
+      const fk = await deps.crypto.fileKey(encrypted); // 503 / 409 / 423 here
+      try {
+        const drawn = newShareSecret();
+        fkShareCt = wrapShareGrant(drawn.secret, fk, shareId);
+        secret = drawn.fragment;
+        drawn.secret.fill(0);
+      } finally {
+        fk.fill(0);
+      }
+    }
   }
   const passwordHash = body.password ? await hashSharePassword(body.password) : null;
   const now = clock(deps);
@@ -179,6 +330,7 @@ export async function createShare(
       const [row] = await deps.db
         .insert(shareLinks)
         .values({
+          id: shareId,
           tenantId: input.tenantId,
           fileId,
           folderId,
@@ -189,6 +341,7 @@ export async function createShare(
           maxDownloads: body.max_downloads ?? null,
           createdBy: input.userId,
           createdAt: now,
+          fkShareCt,
         })
         .returning();
       if (!row) throw new Error("share insert returned no row");
@@ -199,6 +352,7 @@ export async function createShare(
           has_password: passwordHash !== null,
           expires_at: row.expiresAt?.toISOString() ?? null,
           max_downloads: row.maxDownloads,
+          grant: fkShareCt !== null,
         },
         "share created",
       );
@@ -208,7 +362,7 @@ export async function createShare(
         instance_id: row.id,
         payload: shareAuditPayload(row),
       });
-      return { share: serializeShare(row), token };
+      return { share: serializeShare(row), token, secret };
     } catch (error) {
       if (attempt < 5 && pgCode(error) === UNIQUE_VIOLATION) continue;
       throw error;
@@ -270,7 +424,11 @@ export async function listShares(
   return rows.map(serializeShare);
 }
 
-/** Revokes the tenant's share `shareId` (`revoked_at`); idempotent; the row stays. */
+/**
+ * Revokes the tenant's share `shareId` (`revoked_at`); idempotent; the row stays — except its
+ * grant: `fk_share_ct` is dropped, the crypto-shred of the grant (whoever kept the link and
+ * its secret has nothing to open any more; the owner's own key is untouched).
+ */
 export async function revokeShare(
   deps: SharesDeps,
   tenantId: string,
@@ -281,11 +439,11 @@ export async function revokeShare(
   const now = clock(deps);
   const [updated] = await deps.db
     .update(shareLinks)
-    .set({ revokedAt: now })
+    .set({ revokedAt: now, fkShareCt: null })
     .where(and(eq(shareLinks.id, row.id), isNull(shareLinks.revokedAt)))
     .returning();
-  deps.logger?.info({ share: row.id }, "share revoked");
-  const revoked = updated ?? { ...row, revokedAt: now };
+  deps.logger?.info({ share: row.id, grant_dropped: row.fkShareCt !== null }, "share revoked");
+  const revoked = updated ?? { ...row, revokedAt: now, fkShareCt: null };
   deps.audit?.emit({
     event_type: "VOLA_SHARE_REVOKED",
     instance_type: "vola_share",
@@ -308,6 +466,7 @@ export function shareAuditPayload(row: ShareLinkRow): Record<string, unknown> {
     download_count: row.downloadCount,
     created_at: row.createdAt.toISOString(),
     revoked_at: row.revokedAt?.toISOString() ?? null,
+    encrypted: row.fkShareCt !== null,
   };
 }
 
@@ -416,7 +575,11 @@ export async function consumeDownload(deps: SharesDeps, share: ShareLinkRow): Pr
 
 // --- targets -----------------------------------------------------------------------------
 
-/** The live, unencrypted file a file share points at; `410 share_gone` when it is deleted or encrypted meanwhile. */
+/**
+ * The live file a file share points at; `410 share_gone` when it was deleted meanwhile, or
+ * when it is encrypted and the share holds no grant for it (a plain file encrypted after the
+ * share was made — not a path vola offers, but the rule holds).
+ */
 export async function sharedFile(deps: SharesDeps, share: ShareLinkRow): Promise<FileRow> {
   if (!share.fileId) throw shareNotFound();
   const [row] = await deps.db
@@ -425,7 +588,9 @@ export async function sharedFile(deps: SharesDeps, share: ShareLinkRow): Promise
     .where(and(eq(files.id, share.fileId), isNull(files.deletedAt)))
     .limit(1);
   if (!row) throw shareGone("the shared file was deleted");
-  if (row.encryption !== "none") throw shareGone("the shared file is encrypted");
+  if (row.encryption !== "none" && !share.fkShareCt) {
+    throw shareGone("the shared file is encrypted and this link holds no grant for it");
+  }
   return row;
 }
 

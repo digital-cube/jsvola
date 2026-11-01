@@ -41,7 +41,7 @@ describe("vola lookups / lookup-promote (files only)", () => {
     const repo = await vola(DEFAULT_LOOKUPS_PATH, "lookups", "validate");
     expect(repo.code, repo.err).toBe(0);
     expect(repo.out).toContain("FileKinds (10)");
-    expect(repo.out).toContain("EncryptionModes (4)");
+    expect(repo.out).toContain("EncryptionModes (5)");
     expect(repo.out).toMatch(/ok: en, sr — 0 warning\(s\)/);
 
     const custom = await vola(path, "lookups", "validate");

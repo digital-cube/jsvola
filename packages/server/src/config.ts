@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import {
+  DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES,
   DEFAULT_OCR_LANGS,
   DEFAULT_OCR_MAX_PAGES,
   DEFAULT_OCR_TIMEOUT_S,
@@ -124,6 +125,11 @@ const ConfigSchema = z
       .min(5)
       .max(24 * 3600)
       .default(DEFAULT_UNLOCK_TTL_S),
+    VOLA_ENC_INLINE_DERIVE_MAX_BYTES: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .default(DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES),
     VOLA_LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
@@ -205,6 +211,14 @@ export interface Config {
    * every request that carries it starts the count again (`GET /keyrings/me/status` does not).
    */
   unlockTtlS: number;
+  /**
+   * `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` (default 25 MiB): the largest encrypted file a
+   * thumbnail or an OCR pass is made of — in the request that holds the key for a `keyring`
+   * or `caller` file, and in the worker for a `tenant` file (the plaintext is decrypted into
+   * memory, never onto disk; `docs/CRYPTO.md` § 11). `0` turns derivatives of encrypted
+   * files off.
+   */
+  encDeriveMaxBytes: number;
   logLevel: LogLevel;
 }
 
@@ -324,6 +338,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     keyFile: resolve(c.VOLA_KEY_FILE),
     pepperFile: resolve(c.VOLA_PEPPER_FILE),
     unlockTtlS: c.VOLA_UNLOCK_TTL_S,
+    encDeriveMaxBytes: c.VOLA_ENC_INLINE_DERIVE_MAX_BYTES,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

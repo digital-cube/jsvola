@@ -32,6 +32,7 @@ import {
   createUpload,
   deleteUpload,
   findUpload,
+  futureFileId,
   sweepExpiredUploads,
   type UploadsDeps,
 } from "../services/uploads.js";
@@ -95,14 +96,18 @@ function integerHeader(request: FastifyRequest, name: string, label: string): nu
 
 /**
  * `POST|HEAD|PATCH|DELETE /uploads` — resumable uploads, tus 1.0 core + `creation`,
- * `termination`, `expiration`, implemented natively (phase 6.3 cuts this byte stream into
- * encrypted segments, which no external tus server would let us do). `tus-js-client` works
- * unchanged: `Upload-Metadata` carries `instance_type`, `instance_id`, `filename` (required)
- * and optionally `folder_path`, `parent_id`, `slug`, `content_type` (or tus's `filetype`) and
- * `metadata` (a JSON object as text). Every route needs `files:write` except `OPTIONS`;
- * an upload belongs to the tenant, so any `files:write` key of it may resume one. Completion
- * takes the SAME path as `POST /files`: the last PATCH answers with `Vola-File-Id`, and so
- * does every `HEAD` after it.
+ * `termination`, `expiration`, implemented natively (an encrypted upload cuts this byte
+ * stream into sealed segments as it arrives, which no external tus server would let us do —
+ * `services/upload-crypto.ts`, `docs/CRYPTO.md` § 10). `tus-js-client` works unchanged:
+ * `Upload-Metadata` carries `instance_type`, `instance_id`, `filename` (required) and
+ * optionally `folder_path`, `parent_id`, `slug`, `content_type` (or tus's `filetype`),
+ * `metadata` (a JSON object as text), `encryption` (or `X-Vola-Encryption`) and, for
+ * `encryption = client`, `fk_ct` and `meta_ct`. Every route needs `files:write` except
+ * `OPTIONS`; an upload belongs to the tenant, so any `files:write` key of it may resume one —
+ * a `keyring` upload also needs the owner's `X-Vola-Unlock` and a `caller` upload the
+ * `X-Vola-Content-Key` on EVERY PATCH (each one unwraps the file key). Completion takes the
+ * SAME path as `POST /files`: the last PATCH answers with `Vola-File-Id`, and so does every
+ * `HEAD` after it (an encrypted upload reports its future file id from creation on).
  */
 export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, deps) => {
   const logger = deps.logger ?? app.log;
@@ -147,11 +152,18 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
 
   const location = (row: UploadRow) => `${app.prefix}/uploads/${row.id}`;
 
+  /**
+   * `Upload-Offset` (PLAINTEXT bytes, also for an encrypted upload), `Upload-Length`,
+   * `Upload-Expires`, and `Vola-File-Id` — of the completed file, or, for an encrypted upload
+   * from its creation on, of the file it WILL become: the id is in the AAD of every segment,
+   * and a `client` has to know it before it seals a byte.
+   */
   function describe(reply: FastifyReply, row: UploadRow): void {
     reply.header(UPLOAD_OFFSET_HEADER, String(row.offset));
     reply.header(UPLOAD_LENGTH_HEADER, String(row.length));
     reply.header(UPLOAD_EXPIRES_HEADER, row.expiresAt.toUTCString());
-    if (row.completedFileId) reply.header(VOLA_FILE_ID_HEADER, row.completedFileId);
+    const fileId = futureFileId(row);
+    if (fileId) reply.header(VOLA_FILE_ID_HEADER, fileId);
   }
 
   /** The protocol: version, extensions, the size limit. No key needed, it reveals only configuration. */
@@ -205,6 +217,8 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
       contentType: meta[K.contentType] ?? meta[K.filetype],
       metadata: meta[K.metadata],
       encryption: meta[K.encryption] ?? header(request, ENCRYPTION_HEADER),
+      fkCt: meta[K.fkCt],
+      metaCt: meta[K.metaCt],
     });
     reply.status(201).header("location", location(upload));
     describe(reply, upload);

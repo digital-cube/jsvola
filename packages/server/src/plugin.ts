@@ -398,8 +398,8 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
           : null,
       },
       unlocks
-        ? "encryption: tenant and keyring providers"
-        : "encryption: tenant provider (no Redis: no keyring provider)",
+        ? "encryption: tenant, keyring and caller providers"
+        : "encryption: tenant and caller providers (no Redis: no keyring provider)",
     );
   }
   const audit =
@@ -450,6 +450,8 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     storage,
     jobs: jobs?.dispatcher ?? null,
     renderTimeoutMs: options.thumbnailTimeoutMs,
+    crypto,
+    encDeriveMaxBytes: options.config.encDeriveMaxBytes,
   });
   await app.register(uploadRoutes, {
     db: options.db,
@@ -469,12 +471,18 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     storage,
     accessThrottle: options.accessThrottle,
   });
-  await app.register(shareRoutes, { db: options.db, publicUrl: options.config.publicUrl, audit });
+  await app.register(shareRoutes, {
+    db: options.db,
+    publicUrl: options.config.publicUrl,
+    audit,
+    crypto,
+  });
   await app.register(sharePublicRoutes, {
     db: options.db,
     storage,
     limiter: sharePasswordLimiter,
     accessThrottle: options.accessThrottle,
+    crypto,
   });
   await app.register(statsRoutes, {
     db: options.db,

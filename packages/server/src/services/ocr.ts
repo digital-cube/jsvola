@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,9 +12,12 @@ import {
   type ProcessingStatus,
 } from "@vola/core";
 import { and, eq } from "drizzle-orm";
+import type { FastifyBaseLogger } from "fastify";
+import { IntegrityError, type OcrRecord, openOcr, sealOcr } from "../crypto/index.js";
 import type { Database } from "../db/index.js";
 import { type FileMetadataRow, fileMetadata, processingJobs } from "../db/schema.js";
 import { BlobNotFoundError, type StorageBackend } from "../storage/index.js";
+import { PdfPageError, pdfPageFromBuffer } from "./pdf-pages.js";
 
 export { isOcrEligible, ocrSupported } from "@vola/core";
 
@@ -75,6 +78,8 @@ export interface RunOptions {
   timeoutMs: number;
   /** Most stdout bytes kept; past it the process is killed (`output_too_large`). Default 10 MiB. */
   maxOutputBytes?: number | undefined;
+  /** Bytes written to the process's stdin (the input of a tool reading `stdin` / `-`); absent: stdin closed. */
+  stdin?: Buffer | undefined;
 }
 
 /**
@@ -92,11 +97,15 @@ export function runCapped(
   return new Promise((resolve, reject) => {
     // Its own process group, so a kill reaches whatever the tool started (and holds the pipe).
     const child = spawn(bin, [...args], {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"],
       shell: false,
       detached: process.platform !== "win32",
       windowsHide: true,
-    });
+    }) as ChildProcessWithoutNullStreams;
+    if (options.stdin) {
+      child.stdin.on("error", () => undefined); // EPIPE when the tool gives up early: `close` reports
+      child.stdin.end(options.stdin);
+    }
     const out: Buffer[] = [];
     let outBytes = 0;
     let err = "";
@@ -318,6 +327,53 @@ function pageNumber(name: string): number {
   return Number(/(\d+)\.png$/.exec(name)?.[1] ?? 0);
 }
 
+/**
+ * `extractText` for plaintext held IN MEMORY — the decrypted bytes of an encrypted file
+ * (`docs/CRYPTO.md` § 11): an image goes to `tesseract stdin stdout`, a PDF is rasterised
+ * page by page through `pdftoppm`'s stdin and stdout (`pdfPageFromBuffer`) and each page fed
+ * to tesseract the same way. Nothing of the document, a page or the text touches the disk.
+ * The same `OcrError`s as `extractText`.
+ */
+export async function extractTextFromBuffer(
+  plain: Buffer,
+  mimeType: string,
+  options: OcrRunOptions,
+): Promise<OcrResult> {
+  if (!ocrSupported(mimeType)) throw new OcrError("unsupported", `no OCR for ${mimeType}`);
+  const tesseract = options.tesseract ?? DEFAULT_TESSERACT;
+  const pdftoppm = options.pdftoppm ?? DEFAULT_PDFTOPPM;
+  const lang = options.langs.join("+");
+  const run = (input: Buffer): Promise<string> =>
+    runCapped(tesseract, tesseractArgs("stdin", options.langs), {
+      timeoutMs: options.timeoutMs,
+      maxOutputBytes: options.maxOutputBytes,
+      stdin: input,
+    });
+  if (mimeType !== "application/pdf") {
+    return { text: tidy(await run(plain)), pages: 1, lang };
+  }
+  const texts: string[] = [];
+  for (let page = 1; page <= options.maxPages; page++) {
+    let png: Buffer | null;
+    try {
+      png = await pdfPageFromBuffer(plain, page, {
+        timeoutMs: options.timeoutMs,
+        pdftoppm,
+        dpi: OCR_PDF_DPI,
+      });
+    } catch (error) {
+      if (error instanceof PdfPageError) {
+        throw new OcrError(error.code, error.message, { cause: error });
+      }
+      throw error;
+    }
+    if (!png) break; // past the last page
+    texts.push(tidy(await run(png)));
+  }
+  if (texts.length === 0) throw new OcrError("failed", "pdftoppm rendered no page");
+  return { text: texts.join(OCR_PAGE_SEPARATOR), pages: texts.length, lang };
+}
+
 // --- the sidecar row --------------------------------------------------------------------
 
 export interface OcrSave {
@@ -355,6 +411,29 @@ export async function saveOcrResult(db: Database, save: OcrSave): Promise<FileMe
   return row as FileMetadataRow;
 }
 
+/**
+ * Stores the result of a pass over an ENCRYPTED file: the text, the language and the page
+ * count sealed under the file key in `ocr_ct` (`crypto/derived.ts`); `ocr_text` stays NULL,
+ * so `ocr_tsv` is empty and the file is NOT in the full-text search — the index would be
+ * the plaintext (`docs/CRYPTO.md` § 11). `ocr_at` is kept in the clear (a timestamp).
+ */
+export async function saveEncryptedOcrResult(
+  db: Database,
+  fk: Buffer,
+  save: OcrSave,
+): Promise<FileMetadataRow> {
+  const sealed = sealOcr(fk, save.fileId, { text: save.text, lang: save.lang, pages: save.pages });
+  const [row] = await db
+    .insert(fileMetadata)
+    .values({ fileId: save.fileId, tenantId: save.tenantId, ocrCt: sealed, ocrAt: save.at })
+    .onConflictDoUpdate({
+      target: fileMetadata.fileId,
+      set: { ocrCt: sealed, ocrText: null, ocrLang: null, ocrPages: null, ocrAt: save.at },
+    })
+    .returning();
+  return row as FileMetadataRow;
+}
+
 /** The sidecar row of a file, or `null` before any pass stored something. */
 export async function findFileMetadata(
   db: Database,
@@ -380,22 +459,40 @@ export async function ocrJobStatus(db: Database, fileId: string): Promise<Proces
 
 /**
  * The `ocr` block of `…/info`: the job's status and, once a pass stored its text, the
- * language, the page count and the first 500 characters; `full` adds the whole text.
+ * language, the page count and the first 500 characters; `full` adds the whole text. For an
+ * encrypted file the text is in `ocr_ct` and opens only with the file key the caller passes
+ * (`fk`); without it — or when the record does not open — the block has the status alone.
  */
 export async function ocrInfoOf(
   db: Database,
   fileId: string,
-  options: { full?: boolean | undefined } = {},
+  options: {
+    full?: boolean | undefined;
+    fk?: Buffer | null | undefined;
+    logger?: FastifyBaseLogger | undefined;
+  } = {},
 ): Promise<OcrInfo> {
   const [status, meta] = await Promise.all([
     ocrJobStatus(db, fileId),
     findFileMetadata(db, fileId),
   ]);
-  const text = meta?.ocrText ?? null;
+  let text = meta?.ocrText ?? null;
+  let lang = meta?.ocrLang ?? null;
+  let pages = meta?.ocrPages ?? null;
+  if (meta?.ocrCt && options.fk) {
+    let record: OcrRecord | null = null;
+    try {
+      record = openOcr(options.fk, fileId, meta.ocrCt);
+    } catch (error) {
+      if (!(error instanceof IntegrityError)) throw error;
+      options.logger?.warn({ file: fileId, reason: error.reason }, "OCR record does not open");
+    }
+    if (record) ({ text, lang, pages } = record);
+  }
   return {
     status,
-    lang: meta?.ocrLang ?? null,
-    pages: meta?.ocrPages ?? null,
+    lang,
+    pages,
     text_preview: text === null ? null : text.slice(0, OCR_TEXT_PREVIEW_LENGTH),
     ...(options.full ? { text } : {}),
   };

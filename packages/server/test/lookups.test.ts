@@ -74,6 +74,7 @@ describe("GET /vola/lookups", () => {
       "tenant",
       "keyring",
       "caller",
+      "client",
     ]);
     expect(body.lookups.ProcessingKinds?.map((e) => e.term)).toEqual(["THUMBNAIL", "OCR"]);
     expect(body.lookups.OcrLanguages?.map((e) => e.label)).toEqual([

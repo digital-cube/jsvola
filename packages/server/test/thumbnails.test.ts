@@ -161,13 +161,18 @@ describe("GET /thumb/:size in sync mode (VOLA_WORKER_ENABLED=0)", () => {
     expect((await http.get(`${svg.url}/thumb/128`)).json().error.code).toBe("no_thumbnail");
   });
 
-  it("answers 404 no_thumbnail for an encrypted file", async () => {
+  it("answers 404 no_thumbnail for a client-encrypted file and 409 for a row marked encrypted without a key record", async () => {
     const { info, url } = await uploaded(await pngFixture(), "secret.png");
-    await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, info.id));
+    await handle.db.update(files).set({ encryption: "client" }).where(eq(files.id, info.id));
     const response = await http.get(`${url}/thumb/128`);
     expect(response.statusCode).toBe(404);
     expect(response.json().error.code).toBe("no_thumbnail");
-    expect(thumbnailable({ mimeType: "image/png", encryption: "tenant" })).toBe(false);
+    // A `tenant` row without `fk_ct` cannot open: the integrity answer (test/derivatives.test.ts has the real thing).
+    await handle.db.update(files).set({ encryption: "tenant" }).where(eq(files.id, info.id));
+    const broken = await http.get(`${url}/thumb/128`);
+    expect([409, 503]).toContain(broken.statusCode);
+    expect(thumbnailable({ mimeType: "image/png", encryption: "tenant" })).toBe(true);
+    expect(thumbnailable({ mimeType: "image/png", encryption: "keyring" })).toBe(false);
     expect(thumbnailable({ mimeType: "image/png", encryption: "none" })).toBe(true);
   });
 

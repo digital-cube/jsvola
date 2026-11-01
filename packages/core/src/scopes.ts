@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-/** Every scope an API key can hold. `admin` satisfies all of them (admin keys only). */
+/**
+ * Every scope an API key can hold. `admin` satisfies all of them (admin keys only).
+ * `encryption:caller` (plan 6.3) lets a key send `X-Vola-Content-Key` — the `caller`
+ * encryption mode, server-to-server only; it does nothing on its own without `files:write`
+ * or `files:read`.
+ */
 export const SCOPES = [
   "files:read",
   "files:write",
@@ -9,6 +14,7 @@ export const SCOPES = [
   "shares:write",
   "keys:write",
   "keyrings:write",
+  "encryption:caller",
   "admin",
 ] as const;
 

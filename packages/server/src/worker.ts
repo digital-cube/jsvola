@@ -1,7 +1,8 @@
 /**
  * The worker process of `@vola/server`: `node dist/worker.js` (`pnpm start:worker`). The same
  * image and configuration as the server; it needs `VOLA_REDIS_URL` and the SAME storage
- * directory (thumbnails are written next to the blobs). Migrations are the server's job: the
+ * directory (thumbnails are written next to the blobs) and, for the derivatives of
+ * `tenant`-encrypted files, the same `VOLA_KEY_FILE`. Migrations are the server's job: the
  * worker only connects. SIGTERM / SIGINT let the active jobs finish, then exit.
  */
 import { join } from "node:path";
@@ -11,6 +12,7 @@ import { ConfigError, loadConfig } from "./config.js";
 import { connect } from "./db/index.js";
 import { createFileEventBus } from "./events/bus.js";
 import { ProcessingWorker } from "./jobs/worker.js";
+import { createEncryptionService } from "./services/encryption.js";
 import { OcrSetupError } from "./services/ocr.js";
 import { FilesystemBackend } from "./storage/index.js";
 import { PartStore } from "./uploads/part-store.js";
@@ -51,6 +53,10 @@ const worker = new ProcessingWorker({
   ocr: config.ocr,
   stats: { ttlMs: config.stats.ttlMin * 60_000 },
   audit: createAuditSink(config.memento, log),
+  // The `tenant` provider on VOLA_KEY_FILE: thumbnails and OCR of tenant-encrypted files
+  // (docs/CRYPTO.md § 11). A missing key file skips those jobs, nothing else.
+  crypto: createEncryptionService({ db: database.db, keyFile: config.keyFile }),
+  encDeriveMaxBytes: config.encDeriveMaxBytes,
 });
 
 let closing = false;

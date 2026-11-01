@@ -5,7 +5,7 @@ export {
   randomBase62,
   sameHash,
 } from "./apikey.js";
-export { type BuildAppOptions, buildApp } from "./app.js";
+export { type BuildAppOptions, buildApp, LOG_REDACT } from "./app.js";
 export {
   type AuditEventInput,
   AuditLog,
@@ -205,6 +205,7 @@ export {
 } from "./routes/send-file.js";
 export {
   requestSharePassword,
+  requestShareSecret,
   SHARE_CACHE_CONTROL,
   SHARE_ROBOTS_TAG,
   type SharePublicRoutesDeps,
@@ -218,6 +219,7 @@ export {
 } from "./routes/shares.js";
 export { type StatsRoutesDeps, statsRoutes } from "./routes/stats.js";
 export {
+  ENCRYPTED_THUMBNAIL_CACHE_CONTROL,
   noThumbnail,
   THUMBNAIL_PLACEHOLDER_CACHE_CONTROL,
   THUMBNAIL_READY_CACHE_CONTROL,
@@ -245,8 +247,21 @@ export {
   touchLastUsed,
 } from "./services/apikeys.js";
 export {
+  type DerivativesDeps,
+  DerivativeTooLargeError,
+  decryptWhole,
+  derivativeUnrecoverable,
+  ensureEncryptedThumbnail,
+  generateEncryptedThumbnail,
+  ocrEncrypted,
+  openEncryptedThumbnail,
+} from "./services/derivatives.js";
+export {
   AVAILABLE_ENCRYPTIONS,
+  CALLER_SCOPE,
   type CreateEncryptionServiceOptions,
+  callerKeyFromBrowser,
+  callerKeyMissing,
   createEncryptionService,
   EncryptionService,
   type EncryptionServiceOptions,
@@ -255,6 +270,7 @@ export {
   type KeyUsage,
   keyringLocked,
   type OpenedFile,
+  SERVER_WRAPPED_ENCRYPTIONS,
   tenantKeyUsage,
   type WrappedKey,
 } from "./services/encryption.js";
@@ -355,10 +371,12 @@ export {
   probeTesseract,
   type RunOptions,
   runCapped,
+  saveEncryptedOcrResult,
   saveOcrResult,
   type TesseractProbe,
   tesseractArgs,
 } from "./services/ocr.js";
+export { PdfPageError, type PdfPageOptions, pdfPageFromBuffer } from "./services/pdf-pages.js";
 export {
   attachProcessingStatus,
   findJob,
@@ -396,14 +414,19 @@ export {
 export {
   type CreatedShare,
   type CreateShareInput,
+  callerGrantAad,
   consumeDownload,
   createShare,
+  encryptedShareRequiresGrant,
   findShare,
   generateShareToken,
   hashShareToken,
   type ListSharesInput,
   listSharedFolder,
   listShares,
+  newShareSecret,
+  openSharedEncryptedFile,
+  openShareGrant,
   type ResolveShareInput,
   relativeToShare,
   resolveShare,
@@ -419,9 +442,12 @@ export {
   sharedFile,
   sharedFolder,
   shareGone,
+  shareGrantAad,
   shareNotFound,
   sharePasswordRequired,
+  shareSecretRequired,
   startsDownload,
+  wrapShareGrant,
 } from "./services/shares.js";
 export {
   computeStats,
@@ -455,8 +481,10 @@ export {
   generateThumbnail,
   parseThumbnailCrop,
   parseThumbnailSize,
+  pdfFirstPageFromBuffer,
   type RenderOptions,
   renderThumbnail,
+  renderThumbnailFromBuffer,
   statThumbnail,
   ThumbnailError,
   type ThumbnailErrorCode,
@@ -487,6 +515,19 @@ export {
   type UnlockStoreOptions,
 } from "./services/unlock.js";
 export {
+  type AnyEncState,
+  appendEncrypted,
+  type ClientEncState,
+  createEncState,
+  ENC_STATE_VERSION,
+  type EncryptedAppendInput,
+  type EncryptedAppendResult,
+  type EncState,
+  type FinishedEncryptedPart,
+  finishEncrypted,
+  parseEncState,
+} from "./services/upload-crypto.js";
+export {
   type AppendInput,
   type AppendResult,
   appendUpload,
@@ -495,6 +536,7 @@ export {
   createUpload,
   deleteUpload,
   findUpload,
+  futureFileId,
   type SweepResult,
   sweepExpiredUploads,
   type UploadsDeps,
