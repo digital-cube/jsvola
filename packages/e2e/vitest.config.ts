@@ -8,6 +8,8 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["test/**/*.e2e.ts"],
     globalSetup: ["test/stack.ts"],
+    // The files share one database and clean up after themselves: one file at a time.
+    fileParallelism: false,
     testTimeout: 20_000,
     hookTimeout: 60_000,
   },

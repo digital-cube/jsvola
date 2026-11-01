@@ -5,12 +5,17 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
+  customType,
   index,
+  jsonb,
   pgTable,
+  smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -18,6 +23,9 @@ import { uuidv7 } from "./uuid.js";
 
 const id = () => uuid("id").primaryKey().$defaultFn(uuidv7);
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
 
 /** A tenant: every file, folder and (non-admin) API key belongs to exactly one. */
 export const tenants = pgTable("vola_tenant", {
@@ -63,5 +71,76 @@ export const apiKeys = pgTable(
   ],
 );
 
+/**
+ * A stored file: one row per upload, pointing at a content-addressable blob by `hash` (many
+ * rows, of any tenant, may share one blob). Every row belongs to `(tenant, instance_type,
+ * instance_id)` — the host application's object the file is attached to. Soft delete keeps the
+ * row (`deleted_at`); purge removes it, and the blob when nothing references it any more.
+ *
+ * The encryption columns are declared now so phase 6 does not alter the table: until then
+ * `encryption` is `none` and `enc_format`, `keyring_id`, `fk_ct`, `meta_ct` are NULL.
+ * `folder_id` and `parent_id` (versions) get their foreign keys with folders (2.2).
+ */
+export const files = pgTable(
+  "vola_file",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** `^[a-z][a-z0-9_]*$`, e.g. `tickets`. */
+    instanceType: varchar("instance_type", { length: 100 }).notNull(),
+    instanceId: uuid("instance_id").notNull(),
+    /** Named file inside the instance (`avatar`): at most one LIVE row per slug. */
+    slug: varchar("slug", { length: 100 }),
+    /** SHA-256 hex of the stored bytes. */
+    hash: varchar("hash", { length: 64 }).notNull(),
+    size: bigint("size", { mode: "number" }).notNull(),
+    /** As uploaded, after the collision rename (`a (1).pdf`). */
+    filename: varchar("filename", { length: 255 }).notNull(),
+    /** Lowercase, without the dot; NULL when the name has none. */
+    extension: varchar("extension", { length: 50 }),
+    mimeType: varchar("mime_type", { length: 255 }).notNull(),
+    /** `image` | `document` | … | `other` (FileKinds). */
+    kind: varchar("kind", { length: 20 }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    folderId: uuid("folder_id"),
+    parentId: uuid("parent_id"),
+    isPublic: boolean("is_public").notNull().default(false),
+    isGlobalPublic: boolean("is_global_public").notNull().default(false),
+    /** `none` | `tenant` | `keyring` | `caller`. */
+    encryption: varchar("encryption", { length: 16 }).notNull().default("none"),
+    encFormat: smallint("enc_format"),
+    keyringId: uuid("keyring_id"),
+    /** The wrapped per-file key. */
+    fkCt: bytea("fk_ct"),
+    /** Encrypted metadata (name, MIME) of an encrypted file. */
+    metaCt: bytea("meta_ct"),
+    createdBy: varchar("created_by", { length: 255 }),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: varchar("deleted_by", { length: 255 }),
+    /** Written at most once a minute per file, by GET downloads only. */
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+    lastAccessedBy: varchar("last_accessed_by", { length: 255 }),
+  },
+  (t) => [
+    index("vola_file_instance_idx").on(t.tenantId, t.instanceType, t.instanceId),
+    index("vola_file_hash_idx").on(t.hash),
+    uniqueIndex("vola_file_slug_live_uq")
+      .on(t.tenantId, t.instanceType, t.instanceId, t.slug)
+      .where(sql`${t.deletedAt} is null and ${t.slug} is not null`),
+    check("vola_file_instance_type_check", sql`${t.instanceType} ~ '^[a-z][a-z0-9_]*$'`),
+    check("vola_file_hash_check", sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+    check("vola_file_size_check", sql`${t.size} >= 0`),
+    check(
+      "vola_file_encryption_check",
+      sql`${t.encryption} in ('none', 'tenant', 'keyring', 'caller')`,
+    ),
+  ],
+);
+
 export type TenantRow = typeof tenants.$inferSelect;
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
+export type FileRow = typeof files.$inferSelect;

@@ -1,5 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@vola/server";
 import type { TestProject } from "vitest/node";
@@ -53,6 +56,7 @@ async function waitLive(base: string, child: ChildProcess, output: string[]): Pr
 async function startServer(
   databaseUrl: string,
   redisUrl: string | null,
+  storagePath: string,
 ): Promise<[string, ChildProcess]> {
   const port = await freePort();
   const output: string[] = [];
@@ -63,6 +67,7 @@ async function startServer(
       ...(redisUrl ? { VOLA_REDIS_URL: redisUrl } : {}),
       VOLA_HOST: "127.0.0.1",
       VOLA_PORT: String(port),
+      VOLA_STORAGE_PATH: storagePath,
       VOLA_LOG_LEVEL: process.env.VOLA_E2E_LOG_LEVEL ?? "warn",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -91,12 +96,16 @@ export default async function setup({ provide }: TestProject) {
   }
 
   const config = loadConfig();
-  const [base, child] = await startServer(config.testDatabaseUrl, config.redisUrl);
+  // The suite's own server stores blobs in a throw-away directory.
+  const storagePath = await mkdtemp(join(tmpdir(), "vola-e2e-storage-"));
+  const [base, child] = await startServer(config.testDatabaseUrl, config.redisUrl, storagePath);
   provide("server", base);
-  return () =>
-    new Promise<void>((resolve) => {
+  return async () => {
+    await new Promise<void>((resolve) => {
       if (child.exitCode !== null) return resolve();
       child.once("exit", () => resolve());
       child.kill("SIGTERM");
     });
+    await rm(storagePath, { recursive: true, force: true });
+  };
 }

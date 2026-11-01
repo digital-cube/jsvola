@@ -9,6 +9,17 @@ share one version.
 
 ### Added
 
+- Files (`vola_file`, migration `0001_files`): content-addressable storage on disk
+  (`StorageBackend` / `FilesystemBackend`: `blobs/aa/bb/cc/<sha256>`, streamed through
+  `tmp/` with SHA-256 on the fly, fsync, atomic link, dedup, derived files next to the blob,
+  path-traversal safe), `POST /files/:type/:id` (streaming multipart, `413 file_too_large`
+  over `VOLA_MAX_UPLOAD_BYTES`, MIME from magic bytes → extension → declared type, `kind`,
+  collision rename `a (1).pdf`), `PUT …/slug/:slug` (upsert), `GET|HEAD …/:fileId` and
+  `…/slug/:slug` (`Range`/`206`/`416`, `ETag`/`304`, `Content-Disposition` with RFC 5987
+  names, `nosniff`, `?download=1`, `last_accessed_*`), `GET …/:fileId/info`, cursor list,
+  soft delete and purge (blob removed only when no row of any tenant references it). The
+  encryption columns (`encryption`, `enc_format`, `keyring_id`, `fk_ct`, `meta_ct`) are
+  declared now and stay `none`/NULL until phase 6.
 - Tenants and API keys (`vola_tenant`, `vola_apikey`, migration `0000_tenant_apikey`):
   keys are `vola_live_…` / `vola_test_…` / `vola_admin_…` (32 base62 characters), only
   their SHA-256 is stored, the plaintext is shown once. Scopes `files:read`, `files:write`,

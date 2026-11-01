@@ -6,9 +6,11 @@ import type { Config } from "./config.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import type { RedisLike } from "./redis.js";
+import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
+import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
 
 export interface VolaPluginOptions {
   config: Config;
@@ -17,6 +19,10 @@ export interface VolaPluginOptions {
   redis?: RedisLike | undefined;
   /** Shared `last_used_at` throttle (tests); default: one per plugin instance. */
   lastUsed?: LastUsedThrottle | undefined;
+  /** Blob storage; default: `FilesystemBackend` on `config.storagePath`. */
+  storage?: StorageBackend | undefined;
+  /** Throttle of `last_accessed_at` writes (tests); default: one per plugin instance. */
+  accessThrottle?: LastUsedThrottle | undefined;
   /**
    * Registers more routes INSIDE the plugin, after the built-in ones: they share its prefix,
    * error envelope and auth (`config.scope`, `config.auth`). For a host application's own
@@ -79,7 +85,14 @@ export function installErrorHandling(app: FastifyInstance): void {
 export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, options) => {
   installErrorHandling(app);
   installAuth(app, options.db, { lastUsed: options.lastUsed });
+  const storage = options.storage ?? new FilesystemBackend(options.config.storagePath);
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db });
+  await app.register(fileRoutes, {
+    db: options.db,
+    storage,
+    maxUploadBytes: options.config.maxUploadBytes,
+    accessThrottle: options.accessThrottle,
+  });
   if (options.extend) await options.extend(app);
 };

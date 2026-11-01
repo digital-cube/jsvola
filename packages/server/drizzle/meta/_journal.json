@@ -8,6 +8,13 @@
       "when": 1793544059011,
       "tag": "0000_tenant_apikey",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793545675186,
+      "tag": "0001_files",
+      "breakpoints": true
     }
   ]
 }

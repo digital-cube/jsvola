@@ -12,5 +12,8 @@
   "dependencies": {
     "@vola/core": "workspace:*",
     "@vola/server": "workspace:*"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.4"
   }
 }

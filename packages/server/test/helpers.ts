@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { type BuildAppOptions, buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { connect, type DatabaseHandle } from "../src/db/index.js";
-import { apiKeys, tenants } from "../src/db/schema.js";
+import { apiKeys, files, tenants } from "../src/db/schema.js";
 import { createApiKey } from "../src/services/apikeys.js";
 import { createTenant } from "../src/services/tenants.js";
 
@@ -14,8 +14,9 @@ export function testDatabase(max = 3): DatabaseHandle {
   return connect(config.testDatabaseUrl, { max });
 }
 
-/** Empties the auth tables (keys cascade from tenants; admin keys explicitly). */
+/** Empties the tables (files and keys cascade from tenants; admin keys explicitly). */
 export async function truncate(handle: DatabaseHandle): Promise<void> {
+  await handle.db.delete(files);
   await handle.db.delete(apiKeys);
   await handle.db.delete(tenants);
 }

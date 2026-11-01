@@ -13,6 +13,7 @@ describe("loadConfig", () => {
       port: 8300,
       prefix: "/vola",
       logLevel: "info",
+      maxUploadBytes: 512 * 1024 * 1024,
     });
     expect(isAbsolute(config.storagePath)).toBe(true);
     expect(config.storagePath.endsWith("/var/storage")).toBe(true);
@@ -26,6 +27,7 @@ describe("loadConfig", () => {
       VOLA_PREFIX: "/files/",
       VOLA_LOG_LEVEL: "",
       VOLA_STORAGE_PATH: "/data/storage",
+      VOLA_MAX_UPLOAD_BYTES: "1048576",
       UNRELATED: "ignored",
     });
     expect(config.databaseUrl).toBe("postgres://u:p@db:5432/x");
@@ -34,6 +36,7 @@ describe("loadConfig", () => {
     expect(config.prefix).toBe("/files");
     expect(config.logLevel).toBe("info");
     expect(config.storagePath).toBe("/data/storage");
+    expect(config.maxUploadBytes).toBe(1_048_576);
   });
 
   it("rejects a bad database URL with one clear message", () => {
@@ -44,7 +47,12 @@ describe("loadConfig", () => {
 
   it("lists every invalid variable", () => {
     try {
-      loadConfig({ VOLA_PORT: "http", VOLA_PREFIX: "vola", VOLA_LOG_LEVEL: "loud" });
+      loadConfig({
+        VOLA_PORT: "http",
+        VOLA_PREFIX: "vola",
+        VOLA_LOG_LEVEL: "loud",
+        VOLA_MAX_UPLOAD_BYTES: "0",
+      });
       expect.unreachable();
     } catch (error) {
       expect(error).toBeInstanceOf(ConfigError);
@@ -52,6 +60,7 @@ describe("loadConfig", () => {
       expect(issues.map((i) => i.split(":")[0])).toEqual([
         "VOLA_PORT",
         "VOLA_PREFIX",
+        "VOLA_MAX_UPLOAD_BYTES",
         "VOLA_LOG_LEVEL",
       ]);
       expect(message).toMatch(

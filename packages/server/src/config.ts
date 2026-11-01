@@ -20,6 +20,11 @@ const ConfigSchema = z.object({
     .regex(/^\/[\w/-]*$/, "must start with / and contain only letters, digits, _ - /")
     .default("/vola"),
   VOLA_STORAGE_PATH: z.string().min(1).default("var/storage"),
+  VOLA_MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(512 * 1024 * 1024),
   VOLA_LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
@@ -38,6 +43,8 @@ export interface Config {
   prefix: string;
   /** Absolute directory the content-addressable blobs live in. */
   storagePath: string;
+  /** Largest file one upload may carry; bigger → `413 file_too_large`. Default 512 MiB. */
+  maxUploadBytes: number;
   logLevel: LogLevel;
 }
 
@@ -68,6 +75,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port: c.VOLA_PORT,
     prefix: c.VOLA_PREFIX.replace(/\/+$/, ""),
     storagePath: resolve(c.VOLA_STORAGE_PATH),
+    maxUploadBytes: c.VOLA_MAX_UPLOAD_BYTES,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }
