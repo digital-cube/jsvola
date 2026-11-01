@@ -64,12 +64,26 @@ export {
   mimeForExtension,
   SNIFF_BYTES,
 } from "./files/mime.js";
+export {
+  DEFAULT_LOOKUPS_PATH,
+  emptyLookups,
+  type FileLookupValues,
+  type InitLookupsOptions,
+  initLookups,
+  LOOKUP_LOCALES_RECORDED,
+  type Lookups,
+  lookupsResponse,
+  parseLocale,
+  recordFileCandidates,
+  unknownFileLookups,
+} from "./lookups.js";
 export { installErrorHandling, requestId, type VolaPluginOptions, volaPlugin } from "./plugin.js";
 export { connectRedis, type RedisLike } from "./redis.js";
 export { type FileRoutesDeps, fileRoutes } from "./routes/files.js";
 export { type FolderRoutesDeps, folderRoutes } from "./routes/folders.js";
 export { type HealthDeps, healthRoutes } from "./routes/health.js";
 export { type KeyRoutesDeps, keyRoutes } from "./routes/keys.js";
+export { type LookupRoutesDeps, lookupRoutes } from "./routes/lookups.js";
 export { PUBLIC_MAX_AGE_SECONDS, type PublicRoutesDeps, publicRoutes } from "./routes/public.js";
 export {
   type DownloadQuery,
@@ -187,6 +201,46 @@ export {
   type StorageBackend,
   type StoredBlob,
 } from "./storage/index.js";
+export { type FilesCollectionsOptions, filesCollections } from "./udc/collections.js";
+export { decodePageCursor, encodePageCursor, type PageCursor } from "./udc/cursor.js";
+export {
+  type DecorateRow,
+  ENCRYPTED_FILENAME,
+  FILES_COLLECTION,
+  FILES_DEFAULT_PAGE_SIZE,
+  FILES_DEFAULT_SORT,
+  FILES_SORTABLE,
+  FILES_SOURCE_CAPABILITIES,
+  type FileField,
+  type FileRecord,
+  FilesCollectionSource,
+  type FilesSourceOptions,
+  filesFields,
+  INCLUDE_DELETED_FILTER,
+  INSTANCE_ID_FILTER,
+  INSTANCE_TYPE_FILTER,
+} from "./udc/files-source.js";
+export { FILES_VIEW_PATH, loadFilesView } from "./udc/files-view.js";
+export {
+  DEFAULT_MENU_PATH,
+  MENU_COLLECTION,
+  MENU_COLLECTION_ICONS,
+  MENU_VIEW,
+  type MenuCollectionOptions,
+  menuCollection,
+} from "./udc/menu.js";
+export { actionOf, scopeForAction, type UdcRoutesOptions, udcRoutes } from "./udc/plugin.js";
+export {
+  coerce,
+  escapeLike,
+  type FieldKind,
+  pinnedValue,
+  type SqlField,
+  SqlFilterCompiler,
+  schemaOf,
+  topLevel,
+  withoutTopLevel,
+} from "./udc/sql-filter.js";
 export {
   type AppendResult as PartAppendResult,
   PartOverflowError,

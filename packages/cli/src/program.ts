@@ -1,12 +1,17 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { type ApiKey, displayApiKey, SCOPES, SlugSchema, type Tenant } from "@vola/core";
+import { LookupCompileError, promoteCandidates, validateTranslationsCsv } from "@vola/lookups";
 import {
   ConfigError,
   connect,
   createApiKey,
   createTenant,
   type DatabaseHandle,
+  DEFAULT_LOOKUPS_PATH,
   findApiKey,
   getTenantBySlug,
+  initLookups,
   listApiKeys,
   loadConfig,
   revokeApiKey,
@@ -89,8 +94,9 @@ export function plaintextLines(key: string): string[] {
 
 /**
  * The `vola` command tree: `migrate`, `create-tenant`, `create-key`, `create-admin-key`,
- * `list-keys`, `revoke-key`. Every command reads `VOLA_DATABASE_URL` and connects only when
- * it runs.
+ * `list-keys`, `revoke-key` (every one reads `VOLA_DATABASE_URL` and connects only when it
+ * runs), and the vocabulary commands `lookup-promote`, `lookups validate`, `lookups
+ * candidates` (files only, no database).
  */
 export function buildProgram(io: CliIo, options: CliOptions = {}): Command {
   const program = new Command("vola")
@@ -113,9 +119,13 @@ Examples:
   $ vola create-admin-key --name ops
   $ vola list-keys --tenant acme
   $ vola revoke-key vola_live…k3Qz
+  $ vola lookups validate
+  $ vola lookups candidates
+  $ vola lookup-promote --dry-run
 
 Environment:
   VOLA_DATABASE_URL  PostgreSQL the commands use (default postgresql://vola:vola@localhost:5432/vola)
+  VOLA_LOOKUPS_PATH  lookups.yaml the vocabulary commands work on (default: the repository's)
 
 Scopes: ${SCOPES.join(", ")}`,
     );
@@ -271,6 +281,128 @@ Scopes: ${SCOPES.join(", ")}`,
           `revoked key ${displayApiKey(revoked.prefix, revoked.last4)} "${revoked.name}" (${revoked.id})`,
         );
       });
+    });
+
+  // --- vocabulary ------------------------------------------------------------------------
+
+  const lookupsPath = () =>
+    (options.env ?? process.env).VOLA_LOOKUPS_PATH?.trim() || DEFAULT_LOOKUPS_PATH;
+  const pathOption = () =>
+    new Option("--path <file>", "lookups.yaml (default: VOLA_LOOKUPS_PATH or the repository's)");
+  const where = (file: string, issue: { line: number; column?: string | undefined }) =>
+    issue.line > 0 ? `${file}:${issue.line}${issue.column ? ` [${issue.column}]` : ""}` : file;
+
+  program
+    .command("lookup-promote")
+    .description(
+      "move the candidates recorded under var/candidates into lookups.yaml and i18n/translations.csv",
+    )
+    .addOption(pathOption())
+    .option("--dir <dir>", "candidates directory (default: var/candidates next to lookups.yaml)")
+    .option("--translations <file>", "default: i18n/translations.csv next to lookups.yaml")
+    .option("--only <Section.TERM...>", "promote only these candidates")
+    .option("--dry-run", "report what would change, write nothing")
+    .action(
+      async (opts: {
+        path?: string;
+        dir?: string;
+        translations?: string;
+        only?: string[];
+        dryRun?: boolean;
+      }) => {
+        const result = await promoteCandidates({
+          path: opts.path ?? lookupsPath(),
+          candidatesDir: opts.dir,
+          translationsPath: opts.translations,
+          only: opts.only,
+          dryRun: opts.dryRun,
+        });
+        const verb = result.dryRun ? "would promote" : "promoted";
+        print(result, [
+          ...result.promoted.map(
+            (p) =>
+              `${verb} ${p.section}.${p.term} (seen ${p.count}×; ${Object.entries(p.labels)
+                .map(([locale, label]) => `${locale}: ${label}`)
+                .join(", ")})`,
+          ),
+          ...result.skipped.map((c) => `skipped  ${c.section}.${c.term}: ${c.reason}`),
+          result.promoted.length === 0
+            ? `nothing to promote in ${result.candidatesDir}`
+            : `${result.dryRun ? "" : "wrote "}${result.lookupsPath} and ${result.translationsPath}`,
+        ]);
+      },
+    );
+
+  const lookups = program
+    .command("lookups")
+    .description("controlled vocabulary: lookups.yaml + i18n/translations.csv")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  $ vola lookups validate       check lookups.yaml and the translations
+  $ vola lookups candidates     unknown values waiting to be promoted
+  $ vola lookup-promote         promote them`,
+    );
+
+  lookups
+    .command("validate")
+    .description("check lookups.yaml and a translations CSV (exit 1 on errors)")
+    .addOption(pathOption())
+    .option("--translations <file>", "default: i18n/translations.csv next to lookups.yaml")
+    .action(async (opts: { path?: string; translations?: string }) => {
+      const path = opts.path ?? lookupsPath();
+      const loaded = await initLookups({ path, candidatesDir: null }).catch((error: unknown) => {
+        if (error instanceof LookupCompileError)
+          throw new VolaError("validation_error", 422, error.message);
+        throw error;
+      });
+      const csvPath = opts.translations ?? join(path, "..", "i18n", "translations.csv");
+      const result = validateTranslationsCsv(await readFile(csvPath, "utf8"), loaded.registry);
+      const sections = loaded.registry.sectionNames();
+      print(
+        {
+          ok: result.ok,
+          path,
+          sections,
+          locales: result.locales,
+          errors: result.errors,
+          warnings: result.warnings,
+        },
+        [
+          `${path}: ${sections.map((s) => `${s} (${loaded.registry.terms(s).length})`).join(", ")}`,
+          ...result.errors.map((issue) => `error   ${where(csvPath, issue)}: ${issue.message}`),
+          ...result.warnings.map((issue) => `warning ${where(csvPath, issue)}: ${issue.message}`),
+          result.ok
+            ? `ok: ${result.locales.join(", ")} — ${result.warnings.length} warning(s)`
+            : `${result.errors.length} error(s)`,
+        ],
+      );
+      if (!result.ok) throw new VolaError("validation_error", 422, "translations are invalid");
+    });
+
+  lookups
+    .command("candidates")
+    .description("list unknown values recorded at upload, waiting to be promoted")
+    .addOption(pathOption())
+    .option("--dir <dir>", "default: var/candidates next to lookups.yaml")
+    .action(async (opts: { path?: string; dir?: string }) => {
+      const path = opts.path ?? lookupsPath();
+      const loaded = await initLookups({
+        path,
+        candidatesDir: opts.dir ?? join(path, "..", "var", "candidates"),
+      });
+      const recorder = loaded.recorder as NonNullable<typeof loaded.recorder>;
+      const all: Record<string, unknown[]> = {};
+      const lines: string[] = [];
+      for (const section of loaded.registry.sectionNames()) {
+        const candidates = await recorder.list(section);
+        all[section] = candidates;
+        for (const c of candidates) {
+          lines.push(`${section}.${c.value}\t${c.count}\t${c.first_seen}\t${c.last_seen}`);
+        }
+      }
+      print(all, lines.length === 0 ? `no candidates in ${recorder.dir}` : lines);
     });
 
   return program;

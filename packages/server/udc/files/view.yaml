@@ -1,0 +1,32 @@
+# The `files` UDC collection (POST /vola/udc/describe|list|read {collection: "files"}): how a
+# table of a tenant's files is drawn. The schema (fields, filters, sorts) is in
+# src/udc/files-source.ts; this file is only the view. Renderer names are @jsudc/react's:
+# `lookup` labels a term through GET /vola/lookups, `bytes` prints a human size,
+# `image_thumb` shows the 256px thumbnail (a 404 until plan 4.1 — the cell stays empty).
+default_renderer: table
+available_renderers: [table, cards]
+pagination: infinite
+page_size_default: 50
+columns:
+  - { field: thumb_url, render: image_thumb, width: 72, align: center }
+  - { field: filename, width: 280 }
+  - { field: kind, render: lookup, width: 120 }
+  - { field: size, render: bytes, align: right, width: 100 }
+  - { field: extension, width: 80 }
+  - { field: mime_type, width: 180 }
+  - { field: folder_path, width: 200 }
+  - { field: created_at, width: 170, transform: "date_format:YYYY-MM-DD HH:mm" }
+  - { field: created_by, width: 140 }
+  - { field: processing_status, render: lookup, width: 130 }
+  - { field: encryption, render: lookup, width: 120 }
+search:
+  fields: [filename]
+filters:
+  - field: kind
+    kind: select
+    options: [image, video, audio, document, spreadsheet, presentation, archive, text, code, other]
+  - field: encryption
+    kind: select
+    options: [none, tenant, keyring, caller]
+  - field: include_deleted
+    kind: bool

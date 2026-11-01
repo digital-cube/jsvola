@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@vola/core": src("../core/src/index.ts"),
+      "@vola/lookups": src("../lookups/src/index.ts"),
       "@vola/server": src("../server/src/index.ts"),
     },
   },

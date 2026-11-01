@@ -6,6 +6,7 @@ import type { Database } from "../db/index.js";
 import { type FileRow, type UploadRow, uploads } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { sanitizeFilename } from "../files/filename.js";
+import type { Lookups } from "../lookups.js";
 import type { StorageBackend } from "../storage/index.js";
 import { PartOverflowError, type PartStore } from "../uploads/part-store.js";
 import {
@@ -28,6 +29,8 @@ export interface UploadsDeps {
   /** `VOLA_UPLOAD_TTL_HOURS` in milliseconds: how long an unfinished upload is kept. */
   ttlMs: number;
   logger?: FastifyBaseLogger | undefined;
+  /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
+  lookups?: Lookups | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -42,7 +45,13 @@ const pgCode = (error: unknown): string | undefined =>
 const clock = (deps: UploadsDeps) => (deps.now ?? (() => new Date()))();
 
 function filesDeps(deps: UploadsDeps): FilesDeps {
-  return { db: deps.db, storage: deps.storage, logger: deps.logger, now: deps.now };
+  return {
+    db: deps.db,
+    storage: deps.storage,
+    logger: deps.logger,
+    lookups: deps.lookups,
+    now: deps.now,
+  };
 }
 function foldersDeps(deps: UploadsDeps): FoldersDeps {
   return { db: deps.db, logger: deps.logger, now: deps.now };

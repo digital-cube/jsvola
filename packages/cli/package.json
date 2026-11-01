@@ -1,7 +1,7 @@
 {
   "name": "@vola/cli",
   "version": "1.0.0",
-  "description": "JSVola CLI: tenants, API keys and migrations for @vola/server.",
+  "description": "JSVola CLI: tenants, API keys, migrations and the lookups vocabulary for @vola/server.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@vola/core": "workspace:*",
+    "@vola/lookups": "workspace:*",
     "@vola/server": "workspace:*",
     "commander": "^15.0.0",
     "drizzle-orm": "^0.45.4"

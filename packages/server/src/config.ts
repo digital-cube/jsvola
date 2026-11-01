@@ -1,10 +1,26 @@
 import { resolve } from "node:path";
 import { z } from "zod";
+import { DEFAULT_LOOKUPS_PATH } from "./lookups.js";
+import { DEFAULT_MENU_PATH } from "./udc/menu.js";
 
 const POSTGRES_URL = /^postgres(ql)?:\/\/.+/;
 
 const postgresUrl = (fallback: string) =>
   z.string().regex(POSTGRES_URL, "must be a postgresql:// URL").default(fallback);
+
+/** `true|false|1|0|yes|no|on|off`, case-insensitive. */
+const boolean = (fallback: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined) return fallback;
+      const v = value.trim().toLowerCase();
+      if (["true", "1", "yes", "on"].includes(v)) return true;
+      if (["false", "0", "no", "off"].includes(v)) return false;
+      ctx.addIssue({ code: "custom", message: "must be true or false" });
+      return z.NEVER;
+    });
 
 const ConfigSchema = z.object({
   VOLA_DATABASE_URL: postgresUrl("postgresql://vola:vola@localhost:5432/vola"),
@@ -31,12 +47,29 @@ const ConfigSchema = z.object({
     .min(1)
     .max(24 * 365)
     .default(24),
+  VOLA_LOOKUPS_PATH: z.string().min(1).optional(),
+  VOLA_TRANSLATIONS_PATH: z.string().min(1).optional(),
+  VOLA_RECORD_CANDIDATES: boolean(true),
+  VOLA_CANDIDATES_DIR: z.string().min(1).optional(),
+  VOLA_MENU_PATH: z.string().min(1).optional(),
   VOLA_LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
 });
 
 export type LogLevel = z.infer<typeof ConfigSchema>["VOLA_LOG_LEVEL"];
+
+export interface LookupsConfig {
+  /** `lookups.yaml` (`VOLA_LOOKUPS_PATH`); default: the one at the repository root. */
+  path: string;
+  /** `VOLA_TRANSLATIONS_PATH`; `undefined` → `i18n/translations.csv` next to `path`. */
+  translationsPath: string | undefined;
+  /**
+   * Where unknown values are recorded (`VOLA_CANDIDATES_DIR`); `undefined` →
+   * `var/candidates` next to `path`; `null` → recording off (`VOLA_RECORD_CANDIDATES=false`).
+   */
+  candidatesDir: string | null | undefined;
+}
 
 export interface Config {
   databaseUrl: string;
@@ -53,6 +86,10 @@ export interface Config {
   maxUploadBytes: number;
   /** Hours a resumable upload may sit unfinished before it is swept. Default 24. */
   uploadTtlHours: number;
+  /** The controlled vocabulary (`@vola/lookups`). */
+  lookups: LookupsConfig;
+  /** The menu YAML served as the `menu` UDC collection (`VOLA_MENU_PATH`). */
+  menuPath: string;
   logLevel: LogLevel;
 }
 
@@ -85,6 +122,16 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     storagePath: resolve(c.VOLA_STORAGE_PATH),
     maxUploadBytes: c.VOLA_MAX_UPLOAD_BYTES,
     uploadTtlHours: c.VOLA_UPLOAD_TTL_HOURS,
+    lookups: {
+      path: c.VOLA_LOOKUPS_PATH ? resolve(c.VOLA_LOOKUPS_PATH) : DEFAULT_LOOKUPS_PATH,
+      translationsPath: c.VOLA_TRANSLATIONS_PATH ? resolve(c.VOLA_TRANSLATIONS_PATH) : undefined,
+      candidatesDir: c.VOLA_RECORD_CANDIDATES
+        ? c.VOLA_CANDIDATES_DIR
+          ? resolve(c.VOLA_CANDIDATES_DIR)
+          : undefined
+        : null,
+    },
+    menuPath: c.VOLA_MENU_PATH ? resolve(c.VOLA_MENU_PATH) : DEFAULT_MENU_PATH,
     logLevel: c.VOLA_LOG_LEVEL,
   };
 }

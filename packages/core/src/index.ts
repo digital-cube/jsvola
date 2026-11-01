@@ -99,6 +99,24 @@ export {
   ReadyResponseSchema,
 } from "./health.js";
 export {
+  DEFAULT_LOOKUP_LOCALE,
+  type InstanceTypeCount,
+  InstanceTypeCountSchema,
+  type InstanceTypesResponse,
+  InstanceTypesResponseSchema,
+  LOCALE_QUERY,
+  LOOKUP_LOCALES,
+  LOOKUP_SECTIONS,
+  type LookupEntry,
+  LookupEntrySchema,
+  type LookupLocale,
+  LookupLocaleSchema,
+  type LookupSection,
+  type LookupsResponse,
+  LookupsResponseSchema,
+  lookupWireValue,
+} from "./lookups.js";
+export {
   hasScope,
   missingScopes,
   parseScopes,

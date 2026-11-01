@@ -1,0 +1,61 @@
+# JSVola — controlled vocabulary (`@vola/lookups`, same format as `@memento/lookups`).
+#
+# Terms are UPPER_SNAKE_CASE. Wire values are lower case (`IMAGE` → `"image"`,
+# `TENANT` → `"tenant"`); the lookups API and the UDC `files` collection send the terms as
+# written here and the labels of i18n/translations.csv.
+#
+# There is deliberately NO `InstanceTypes` section: the instance type of a file is a free
+# string of the caller (`^[a-z][a-z0-9_]*$`) and the list of the ones in use comes from the
+# database (`GET /vola/instance-types`).
+#
+# An unknown value seen at runtime (a `kind` or `encryption` the vocabulary does not know)
+# is NOT rejected: it is recorded under var/candidates/<Section>.yaml plus
+# var/candidates/translations_candidate.csv for review. To promote one:
+# `pnpm vola lookup-promote` (adds it here and to i18n/translations.csv), then
+# `pnpm vola lookups validate`.
+
+# What a file is, derived from its MIME type at upload (`vola_file.kind`).
+FileKinds:
+  - IMAGE
+  - VIDEO
+  - AUDIO
+  - DOCUMENT
+  - SPREADSHEET
+  - PRESENTATION
+  - ARCHIVE
+  - TEXT
+  - CODE
+  - OTHER
+
+# Aggregate state of a file's background processing (plan 4.1); empty until then.
+ProcessingStatuses:
+  - PENDING
+  - RUNNING
+  - DONE
+  - FAILED
+  - SKIPPED
+
+# The jobs the worker runs on a file (plan 4.1 / 4.2).
+ProcessingKinds:
+  - THUMBNAIL
+  - OCR
+
+# Who a share link reaches (plan 5.1).
+ShareScopes:
+  - PUBLIC_LINK
+  - TENANT
+  - INSTANCE_VIEWERS
+  - EMAIL
+
+# Tesseract languages the OCR job may run with (plan 4.2).
+OcrLanguages:
+  - ENG
+  - SRP
+  - DEU
+
+# How the bytes of a file are protected (`vola_file.encryption`; docs/PLAN.md, phase 6).
+EncryptionModes:
+  - NONE
+  - TENANT
+  - KEYRING
+  - CALLER

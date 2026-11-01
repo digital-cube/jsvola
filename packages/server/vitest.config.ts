@@ -6,6 +6,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@vola/core": fileURLToPath(new URL("../core/src/index.ts", import.meta.url)),
+      "@vola/lookups": fileURLToPath(new URL("../lookups/src/index.ts", import.meta.url)),
     },
   },
   test: {

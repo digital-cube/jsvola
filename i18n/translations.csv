@@ -1,0 +1,29 @@
+section,term,en,sr
+FileKinds,IMAGE,Image,Slika
+FileKinds,VIDEO,Video,Video
+FileKinds,AUDIO,Audio,Audio
+FileKinds,DOCUMENT,Document,Dokument
+FileKinds,SPREADSHEET,Spreadsheet,Tabela
+FileKinds,PRESENTATION,Presentation,Prezentacija
+FileKinds,ARCHIVE,Archive,Arhiva
+FileKinds,TEXT,Text,Tekst
+FileKinds,CODE,Code,Kod
+FileKinds,OTHER,Other,Ostalo
+ProcessingStatuses,PENDING,Pending,Na čekanju
+ProcessingStatuses,RUNNING,Running,U toku
+ProcessingStatuses,DONE,Done,Završeno
+ProcessingStatuses,FAILED,Failed,Neuspešno
+ProcessingStatuses,SKIPPED,Skipped,Preskočeno
+ProcessingKinds,THUMBNAIL,Thumbnail,Sličica
+ProcessingKinds,OCR,OCR,OCR
+ShareScopes,PUBLIC_LINK,Public link,Javni link
+ShareScopes,TENANT,Tenant,Tenant
+ShareScopes,INSTANCE_VIEWERS,Instance viewers,Pregledači instance
+ShareScopes,EMAIL,Email,Imejl
+OcrLanguages,ENG,English,Engleski
+OcrLanguages,SRP,Serbian,Srpski
+OcrLanguages,DEU,German,Nemački
+EncryptionModes,NONE,Not encrypted,Nije šifrovano
+EncryptionModes,TENANT,Tenant key,Ključ tenanta
+EncryptionModes,KEYRING,Keyring (PIN),Privezak (PIN)
+EncryptionModes,CALLER,Caller key,Ključ pozivaoca

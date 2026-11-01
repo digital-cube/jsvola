@@ -12,7 +12,7 @@ and as one Docker image.
 | package | what |
 |---|---|
 | `@vola/core` | Zod schemas and types shared by server, CLI and clients |
-| `@vola/lookups` | controlled vocabularies (instance types, job kinds, …) |
+| `@vola/lookups` | controlled vocabularies: `lookups.yaml` + CSV translations, candidates, promotion (a copy of `@memento/lookups`) |
 | `@vola/server` | Fastify plugin + standalone server, Drizzle schema and migrations |
 | `@vola/cli` | `vola` command line (tenants, API keys, migrations) |
 | `@vola/client` | fetch-based SDK |
@@ -174,6 +174,63 @@ by its `(type, id, fileId)` — the vola-spp rule; everything else stays the own
 file can never get it (`409 encrypted_not_public`). Thumbnails, shares and encryption come with
 the later tickets of `docs/PLAN.md`.
 
+## Lookups and translations
+
+`lookups.yaml` at the repository root is the controlled vocabulary (`FileKinds`,
+`ProcessingStatuses`, `ProcessingKinds`, `ShareScopes`, `OcrLanguages`, `EncryptionModes`;
+UPPER_SNAKE_CASE terms, lower-case wire values), `i18n/translations.csv` its English and
+Serbian labels. There is no `InstanceTypes` section: an instance type is a free string of the
+caller, and the ones in use come from the database.
+
+```sh
+curl localhost:8300/vola/lookups?locale=sr        # no key; en, sr — anything else falls back to en
+#   {"locale":"sr","locales":["en","sr"],"lookups":{"FileKinds":[{"term":"IMAGE","value":"image","label":"Slika"},…],…}}
+curl -H "Authorization: Bearer vola_live_…" localhost:8300/vola/instance-types   # files:read
+#   {"instance_types":[{"instance_type":"tickets","files":12},{"instance_type":"users","files":3}]}
+```
+
+A value the vocabulary does not know is never rejected: it is recorded under
+`var/candidates/<Section>.yaml` (plus a `translations_candidate.csv` a translator can fill in).
+`pnpm vola lookups candidates` lists the queue, `pnpm vola lookup-promote [--dry-run]
+[--only FileKinds.WEBP]` appends the terms to `lookups.yaml` (comments kept) and their rows to
+the sheet, `pnpm vola lookups validate` checks both. `VOLA_LOOKUPS_PATH`, `VOLA_TRANSLATIONS_PATH`,
+`VOLA_CANDIDATES_DIR` and `VOLA_RECORD_CANDIDATES` move or switch this off.
+
+## UDC collections
+
+The way to browse files is [UDC](https://github.com/digital-cube/jsudc) — the same
+`@jsudc/server` protocol as JSMemento, mounted under `/vola/udc` behind the API-key auth
+(`files:read` for `collections`, `describe`, `list`, `read`; an admin key with `X-Tenant-Slug`;
+a refusal is an in-protocol `forbidden` / `validation_error` envelope).
+
+```sh
+curl -H "Authorization: Bearer vola_live_…" -H "Content-Type: application/json" \
+  localhost:8300/vola/udc/list -d '{
+    "collection": "files",
+    "filter": {"and": [
+      {"field": "instance_type", "op": "eq", "value": "tickets"},
+      {"field": "instance_id", "op": "eq", "value": "0192…"},
+      {"field": "folder_path", "op": "eq", "value": "docs"},
+      {"field": "filename", "op": "contains", "value": "report", "case_insensitive": true}
+    ]},
+    "sort": [{"field": "created_at", "dir": "desc"}],
+    "page": {"limit": 50}
+  }'
+```
+
+The `files` collection (`packages/server/udc/files/view.yaml` is its view) needs a top-level
+`instance_type` filter — without one the list is empty, as in vola-spp — and takes `instance_id`
+(optional: an admin's "every id of the type"), `folder_path` (that level only; `""` is the root),
+`filename`, `mime_type`, `extension`, `kind`, `size`, `created_at` (`between`, `gt`, …) and
+`include_deleted`; it sorts by `created_at`, `filename` or `size` and pages by an opaque cursor
+(`next_cursor` → `page.cursor`), with an exact `total`. Rows carry `download_url` and
+`thumb_url` (`…/thumb/256`, a 404 until thumbnails arrive), `kind` / `encryption` /
+`processing_status` as lookup values. An encrypted file shows `filename: "<encrypted>"` and no
+MIME type or extension — in rows, filters, sorts and cursors alike — until the phase-6 unlock
+puts the real ones back through the `decorateRow` hook of `volaPlugin`. `menu.yaml` is served
+as the `menu` collection (the sidebar of the examples site). Real-time `subscribe` is the next
+ticket.
+
 ## Container
 
 ```sh
@@ -182,7 +239,9 @@ curl localhost:8300/vola/health/live    # {"status":"ok"}
 curl localhost:8300/vola/health/ready   # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
 ```
 
-Configuration is environment only, every variable prefixed `VOLA_` — see `.env.example`.
+Configuration is environment only, every variable prefixed `VOLA_` — see `.env.example`. The
+image carries `lookups.yaml`, `i18n/` and `menu.yaml` under `/app/config` (mount your own over
+it) and records lookup candidates under `/data/candidates`.
 
 ## License
 

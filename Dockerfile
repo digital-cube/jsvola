@@ -42,9 +42,15 @@ ENV NODE_ENV=production \
     VOLA_PORT=8300 \
     VOLA_PREFIX=/vola \
     VOLA_LOG_LEVEL=info \
-    VOLA_STORAGE_PATH=/data/storage
+    VOLA_STORAGE_PATH=/data/storage \
+    VOLA_LOOKUPS_PATH=/app/config/lookups.yaml \
+    VOLA_MENU_PATH=/app/config/menu.yaml \
+    VOLA_CANDIDATES_DIR=/data/candidates
 WORKDIR /app
 COPY --from=build --chown=node:node /out/app /app
+# The vocabulary, its translations and the examples menu (mount your own over /app/config).
+COPY --chown=node:node lookups.yaml menu.yaml /app/config/
+COPY --chown=node:node i18n /app/config/i18n
 # `vola` CLI: `docker compose -f docker-compose.yaml exec vola vola --help`
 COPY --from=build /out/cli /opt/vola-cli
 COPY --from=build /out/vola /usr/local/bin/vola

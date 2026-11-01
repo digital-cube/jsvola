@@ -24,6 +24,7 @@ import {
   splitFilename,
 } from "../files/filename.js";
 import { detectMime, kindForMime, SNIFF_BYTES } from "../files/mime.js";
+import { type Lookups, recordFileCandidates } from "../lookups.js";
 import {
   BlobNotFoundError,
   FileTooLargeError,
@@ -38,6 +39,8 @@ export interface FilesDeps {
   /** Throttles `last_accessed_at` writes to one a minute per file. Default: a new one. */
   accessThrottle?: LastUsedThrottle | undefined;
   logger?: FastifyBaseLogger | undefined;
+  /** The vocabulary: a `kind` or `encryption` it does not know is recorded as a candidate. */
+  lookups?: Lookups | undefined;
   /** Clock, for tests. */
   now?: (() => Date) | undefined;
 }
@@ -243,7 +246,7 @@ export async function finalizeUpload(
     // row is live by then and gets soft-deleted on the next pass.
     for (let attempt = 1; ; attempt++) {
       try {
-        return await deps.db.transaction(async (tx) => {
+        const info = await deps.db.transaction(async (tx) => {
           await tx.execute(
             sql`select pg_advisory_xact_lock(hashtextextended(${upload.staged.hash}, 0))`,
           );
@@ -290,6 +293,9 @@ export async function finalizeUpload(
             .returning();
           return serializeFile(row as FileRow);
         });
+        // Best effort, after the commit: a value the vocabulary does not know is queued for review.
+        await recordFileCandidates(deps.lookups, info);
+        return info;
       } catch (error) {
         if (slug && attempt < 3 && pgCode(error) === UNIQUE_VIOLATION) continue;
         throw error;

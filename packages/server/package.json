@@ -1,7 +1,7 @@
 {
   "name": "@vola/server",
   "version": "1.0.0",
-  "description": "JSVola server: Fastify plugin and standalone server, Drizzle/PostgreSQL storage, Redis, tenant isolation, API key auth.",
+  "description": "JSVola server: Fastify plugin and standalone server, Drizzle/PostgreSQL storage, Redis, tenant isolation, API key auth, UDC collections.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -23,7 +23,8 @@
   },
   "files": [
     "dist",
-    "drizzle"
+    "drizzle",
+    "udc"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -38,12 +39,16 @@
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.6",
+    "@jsudc/core": "0.2.0",
+    "@jsudc/server": "0.2.1",
     "@vola/core": "workspace:*",
+    "@vola/lookups": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "file-type": "^22.3.0",
     "ioredis": "^6.0.0",
     "pg": "^8.23.1",
+    "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

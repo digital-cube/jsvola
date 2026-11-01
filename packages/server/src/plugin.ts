@@ -1,20 +1,28 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { CollectionRegistry } from "@jsudc/server";
 import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { installAuth } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Database } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
+import { emptyLookups, initLookups, type Lookups } from "./lookups.js";
 import type { RedisLike } from "./redis.js";
 import { fileRoutes } from "./routes/files.js";
 import { folderRoutes } from "./routes/folders.js";
 import { healthRoutes } from "./routes/health.js";
 import { keyRoutes } from "./routes/keys.js";
+import { lookupRoutes } from "./routes/lookups.js";
 import { publicRoutes } from "./routes/public.js";
 import { uploadRoutes } from "./routes/uploads.js";
 import type { LastUsedThrottle } from "./services/apikeys.js";
 import { FilesystemBackend, type StorageBackend } from "./storage/index.js";
+import { filesCollections } from "./udc/collections.js";
+import type { DecorateRow } from "./udc/files-source.js";
+import { menuCollection } from "./udc/menu.js";
+import { udcRoutes } from "./udc/plugin.js";
 
 export interface VolaPluginOptions {
   config: Config;
@@ -32,11 +40,62 @@ export interface VolaPluginOptions {
   /** Period of the expired-upload sweep in ms; `0` disables it (tests). Default 15 minutes. */
   uploadSweepIntervalMs?: number | undefined;
   /**
+   * The controlled vocabulary (`GET /lookups`, candidate recording). Default: loaded from
+   * `config.lookups` — an absent `lookups.yaml` gives an empty vocabulary, with a warning.
+   */
+  lookups?: Lookups | undefined;
+  /**
+   * The UDC collections served under `/udc/<action>` (`@jsudc/server`). Default: the `files`
+   * collection (`filesCollections`), plus the `menu` when its YAML exists; `false`: none.
+   */
+  udc?: CollectionRegistry | false | undefined;
+  /**
+   * The menu YAML served as the `menu` UDC collection. Default: `config.menuPath` when the
+   * file exists; `false`: no `menu` collection. A path given here must exist.
+   */
+  menu?: string | false | undefined;
+  /** Phase-6 hook of the `files` collection: decorates every row after the built-in masking. */
+  decorateRow?: DecorateRow | undefined;
+  /**
    * Registers more routes INSIDE the plugin, after the built-in ones: they share its prefix,
    * error envelope and auth (`config.scope`, `config.auth`). For a host application's own
    * vola routes and for tests.
    */
   extend?: ((app: FastifyInstance) => Promise<void> | void) | undefined;
+}
+
+/**
+ * The vocabulary of `config.lookups`: loaded when `lookups.yaml` exists (candidate recording
+ * failures are logged, never raised), empty with a warning otherwise.
+ */
+async function loadLookups(app: FastifyInstance, config: Config): Promise<Lookups> {
+  const { path, translationsPath, candidatesDir } = config.lookups;
+  if (!existsSync(path)) {
+    app.log.warn({ path }, "lookups.yaml not found: the vocabulary is empty");
+    return emptyLookups();
+  }
+  const lookups = await initLookups({
+    path,
+    translationsPath,
+    candidatesDir,
+    onError: (error) => app.log.warn({ err: error }, "lookup candidate not recorded"),
+  });
+  for (const warning of lookups.warnings) {
+    app.log.warn(
+      { line: warning.line, column: warning.column },
+      `translations: ${warning.message}`,
+    );
+  }
+  app.log.info(
+    {
+      path,
+      sections: lookups.registry.sectionNames(),
+      locales: lookups.locales,
+      candidates: lookups.recorder?.dir ?? null,
+    },
+    "lookups loaded",
+  );
+  return lookups;
 }
 
 const REQUEST_ID_RE = /^[\w.:-]{1,128}$/;
@@ -94,13 +153,16 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   installErrorHandling(app);
   installAuth(app, options.db, { lastUsed: options.lastUsed });
   const storage = options.storage ?? new FilesystemBackend(options.config.storagePath);
+  const lookups = options.lookups ?? (await loadLookups(app, options.config));
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db });
+  await app.register(lookupRoutes, { db: options.db, lookups });
   await app.register(fileRoutes, {
     db: options.db,
     storage,
     maxUploadBytes: options.config.maxUploadBytes,
     accessThrottle: options.accessThrottle,
+    lookups,
   });
   await app.register(uploadRoutes, {
     db: options.db,
@@ -109,6 +171,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     maxUploadBytes: options.config.maxUploadBytes,
     uploadTtlHours: options.config.uploadTtlHours,
     sweepIntervalMs: options.uploadSweepIntervalMs,
+    lookups,
   });
   await app.register(folderRoutes, { db: options.db });
   await app.register(publicRoutes, {
@@ -116,5 +179,21 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     storage,
     accessThrottle: options.accessThrottle,
   });
+  if (options.udc !== false) {
+    const registry =
+      options.udc ??
+      filesCollections({ db: options.db, prefix: app.prefix, decorateRow: options.decorateRow });
+    const menu =
+      options.menu === undefined
+        ? existsSync(options.config.menuPath)
+          ? options.config.menuPath
+          : null
+        : options.menu || null;
+    if (menu) registry.register(menuCollection({ file: menu, registry }));
+    else if (options.menu === undefined) {
+      app.log.warn({ path: options.config.menuPath }, "menu.yaml not found: no menu collection");
+    }
+    await app.register(udcRoutes, { db: options.db, registry, lastUsed: options.lastUsed });
+  }
   if (options.extend) await options.extend(app);
 };

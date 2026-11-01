@@ -16,6 +16,7 @@ import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyReques
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
+import type { Lookups } from "../lookups.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
 import {
   type FilesDeps,
@@ -55,6 +56,8 @@ export interface FileRoutesDeps {
   maxUploadBytes: number;
   accessThrottle?: LastUsedThrottle | undefined;
   logger?: FastifyBaseLogger | undefined;
+  /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
+  lookups?: Lookups | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -104,6 +107,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     storage: deps.storage,
     accessThrottle: deps.accessThrottle,
     logger: deps.logger ?? app.log,
+    lookups: deps.lookups,
     now: deps.now,
   };
   const folderService: FoldersDeps = { db: deps.db, logger: service.logger, now: deps.now };

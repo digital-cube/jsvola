@@ -22,6 +22,7 @@ import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";
 import type { UploadRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
+import type { Lookups } from "../lookups.js";
 import {
   appendUpload,
   createUpload,
@@ -48,6 +49,8 @@ export interface UploadRoutesDeps {
    */
   sweepIntervalMs?: number | undefined;
   logger?: FastifyBaseLogger | undefined;
+  /** The vocabulary unknown `kind` / `encryption` values are recorded against. */
+  lookups?: Lookups | undefined;
   now?: (() => Date) | undefined;
 }
 
@@ -100,6 +103,7 @@ export const uploadRoutes: FastifyPluginAsync<UploadRoutesDeps> = async (app, de
     maxUploadBytes: deps.maxUploadBytes,
     ttlMs: deps.uploadTtlHours * 3_600_000,
     logger,
+    lookups: deps.lookups,
     now: deps.now,
   };
 

@@ -1,7 +1,7 @@
 {
   "name": "@vola/lookups",
   "version": "1.0.0",
-  "description": "JSVola lookups: controlled vocabularies (instance types, job kinds, …) from YAML, with CSV translations.",
+  "description": "JSVola lookups: controlled vocabularies from YAML (file kinds, processing statuses and kinds, share scopes, OCR languages, encryption modes), CSV translations, candidate recording and TypeScript/Zod codegen.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,6 +29,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   },
   "publishConfig": {
     "access": "public"

@@ -7,7 +7,12 @@ import { apiKeys, files, folders, tenants, uploads } from "../src/db/schema.js";
 import { createApiKey } from "../src/services/apikeys.js";
 import { createTenant } from "../src/services/tenants.js";
 
-export const config = loadConfig({ ...process.env, VOLA_PREFIX: "/vola" });
+// The vocabulary of the repository, without recording candidates into its var/ directory.
+export const config = loadConfig({
+  ...process.env,
+  VOLA_PREFIX: "/vola",
+  VOLA_RECORD_CANDIDATES: "false",
+});
 
 /** A pool on the test database. */
 export function testDatabase(max = 3): DatabaseHandle {

@@ -9,6 +9,26 @@ share one version.
 
 ### Added
 
+- Lookups, translations and the UDC `files` collection (plan 3.1). `@vola/lookups` is now the
+  full copy of `@memento/lookups` (YAML compiler and registry, CSV translations with a
+  validator, candidate recorder, codegen) plus `promoteCandidates`; `lookups.yaml`
+  (`FileKinds`, `ProcessingStatuses`, `ProcessingKinds`, `ShareScopes`, `OcrLanguages`,
+  `EncryptionModes` — no `InstanceTypes`) and `i18n/translations.csv` (en, sr) live at the
+  repository root. `GET /lookups?locale=en|sr` (no key; fallback en) serves terms, wire values
+  and labels; `GET /instance-types` (`files:read`) the tenant's instance types with live-file
+  counts. An upload whose `kind` / `encryption` the vocabulary does not know is recorded under
+  `var/candidates` (`VOLA_LOOKUPS_PATH`, `VOLA_TRANSLATIONS_PATH`, `VOLA_RECORD_CANDIDATES`,
+  `VOLA_CANDIDATES_DIR`); `vola lookup-promote`, `vola lookups validate|candidates` manage
+  the queue. `@jsudc/server` 0.2.1 is mounted under `/udc` behind the API-key auth
+  (in-protocol refusals, `files:read` to read, admin with `X-Tenant-Slug`) with the read-only
+  `files` collection (`udc/files/view.yaml`): required top-level `instance_type` filter
+  (empty list without it), optional `instance_id`, `folder_path` (one level, `""` root),
+  `filename` (ilike), `mime_type`, `extension`, `kind`, `size`, `created_at`,
+  `include_deleted`; sort by `created_at` / `filename` / `size`; keyset cursor paging with
+  `id` tiebreak and exact `total`; `download_url` / `thumb_url` in rows; an encrypted row is
+  masked (`<encrypted>`, no MIME/extension) in rows, filters, sorts and cursors, with a
+  `decorateRow` hook for phase 6. `menu.yaml` is served as the `menu` collection
+  (`VOLA_MENU_PATH`). The Docker image ships the vocabulary and menu under `/app/config`.
 - Resumable uploads (`vola_upload`, migration `0003_uploads`): `OPTIONS|POST /uploads`,
   `HEAD|PATCH|DELETE /uploads/:id` speaking tus 1.0 core + `creation`, `termination`,
   `expiration`, implemented natively in `@vola/server` (no `@tus/server`) so `tus-js-client`
