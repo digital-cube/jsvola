@@ -85,5 +85,12 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 | 7.2 | TCK9NUHWW6 | `@vola/react` |
 | 8.1 | TCKKR2PUDE | `apps/examples` + stage compose |
 | 8.2 | TCKT9JUU59 | Dokumentacija + npm release |
+| 9.1 | TCKQQ7PD5C | `apps/website`: prezentacioni sajt (Astro + Starlight) na `stage.vol-a.com`, `deploy/website/stage.sh`; examples samo na `examples.stage.vol-a.com` |
 
-NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples).
+NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `@vola`, `NPM_TOKEN`, tag `v1.0.0`).
+
+## Stage (2026-11-02)
+
+Faze 1–8 su spojene u `main` i podignute: `https://stage.vol-a.com` (edge `hetzner4` → VM `igor.digitalcube.work`,
+checkout `/home/digital/sites/stage.vol-a.com`, compose projekat `jsvola-stage`). Detalji i postupak za redeploy su u
+komentaru na TCK9D5KENM. Posle 9.1 `stage.vol-a.com` je prezentacioni sajt, a examples ostaje samo na `examples.stage.vol-a.com`.
