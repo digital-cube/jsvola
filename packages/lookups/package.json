@@ -35,5 +35,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "keywords": [
+    "vola",
+    "jsvola",
+    "lookups",
+    "vocabulary",
+    "i18n"
+  ]
 }

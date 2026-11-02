@@ -7,7 +7,62 @@ share one version.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.0] - 2026-11-02
+
+The first release: the TypeScript port of vola-spp, complete per [docs/PLAN.md](docs/PLAN.md)
+— content-addressable, multi-tenant file storage with folders, versions, slugs, resumable
+uploads, thumbnails, OCR, share links, statistics, admin transfer, live lists, encryption at
+rest in four modes, a fetch SDK, React components, an examples site and one Docker image. Built
+in eight phases, one ticket each; the detailed entries below follow them, newest first.
+
+| phase | what | ticket |
+|---|---|---|
+| 1.1 | monorepo scaffold (pnpm, Turbo, Biome, Vitest), compose, Dockerfile, CI, health, `VOLA_*` config | TCKW73Q7EJ |
+| 1.2 | tenants, API keys with scopes, auth, admin keys with `X-Tenant-Slug`, CLI, `/keys` | TCKMP7M57K |
+| 2.1 | CAS storage: streaming upload with dedup, download with `Range`/`206` and `HEAD`, slugs, soft delete, purge | TCK5HPYMY2 |
+| 2.2 | virtual folders, path routes, move and rename, version chains, visibility, anonymous `/public` | TCKM5DHJTH |
+| 2.3 | resumable uploads: tus 1.0 at `/uploads` | TCKNPKC9XY |
+| 3.1 | `@vola/lookups`, the UDC `files` collection, `/instance-types` | TCKUHMFRRQ |
+| 3.2 | real-time: UDC `subscribe` over WebSocket | TCKFQMCFDT |
+| 4.1 | BullMQ worker, processing jobs, thumbnails (images and PDF) with the `202` rule | TCKXQCJ2YY |
+| 4.2 | OCR (tesseract + pdftoppm), `vola_file_metadata`, full-text filter | TCKPK3YTKR |
+| 5.1 | share links (token, argon2 password, expiry, `max_downloads`, revoke, folder shares) and statistics | TCKKQHMDJT |
+| 5.2 | admin transfer of instances between tenants, optional memento audit trail | TCK59T5P65 |
+| 6.1 | encryption I: the `JSV` segmented format, a key per file, the `tenant` provider | TCKK5UTHJX |
+| 6.2 | encryption II: the `keyring` (PIN) provider, unlock tokens, brute force, recovery, reset, encrypted folders | TCKFT692JH |
+| 6.3 | encryption III: the `caller` provider, sealed resumable uploads, encrypted thumbnails and OCR, share grants, `client` blobs | TCKQ7JWCRJ |
+| 7.1 | `@vola/client` | TCKX7RMHKF |
+| 7.2 | `@vola/react` | TCK9NUHWW6 |
+| 8.1 | `apps/examples` and the compose `demo` profile | TCKKR2PUDE |
+| 8.2 | documentation, the release workflow, npm metadata | TCKT9JUU59 |
+
 ### Added
+
+- **Documentation and release** (plan 8.2): `README.md` rewritten as the front page (what vola
+  is, the quick start against `docker-compose.yaml` with `curl`, the packages, the documents);
+  `docs/API.md` — every route with method, path, scope, body, answers and error codes, the
+  `Range`/`HEAD`/`ETag` rules, the `202` thumbnail rules, tus, shares and grants, keyrings, UDC,
+  the examples routes, and why there is no generated OpenAPI yet; `docs/ARCHITECTURE.md` —
+  packages, schema, `stageUpload` → `finalizeUpload`, the CAS layout, the worker and its five
+  jobs, the event bus and `subscribe`, encryption as a layer, transfer; `docs/CRYPTO.md`
+  completed with a one-page summary (§ 0), the client-side rules and the departures from the
+  Notes model (§ 14) and an operations checklist (§ 15), readable without
+  `notes-crypto-for-vola.md`; `docs/DEPLOYMENT.md` — the image, the stack, every `VOLA_*`
+  variable with its default, the key and pepper files (generate, back up apart, rotate, "without
+  them encrypted files are lost"), volumes, the worker, a reverse proxy, backups of the database
+  and `VOLA_STORAGE_PATH` together, upgrades; `docs/CLI.md` — every `vola` command;
+  `docs/MIGRATION-FROM-VOLA-SPP.md` — old route → new route → `@vola/client` method, the auth
+  differences, what stays (the `202` rule), no data migration, the checklist for the eight
+  consumers; `docs/CONTRIBUTING.md`. `.github/workflows/release.yml`: on a `v*` tag — versions
+  checked against the tag, lint / typecheck / build / tests, the link check and
+  `pnpm pack --dry-run`, the image to ghcr.io with provenance, a GitHub release from this file,
+  and `@vola/core`, `@vola/lookups`, `@vola/server`, `@vola/client`, `@vola/react`, `@vola/cli`
+  published to npm with provenance (`NPM_TOKEN`). `tools/check-links.mjs` (every relative link
+  and anchor of the Markdown documents; in CI), `pnpm pack:dry`, READMEs for `@vola/core`,
+  `@vola/server` and `@vola/cli`, `repository.directory` / `files` / `exports` / `license` /
+  `engines` on every public package.
 
 - **The examples site** (plan 8.1, `apps/examples`, `@vola/examples`): a Vite + React 19 site on
   `@vola/react` and `@jsudc/react`, one page per capability over a demo instance — Browse
@@ -157,13 +212,6 @@ share one version.
   - Migration `0009_encryption_iii`: `vola_file_metadata.ocr_ct`, `client` in the
     `vola_file.encryption` CHECK.
 
-### Changed
-
-- `409 encrypted_share_requires_grant` now only for `caller` (without `fk_share_ct`) and
-  `client` files; `/thumb` no longer answers `404` for encrypted files the request can open;
-  `isOcrEligible` and `thumbnailable` are true for `tenant` files; `TENANT_DEFAULT_ENCRYPTIONS`
-  includes `caller`; `TenantContext` gained `contentKey` and `browserOrigin`; `parseMode` takes
-  `{client}`; `EncryptedStage.fk` is nullable (`client`).
 
 - Encryption at rest, part II — the **`keyring` provider** (plan 6.2, `docs/CRYPTO.md` § 8;
   the thilo Notes model taken as it is). A keyring belongs to one principal (`X-User-Id`) of one
@@ -530,3 +578,14 @@ share one version.
 - `compose.yaml` (PostgreSQL 16 + Redis 7 for development, with the `vola_test` database),
   `docker-compose.yaml` (the `vola` image + PostgreSQL + Redis), multi-stage `Dockerfile`
   with libvips, poppler-utils and tesseract (eng, srp, deu), GitHub Actions CI.
+
+### Changed
+
+- `409 encrypted_share_requires_grant` now only for `caller` (without `fk_share_ct`) and
+  `client` files; `/thumb` no longer answers `404` for encrypted files the request can open;
+  `isOcrEligible` and `thumbnailable` are true for `tenant` files; `TENANT_DEFAULT_ENCRYPTIONS`
+  includes `caller`; `TenantContext` gained `contentKey` and `browserOrigin`; `parseMode` takes
+  `{client}`; `EncryptedStage.fk` is nullable (`client`).
+
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0

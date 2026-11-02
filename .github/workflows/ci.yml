@@ -1,5 +1,6 @@
 # Pull requests (and every push to main): lint, type check, build, unit tests with coverage,
-# E2E — then the Docker image is built and checked against docker-compose.yaml.
+# E2E, the documents' relative links, a pack dry-run of every public package — then the Docker
+# image is built and checked against docker-compose.yaml.
 name: CI
 
 on:
@@ -64,6 +65,10 @@ jobs:
         run: pnpm test:coverage
       - name: E2E (built server, PostgreSQL, Redis)
         run: pnpm test:e2e
+      - name: Relative links in the documents (tools/check-links.mjs)
+        run: pnpm check:links
+      - name: Pack dry-run of every public package (what npm would get)
+        run: pnpm pack:dry
       - name: Coverage summary
         if: always()
         run: |

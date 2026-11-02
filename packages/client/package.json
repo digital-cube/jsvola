@@ -1,7 +1,7 @@
 {
   "name": "@vola/client",
   "version": "1.0.0",
-  "description": "JSVola client SDK: a fetch-based, dependency-light client for the @vola/server API \u2014 files, folders, resumable uploads, shares, keyrings, stats \u2014 for Node 24+ and browsers.",
+  "description": "JSVola client SDK: a fetch-based, dependency-light client for the @vola/server API — files, folders, resumable uploads, shares, keyrings, stats — for Node 24+ and browsers.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -10,6 +10,9 @@
   },
   "homepage": "https://github.com/digital-cube/jsvola#readme",
   "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {

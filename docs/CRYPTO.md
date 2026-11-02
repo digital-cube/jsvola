@@ -1,10 +1,13 @@
 # Encryption in JSVola
 
 How an encrypted file is stored, who holds which key, what a dump reveals and what to do when
-something answers `409`, `423`, `429` or `503`. The model comes from the thilo Notes service
-(`notes-crypto-for-vola.md` § 6, decided in `PLAN.md` § Šifrovanje); the one place this
-document departs from Notes is the **segmented blob format** (§ 6.8 there), which is what makes
-`Range` requests and constant memory possible. Phase 6.1 (TCKK5UTHJX) ships the format, the
+something answers `409`, `423`, `429` or `503`. The model is the one thilo's Notes service
+uses, adopted in [PLAN.md](PLAN.md) and **stated here in full** —
+[notes-crypto-for-vola.md](notes-crypto-for-vola.md) is kept as the historical source and is not
+needed to read this document. The one place vola departs from Notes as it runs today is the
+**segmented blob format** (§ 2), which is what makes `Range` requests and constant memory
+possible; § 14 lists every other difference. § 0 is the whole model on one page; § 15 is what an
+operator has to do. Phase 6.1 (TCKK5UTHJX) ships the format, the
 per-file key and the `tenant` provider; phase 6.2 (TCKFT692JH) the `keyring` provider (§ 8: a
 PIN per principal, unlock tokens, recovery, brute force, reset, encrypted folders); phase 6.3
 (TCKQ7JWCRJ) the `caller` provider (§ 9), the resumable upload sealed segment by segment
@@ -18,6 +21,60 @@ encryption.ts` (the row-level operations and the HTTP mapping), `services/keyrin
 `services/derivatives.ts` (thumbnails and OCR of encrypted files), `services/shares.ts` (the
 grant), `services/transfer.ts` (re-wrap). Integration tests: `test/encryption.test.ts`,
 `test/keyrings.test.ts`, `test/encryption3.test.ts` (a real Redis and a real worker).
+
+## 0. The model on one page
+
+**What is protected, against whom.** A copy of the disk, the database and the backups — taken
+by whoever runs the storage, the database or the backup system, or by whoever steals a backup —
+reveals the *structure* of what is stored (tenants, instances, folders, sizes, dates, who
+uploaded) and nothing of its *content*: no file name, type, bytes, thumbnail or OCR text. A
+`tenant` file additionally needs the key file the operator holds; a `keyring` file needs its
+owner's PIN (or recovery key) on top of that; a `caller` file needs a key the server never kept;
+a `client` blob was never opened by the server at all. What the model does **not** protect: a
+live server compromised while it holds a key (the request's unlock, the key file in memory), and
+the structural columns of a row (someone writing to the database can move or mis-size a file,
+not read it). § 5 has the table of what each dump reveals.
+
+**One format, one random key per file.** Every encrypted file is a `JSV` blob (§ 2): a 24-byte
+header and AES-256-GCM segments of 1 MiB under a **file key (FK)** drawn at upload and never
+reused. Its name, MIME type and the caller's metadata are sealed under the same FK (`meta_ct`);
+so are its thumbnails and OCR text (§ 11). The row shows `<id>.bin`, `application/octet-stream`
+and the plaintext `size`; the blob hash is the hash of the ciphertext, so there is no dedup and
+no "which tenants hold this document" leak. Everything that changes — PIN change, recovery,
+rotation, transfer, share, crypto-shred — touches only the 60–64 bytes of a wrapped key, never
+the blob.
+
+**Four ways to wrap the file key** (§ 3), one of them per file, chosen at upload:
+
+| mode | choose it when | the key material | the request carries | what it costs you |
+|---|---|---|---|---|
+| `tenant` | the host application has no per-user secret and wants dumps and backups to be useless without the server's key — the default choice | a key line in `VOLA_KEY_FILE`, HKDF per tenant | nothing | one file to generate, back up and rotate (§ 4); the worker needs it too |
+| `keyring` | a person's private files that even the operator must not open (thilo Notes) | a master key per `(tenant, principal)` behind a 6-digit PIN (Argon2id + pepper) and a recovery key | `X-Vola-Unlock`, a short-lived token (§ 8.2) | the pepper file as well; Redis; a PIN UI (`@vola/react`'s `VolaPinGate`) |
+| `caller` | server-to-server, the caller already manages keys and wants vola to hold nothing | a 32-byte key per request, never stored | `X-Vola-Content-Key` (scope `encryption:caller`, never from a browser) | losing the key loses the file; no share from the server, no OCR |
+| `client` | end-to-end: the client seals the blob itself and the server is bytes only | the client's | a `fk_ct` the server never opens, on `POST /uploads` | no thumbnail, OCR, share, rename or transfer |
+
+`vola tenant-set --slug <s> --default-encryption tenant` makes a tenant's uploads encrypted
+without any client change. The modes are not mixed within one file; a folder with a keyring
+policy (§ 8.6) decides before the client does.
+
+**Glossary.** *FK* — the per-file key. *KEK* — a key-encryption key: for `tenant` the HKDF of
+the key line and the tenant id; for `keyring` the Argon2id of the PIN. *MK* — a keyring's master
+key, wrapping the FKs of that principal's files. *kid* — four bytes of SHA-256 of a key line or
+pepper line, a hint which line wrapped something. *AAD* — what AES-GCM authenticates without
+encrypting: every wrap and every segment is bound to the file id (and the segment index, the
+share id, the keyring id, …), so nothing can be moved between rows. *`fk_ct`, `meta_ct`,
+`fk_share_ct`, `ocr_ct`* — the wrapped FK, the sealed metadata, the FK wrapped for a share, the
+sealed OCR text. *Unlock token* — a keyring opened for one principal for `VOLA_UNLOCK_TTL_S`,
+held in Redis, sent in `X-Vola-Unlock`. *Policy folder* — a folder whose new uploads are keyring
+files. *Share grant* — a share link whose fragment holds the secret the FK is wrapped under.
+*Crypto-shred* — deleting the wrapped keys (purge, reset, revoke) so the bytes become noise.
+*Lazy rotation* — a new key line is prepended; files move to it as they are read.
+
+**Where to look.** § 1–2 keys and the blob format · § 3–4 providers, the key file, rotation ·
+§ 5 what a dump reveals · § 6–7 HTTP behaviour and troubleshooting · § 8 keyrings · § 9 the
+`caller` mode · § 10 the encrypted resumable upload · § 11 thumbnails and OCR · § 12 the share
+grant · § 13 `client` blobs · § 14 the client side and the differences from Notes · § 15
+operations.
 
 ## 1. Keys
 
@@ -284,7 +341,7 @@ unreadable until the line is restored. Rotate by prepending, never by replacing.
 
 ## 8. The `keyring` provider (phase 6.2)
 
-The Notes model (`notes-crypto-for-vola.md` § 1, § 3, § 6.5), taken as it is. A **keyring**
+The PIN model of thilo's Notes service, stated here in full. A **keyring**
 belongs to one principal of one tenant — the `X-User-Id` of the host application; one row of
 `vola_keyring` per `(tenant_id, principal)`, soft-deleted by a reset. It holds a 32-byte random
 **master key (MK)** twice wrapped and nothing else:
@@ -565,7 +622,7 @@ connection.
 
 ## 11. Thumbnails and OCR of encrypted files (phase 6.3)
 
-`notes-crypto-for-vola.md` § 6.6, taken as it is: a derivative is allowed only as a **sealed
+The rule: a derivative of an encrypted file is allowed only as a **sealed
 sibling under the same file key**, made by whoever holds that key, never in the clear on disk,
 in the database or in an index (`services/derivatives.ts`, `crypto/derived.ts`).
 
@@ -610,7 +667,7 @@ Common to every mode:
 
 ## 12. The share grant (phase 6.3)
 
-`notes-crypto-for-vola.md` § 6.7: a share of an encrypted file carries the file key **re-wrapped
+A share of an encrypted file carries the file key **re-wrapped
 under a secret that lives only in the link**. The server makes the grant when it holds the key
 and forgets the secret at once; the recipient gets plaintext — that is what a share is for, and
 a UI must say so.
@@ -640,7 +697,8 @@ made to send.
 
 ## 13. `client` mode — a blob the client made (phase 6.3)
 
-The door § 6.1 of the Notes document asked to leave open: `encryption = client` on
+The door the Notes analysis asked to leave open — end-to-end encryption in the client:
+`encryption = client` on
 `POST /uploads` stores a `JSV` blob the **client** produced and a wrapped key the client made,
 and serves both back as they came. Nothing in the format depends on a server secret — only on
 the file id, which the client learns from the creation (`Vola-File-Id`).
@@ -675,3 +733,88 @@ ships, and `test/encryption3.test.ts` produces the blob with the server's own `e
 WebCrypto (`AES-GCM`, 12-byte nonce `prefix ∥ index`, the AAD of § 2) and a `uploadEncrypted()`
 that creates the upload, reads `Vola-File-Id`, seals and PATCHes — about 150 lines, no new
 dependency; the wrapped key stays the host's concern.
+
+
+## 14. The client side, and where vola differs from Notes
+
+What a client of the `keyring` mode has to do — the rules thilo's Notes UI follows, implemented
+in `@vola/react` (`VolaProvider`, `VolaPinGate`, `VolaThumb`; [REACT.md](REACT.md)) and available
+to any other client through `@vola/client`:
+
+- **Hold the token in memory only** — never `localStorage`, a cookie or a URL. `@vola/client`
+  keeps it in the instance; `lock()` sends `DELETE /keyrings/me/unlock` and forgets it.
+- **Lock early, on the client**: after 120 s without activity show a 10 s countdown with "stay
+  unlocked", then lock; a tab hidden for more than 30 s locks when it comes back; a tab that
+  slept locks at once; `pagehide` sends `navigator.sendBeacon` to `POST /keyrings/me/unlock/close`
+  with the token (the one route that needs no API key). The server's `VOLA_UNLOCK_TTL_S`
+  (150 s, sliding) is the backstop, not the rule.
+- **A lock drops every decrypted artefact**: every `blob:` URL of a decrypted file or thumbnail
+  is revoked, the in-memory cache is cleared, and a new "generation" starts so an answer that
+  arrives for the previous one is thrown away.
+- **`423 vola_locked` means ask for the PIN again**, whatever the request was; `403 pin_wrong`
+  shows the attempts left before the wait; `429 too_many_attempts` disables the fields and counts
+  down `retry_after` — the right PIN is refused too until then.
+- **The recovery key is shown once**, at setup and after a recovery, behind a "I have saved it"
+  checkbox; it is never shown again and never sent anywhere but `POST …/recover`.
+- **Reset asks for the word `RESET`** and shows the counts from `GET …/delete-preview` first;
+  re-authenticating the person is the host application's job before it calls vola.
+- **A share of an encrypted file says what it does**: the recipient gets plaintext, the link
+  (with its `#secret`) is shown once, and the secret never goes to any server but as
+  `X-Share-Secret` to vola's `/s/:token`.
+- **Never cache a thumbnail of an encrypted file** past the lock (`no-store` says so), and never
+  by content hash (there is none a client can see).
+
+Where vola **differs from the Notes service as it runs today** (the historical document
+describes that original):
+
+| Notes | vola | why |
+|---|---|---|
+| one AES-GCM message per file; the whole blob decrypted to serve it | the `JSV` segmented format, 1 MiB segments with the index and "last" in the AAD (§ 2) | `Range` / `206`, resumable uploads sealed as they arrive, one segment of memory per request |
+| one mode: a PIN per user | four modes over one format and one `WrapProvider` interface (§ 3) | hosts without a per-user secret (`tenant`), server-to-server (`caller`), end-to-end (`client`) |
+| one secret file (`notes.key`) that is both the pepper and the Fernet key wrapping the master key in Redis | two files — the key file (tenant KEKs and the Redis unlock entries, HKDF per tenant, § 1, § 8.2) and the pepper file (§ 8) — with `kid` hints and lazy re-wrap on read (§ 4, § 8.8) | multi-tenant; the operator's key and the users' pepper rotate independently |
+| reset takes the account password | reset takes `{confirm: "RESET"}`; the host re-authenticates (§ 8.5) | vola has principals, not users or passwords |
+| header `X-Notes-Unlock` | `X-Vola-Unlock`; the beacon alias and the sliding TTL kept | |
+| the blob version is written, not read | the version is read and dispatched; an unknown one is an integrity error before any AES runs | a format change later is a new version, not a flag day |
+| no derivatives of encrypted files | sealed sibling thumbnails for every mode but `client`; sealed OCR for `tenant` files (§ 11) | the file browser shows encrypted images; the operator's files stay searchable through `info` |
+| no share link for an encrypted file | the share grant with the secret in the URL fragment (§ 12) | |
+| everything a person has is under their keyring; nothing plain next to it | plain, `tenant` and `keyring` files coexist in one instance; a folder **policy** names the keyring new uploads go under (§ 8.6) | a host's folder tree mixes private and shared material; moving a file never re-encrypts it |
+
+Everything else — the PIN rules, the recovery key format and its normalisation, the brute-force
+table and the mutex, the unlock token in Redis with a sliding TTL, the beacon, the crypto-shred,
+`application/octet-stream` and `<id>.bin` in the row, `no-store` and `nosniff`, `inline` only for
+a sniffed raster image, no `is_global_public`, nothing secret in a log, a URL or an audit event —
+is the Notes model unchanged.
+
+## 15. Operations checklist
+
+1. **Before the first encrypted upload**: create the key file and, if keyrings will be used, the
+   pepper file (`vola keys-generate`, `vola pepper-generate`, or one `openssl rand -base64 32`
+   line each, mode 0600); mount them read-only in the server **and the worker**
+   ([DEPLOYMENT.md](DEPLOYMENT.md#the-key-file-and-the-pepper-file)). Keyrings also need Redis.
+2. **Back both files up apart from the data** — a backup that holds the database, the blobs and
+   the key file together is readable by whoever holds it; the data backup without the key file
+   is what the encryption is for. Test the restore: `vola keys-status` and `vola pepper-status`
+   against the restored files show no `NO LINE`.
+3. **Decide the default**: `vola tenant-set --slug <s> --default-encryption tenant` for a tenant
+   whose uploads should all be encrypted without the clients knowing; `keyring` or `caller` only
+   when every client of that tenant sends the token or the key.
+4. **Rotate by prepending** a line (§ 4, § 8.8), never by replacing one; remove an old line only
+   when `keys-status` / `pepper-status` show zero files or keyrings on it. Files move to the
+   active line as they are read; a keyring at its next unlock.
+5. **Watch the logs** for `key file unusable`, `integrity failure`, `encryption: tenant provider
+   (no Redis: no keyring provider)` and the counters `vola_unlock_failed` / `vola_locked_out`; a
+   burst of `503 encryption_unavailable` means a mount or a permission went wrong, a burst of
+   `409 vola_integrity` means a restore mixed a database and a disk of different dates or a key
+   line was removed.
+6. **Size `VOLA_ENC_INLINE_DERIVE_MAX_BYTES`** (25 MiB) to the memory you can spend per request:
+   a thumbnail or OCR pass of an encrypted file decrypts the whole plaintext into memory.
+7. **Transfers** between tenants re-wrap `tenant` files and need the key file; an instance with
+   `keyring`, `caller` or `client` files is refused — have the owner download and re-upload
+   (§ 4).
+8. **If Redis is lost**, every keyring is simply locked (the tokens are gone); unlock again.
+   **If the pepper file is lost**, no keyring can be unlocked or recovered. **If the key file is
+   lost**, every `tenant` file and every keyring unlock is gone for good — purge the rows to
+   reclaim the disk (`DELETE …/purge`), there is nothing else to do. That is the design, and the
+   reason for step 2.
+9. **Never log or forward** `X-Vola-Unlock`, `X-Vola-Content-Key`, `X-Share-Secret` or
+   `X-Share-Password` at a proxy; the server redacts them itself (`LOG_REDACT`).

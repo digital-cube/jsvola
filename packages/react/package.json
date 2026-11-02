@@ -10,6 +10,9 @@
   },
   "homepage": "https://github.com/digital-cube/jsvola#readme",
   "bugs": "https://github.com/digital-cube/jsvola/issues",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "sideEffects": [
     "*.css"

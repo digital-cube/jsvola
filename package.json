@@ -2,7 +2,7 @@
   "name": "jsvola",
   "private": true,
   "type": "module",
-  "description": "JSVola — self-hosted, multi-tenant content-addressable file storage (monorepo: @vola/core, @vola/server, @vola/cli, @vola/client, @vola/react)",
+  "description": "JSVola \u2014 self-hosted, multi-tenant content-addressable file storage (monorepo: @vola/core, @vola/server, @vola/cli, @vola/client, @vola/react)",
   "license": "MIT",
   "packageManager": "pnpm@11.21.0",
   "engines": {
@@ -24,7 +24,9 @@
     "db:generate": "pnpm --filter @vola/server db:generate",
     "db:migrate": "pnpm --filter @vola/server db:migrate",
     "db:migrate:test": "pnpm --filter @vola/server db:migrate:test",
-    "vola": "pnpm --filter @vola/cli exec tsx --conditions=@vola/source src/main.ts"
+    "vola": "pnpm --filter @vola/cli exec tsx --conditions=@vola/source src/main.ts",
+    "check:links": "node tools/check-links.mjs",
+    "pack:dry": "node tools/pack-dry-run.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

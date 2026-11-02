@@ -44,5 +44,11 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "keywords": [
+    "vola",
+    "jsvola",
+    "file-storage",
+    "cli"
+  ]
 }

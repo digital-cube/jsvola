@@ -1,0 +1,202 @@
+# Publishing.
+# - merge to main  → ghcr.io/digital-cube/jsvola:main, :edge, :sha-<short>
+# - tag vX.Y.Z     → lint, type check, build and unit tests first; then
+#                    ghcr.io/digital-cube/jsvola:X.Y.Z, :X.Y, :X, :latest,
+#                    a GitHub release (notes from CHANGELOG.md) and the @vola/* npm packages
+#                    (@vola/core, @vola/lookups, @vola/server, @vola/client, @vola/react, @vola/cli;
+#                    packages/e2e and apps/examples are private and never published).
+# The tag must equal the version in package.json (bump every package, then `git tag vX.Y.Z`).
+# The npm step needs the NPM_TOKEN repository secret (an npm automation token of an account that
+# may publish to the @vola scope); without it the packages are not published, with a warning.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: read
+        name: Package versions agree (and match the tag)
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          for f in packages/*/package.json apps/*/package.json; do
+            v=$(node -p "require('./$f').version")
+            [ "$v" = "$version" ] || { echo "::error file=$f::version $v ≠ root $version"; exit 1; }
+          done
+          cli=$(node -p 'require("fs").readFileSync("packages/cli/src/program.ts","utf8").match(/CLI_VERSION = "([^"]+)"/)[1]')
+          [ "$cli" = "$version" ] || { echo "::error file=packages/cli/src/program.ts::CLI_VERSION $cli ≠ root $version"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Lint, type check, build, test
+    if: github.ref_type == 'tag'
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vola
+          POSTGRES_PASSWORD: vola
+          POSTGRES_DB: vola_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vola -d vola_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      VOLA_DATABASE_URL_TEST: postgresql://vola:vola@localhost:5432/vola_test
+      VOLA_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: System tools the thumbnail and OCR tests need (pdftoppm, tesseract eng+srp+deu)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends poppler-utils \
+            tesseract-ocr tesseract-ocr-eng tesseract-ocr-srp tesseract-ocr-deu
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - name: Unit tests
+        run: pnpm test
+      - name: Relative links in the documents
+        run: node tools/check-links.mjs
+      - name: Pack dry-run of every public package
+        run: pnpm pack:dry
+
+  image:
+    name: Docker image → ghcr.io
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,format=short
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_type == 'tag' && needs.version.outputs.version || github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  github-release:
+    name: GitHub release
+    if: github.ref_type == 'tag'
+    needs: [version, test, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; }
+          printf '\n**Docker:** `docker pull %s:%s`\n' "$IMAGE" "$VERSION" >> notes.md
+          printf '**npm:** `pnpm add @vola/client@%s` · `@vola/react` · `@vola/server` · `@vola/cli` · `@vola/core` · `@vola/lookups`\n' "$VERSION" >> notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+
+  npm:
+    name: Publish @vola/* to npm
+    if: github.ref_type == 'tag'
+    needs: [version, test, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter="./packages/*"
+      - name: Publish (skipped without the NPM_TOKEN secret)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN is not set: @vola/* packages were not published"
+            exit 0
+          fi
+          pnpm -r --filter "./packages/*" publish --access public --provenance --no-git-checks
