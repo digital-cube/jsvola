@@ -83,7 +83,7 @@ describe("vola demo-keys", () => {
     expect(text.code).toBe(0);
     const lines = text.lines.filter((l) => l.startsWith("VOLA_DEMO_"));
     expect(lines).toHaveLength(2);
-    const [read, write] = lines.map((l) => l.split("=")[1] ?? "");
+    const [read = "", write = ""] = lines.map((l) => l.split("=")[1] ?? "");
     expect(parseApiKey(read)?.env).toBe("live");
     expect(parseApiKey(write)?.env).toBe("live");
     expect(read).not.toBe(write);

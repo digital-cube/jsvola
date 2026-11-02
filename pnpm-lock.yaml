@@ -117,6 +117,10 @@ importers:
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+    devDependencies:
+      fastify:
+        specifier: ^5.12.7
+        version: 5.12.7
 
   packages/client:
     dependencies:
