@@ -70,8 +70,10 @@ h1#_top {
   color: var(--vola-ink);
 }
 
-.sl-markdown-content h2,
-.sl-markdown-content .sl-heading-wrapper.level-h2 {
+/* Starlight's wrapper around a heading and its anchor link shrinks to the text; the rule must not. */
+.sl-markdown-content .sl-heading-wrapper:has(> h2),
+.sl-markdown-content h2 {
+  display: block;
   width: 100%;
 }
 .sl-markdown-content h2 {
@@ -165,9 +167,6 @@ h1#_top {
   font-size: var(--sl-text-xs);
   font-weight: 500;
   color: var(--vola-ink-3);
-}
-.header {
-  border-bottom: 1px solid var(--vola-rule);
 }
 site-search button[data-open-modal] {
   border-radius: 0;
