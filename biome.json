@@ -18,7 +18,8 @@
       "!**/*.mdx",
       "!apps/website/dist",
       "!apps/website/.astro",
-      "!apps/website/snippets/wire"
+      "!apps/website/snippets/wire",
+      "!!apps/tutorial"
     ]
   },
   "formatter": {
