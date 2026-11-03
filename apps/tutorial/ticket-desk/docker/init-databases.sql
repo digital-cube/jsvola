@@ -1,4 +1,4 @@
--- One PostgreSQL, one database per program: vola, memento and the desk itself.
+-- One PostgreSQL, one database per program. The desk's own is not here: the image makes it,
+-- because it is named after POSTGRES_USER, and making it again would stop this script with an error.
 CREATE DATABASE vola;
 CREATE DATABASE memento;
-CREATE DATABASE desk;
