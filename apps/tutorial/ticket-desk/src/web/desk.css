@@ -72,7 +72,7 @@ body,
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 340px;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px 20px;
   padding: 16px 20px;
@@ -120,8 +120,14 @@ body,
   min-height: 0;
   overflow: auto;
   padding: 12px 16px;
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+.board-page .activity {
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 .activity h2 {
@@ -150,4 +156,20 @@ body,
 .activity time {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+
+.activity li.fresh {
+  animation: fresh 1.5s ease-out;
+}
+
+@keyframes fresh {
+  from {
+    background: var(--sem-warning-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity li.fresh {
+    animation: none;
+  }
 }

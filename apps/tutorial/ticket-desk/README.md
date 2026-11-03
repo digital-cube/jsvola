@@ -130,3 +130,16 @@ For development with reloads: `make setup` once, then `pnpm dev` and `pnpm dev:w
 backend's `.env` pointing at the services.
 
 So far the feed is read once and read again after each of your own actions. Step 6 makes it live.
+
+## 6. Live
+
+[`Activity.tsx`](src/web/Activity.tsx) subscribes: `useMementoEvents` loads the newest events and
+then gets every new one over memento's WebSocket (`/memento/ws`), so a write by anybody, in any
+tab, shows up by itself and nothing reloads after an action any more. The feed's `onEvent` also
+tells the board and the ticket page to read again: memento's stream is the one signal the whole
+page follows.
+
+There is one subscription to the whole desk, and [`feed.ts`](src/web/feed.ts) picks a ticket's part
+of it. A filter on `tickets/<id>` alone would be shorter, but step 7 shows why it would miss things.
+
+To see it: open the same ticket in two tabs, sign in as somebody else in one, and comment.

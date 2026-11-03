@@ -16,7 +16,7 @@ import { useSession } from "./session.ts";
 const renderers = createRendererRegistry(kanbanRenderer);
 const queryClient = createUdcQueryClient();
 
-/** Lists read again after a new ticket, so it shows up without a reload. */
+/** The feed calls this for every new event: whoever changed a ticket, the board catches up. */
 export const refreshBoard = () => queryClient.invalidateQueries();
 
 /**
