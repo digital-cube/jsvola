@@ -137,3 +137,22 @@ describe("POST /tickets/:id/assign", () => {
     expect(res.statusCode).toBe(422);
   });
 });
+
+describe("GET /config", () => {
+  it("gives the page its users and its two keys", async () => {
+    const app = await testApp();
+    const res = await app.inject({ method: "GET", url: "/config" });
+    expect(res.json()).toEqual({
+      users: ["igor", "ana", "marko"],
+      memento_key: "mk_browser",
+      vola_key: "vola_browser",
+    });
+  });
+
+  it("says what to do before `make setup`", async () => {
+    const app = await testApp({ memento: "", vola: "" });
+    const res = await app.inject({ method: "GET", url: "/config" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toContain("make setup");
+  });
+});

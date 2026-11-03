@@ -27,19 +27,21 @@ const registry = loadRegistry(COLLECTIONS, (collection, reg) =>
   makeSource(collection, { db, registry: reg }),
 );
 
-const vola = new VolaClient({
-  baseUrl: process.env.VOLA_URL ?? "http://localhost:8300/vola",
-  apiKey: process.env.VOLA_SERVER_KEY ?? "",
-});
+const VOLA_URL = process.env.VOLA_URL ?? "http://localhost:8300/vola";
+const MEMENTO_URL = process.env.MEMENTO_URL ?? "http://localhost:3000/memento";
+
+const vola = new VolaClient({ baseUrl: VOLA_URL, apiKey: process.env.VOLA_SERVER_KEY ?? "" });
 
 const app = await buildApp({
   registry,
   logger: true,
-  emit: mementoEmitter(
-    process.env.MEMENTO_URL ?? "http://localhost:3000/memento",
-    process.env.MEMENTO_SERVER_KEY ?? "",
-    console,
-  ),
+  emit: mementoEmitter(MEMENTO_URL, process.env.MEMENTO_SERVER_KEY ?? "", console),
   lookupFile: (ticketId, fileId) => vola.files.info("tickets", ticketId, fileId),
+  browserKeys: {
+    memento: process.env.MEMENTO_BROWSER_KEY ?? "",
+    vola: process.env.VOLA_BROWSER_KEY ?? "",
+  },
+  upstreams: { "/vola": new URL(VOLA_URL).origin, "/memento": new URL(MEMENTO_URL).origin },
+  webRoot: new URL("../../dist", import.meta.url).pathname,
 });
 await app.listen({ host: "0.0.0.0", port: Number(process.env.PORT ?? 8080) });

@@ -104,3 +104,29 @@ curl "localhost:8080/memento/entities/tickets/<id>/events?locale=sr" \
   -H "Authorization: Bearer $MEMENTO_BROWSER_KEY"
 # "rendered": "igor komentariše: „On my way\""
 ```
+
+## 5. The UI
+
+```sh
+docker compose up -d --build   # the desk serves the built frontend
+open http://localhost:8080
+```
+
+The header picks who is signed in. Three pieces do the work, and all three are other people's
+components:
+
+| | component | talks to |
+|---|---|---|
+| the board ([`Board.tsx`](src/web/Board.tsx)) | `<UdcDataView collection="tickets">` with `@jsudc/react/kanban`: search, columns, drag and drop | the backend's `/udc/*` |
+| the files ([`Files.tsx`](src/web/Files.tsx)) | `<VolaFileBrowser>` and `<VolaUploadButton>` on the instance `tickets/<id>`: thumbnails, folders, download, delete; **Share** in a file's menu opens `VolaShareDialog` | vola, directly, with `X-User-Id` |
+| the feed ([`TicketPage.tsx`](src/web/TicketPage.tsx)) | `useMementoEvents` from `@memento/react` | memento, directly |
+
+The backend ([`src/server/proxy.ts`](src/server/proxy.ts)) passes `/vola` and `/memento`, HTTP and
+WebSocket, to the two services, so the browser sees a single origin. It gets its two keys from
+`GET /config`. An upload goes straight to vola; when it lands, `onUploaded` tells the backend
+(`POST /tickets/:id/files`), which is what records `TICKET_FILE_ATTACHED`.
+
+For development with reloads: `make setup` once, then `pnpm dev` and `pnpm dev:web`, with the
+backend's `.env` pointing at the services.
+
+So far the feed is read once and read again after each of your own actions. Step 6 makes it live.
