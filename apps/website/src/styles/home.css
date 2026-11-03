@@ -1,0 +1,78 @@
+/* The home page and the 404: what Starlight gives the docs, these pages set up themselves. */
+:root {
+  --page-width: 92rem;
+  --page-gutter: clamp(1.25rem, 4vw, 3.5rem);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--vola-ground);
+  color-scheme: dark;
+  scroll-padding-top: 1rem;
+  font-synthesis: none;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: var(--vola-font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--vola-ink-2);
+  background: var(--vola-ground);
+}
+
+a {
+  color: var(--vola-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+a:hover {
+  color: var(--vola-ink);
+}
+
+code {
+  font-family: var(--vola-font-mono);
+}
+
+::selection {
+  color: var(--vola-accent-ink);
+  background: var(--vola-accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--vola-accent);
+  outline-offset: 2px;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.7rem 1.15rem;
+  font-size: 0.9375rem;
+  font-weight: 560;
+  text-decoration: none;
+  border: 1px solid var(--vola-accent);
+}
+.button.primary {
+  color: var(--vola-accent-ink);
+  background: var(--vola-accent);
+}
+.button.primary:hover {
+  color: var(--vola-accent-ink);
+  background: var(--vola-ink);
+  border-color: var(--vola-ink);
+}
+.button.secondary {
+  color: var(--vola-ink);
+  border-color: var(--vola-rule-strong);
+}
+.button.secondary:hover {
+  border-color: var(--vola-ink);
+}

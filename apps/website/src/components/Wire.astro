@@ -1,0 +1,48 @@
+---
+/*
+ * One recorded exchange (snippets/wire/<name>.req.txt + .out.txt) in a flat ruled block: the
+ * request, then the answer with its status line standing out.
+ */
+import { wire } from "../wire";
+
+interface Props {
+  name: string;
+  /** Only the answer: for a second read of a request already on the page. */
+  answerOnly?: boolean;
+}
+
+const { name, answerOnly = false } = Astro.props;
+const { request, answer } = wire(name);
+const [status = "", ...rest] = answer.split("\n");
+---
+
+<figure class="wire">
+  {!answerOnly && <pre class="wire-request" tabindex="0"><code>{request}</code></pre>}
+  <pre class="wire-answer" tabindex="0"><code><b>{status}</b>{"\n"}{rest.join("\n")}</code></pre>
+</figure>
+
+<style>
+  .wire {
+    margin: 0;
+    min-width: 0;
+    border: 1px solid var(--vola-rule);
+    background: var(--vola-surface);
+  }
+  pre {
+    margin: 0;
+    padding: 0.8rem 1rem;
+    overflow-x: auto;
+    font-family: var(--vola-font-mono);
+    font-size: 0.78125rem;
+    line-height: 1.6;
+    color: var(--vola-ink-2);
+  }
+  .wire-request {
+    color: var(--vola-ink);
+    border-bottom: 1px solid var(--vola-rule);
+  }
+  b {
+    font-weight: 600;
+    color: var(--vola-accent);
+  }
+</style>

@@ -1,0 +1,39 @@
+---
+title: Browse
+description: A file browser over the demo instance with folders, thumbnails and a row menu, kept live over a WebSocket.
+sidebar:
+  order: 1
+---
+
+import ExampleShot from "../../../components/ExampleShot.astro";
+import LiveExample from "../../../components/LiveExample.astro";
+
+<LiveExample path="/examples/browse?folder=images" />
+
+<ExampleShot name="browse" alt="The Browse page of the examples site: a breadcrumb to the images folder with a Live indicator, then a table of files with a thumbnail in each row, name, kind, size, folder, encryption, processing status and date." />
+
+## What it shows
+
+The whole file browser of an instance as one component: breadcrumbs, subfolders, search and filters, thumbnails, a drop zone and a menu on each row (download, rename, move, delete, versions, share, visibility).
+
+The list stays live. The page subscribes to the same rows it lists, so a change anywhere appears here without a reload. [Real-time](/concepts/real-time/) explains how. The folder is in the URL as `?folder=images`, so a link can open the browser inside a folder.
+
+## What to try
+
+- Open the page in two tabs. Upload or rename a file in one and watch the other.
+- Upload an image and watch `processing_status` move as the worker renders it.
+- Rename a seeded file. The answer is `403`, because the demo pack stays as it is for everyone.
+- Open `?folder=documents` and look at `notes.txt`, which has no thumbnail.
+
+## Routes
+
+| Route | What for |
+| --- | --- |
+| `POST /vola/udc/describe`, `POST /vola/udc/list` | The `files` collection, scoped to the instance and folder |
+| `GET /vola/udc/subscribe` | The WebSocket that keeps the list live |
+| `GET /vola/folders/:type/:id/*path` | Breadcrumbs and subfolders |
+| `/vola/examples/write/…` | Every write, through the [write proxy](/concepts/examples-site/) |
+
+## `@vola/react` pieces
+
+`VolaFileBrowser` is the page. It draws `VolaThumb` in its table and takes the instance, the folder and the columns as props. `VolaProvider` supplies the client around it.

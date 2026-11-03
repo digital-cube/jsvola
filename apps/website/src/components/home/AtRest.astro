@@ -1,0 +1,124 @@
+---
+/*
+ * Encrypted at rest: the JSV v1 blob and the three ways the server can hold the key, from
+ * docs/CRYPTO.md § 0 and § 2.
+ */
+import HashTexture from "../motifs/HashTexture.astro";
+import SegmentDiagram from "../motifs/SegmentDiagram.astro";
+import Section from "../Section.astro";
+
+const PROVIDERS = [
+  {
+    mode: "tenant",
+    when: "Dumps and backups should be useless without the server's key, and your application has no per-user secret. The usual choice.",
+    key: "A key line in VOLA_KEY_FILE, derived per tenant",
+    carries: "Nothing",
+  },
+  {
+    mode: "keyring",
+    when: "A person's private files that even the operator must not open.",
+    key: "A master key per person, behind a 6-digit PIN and a recovery key",
+    carries: "X-Vola-Unlock, a short-lived token",
+  },
+  {
+    mode: "caller",
+    when: "Server to server, when you already manage keys and want vola to keep none.",
+    key: "A 32-byte key per request, never stored",
+    carries: "X-Vola-Content-Key",
+  },
+];
+---
+
+<Section id="at-rest" number="03" name="At rest" title="Encrypted at rest, still seekable">
+  <Fragment slot="head">
+    <p>
+      A copy of the disk, the database and the backups shows who stored how much and when, and
+      nothing of the content: no file name, type, bytes, thumbnail or OCR text.
+    </p>
+    <p>
+      Every encrypted file gets its own random key and is sealed in 1 MiB segments, so a <code>Range</code> read decrypts only the segments it touches, and changing who can open a file rewrites 64 bytes, never the blob.
+    </p>
+    <p><a href="/concepts/encryption/">How the keys fit together</a></p>
+  </Fragment>
+
+  <div class="ciphertext">
+    <HashTexture lines={16} seed="segment" />
+    <div class="on-top"><SegmentDiagram /></div>
+  </div>
+
+  <table>
+    <caption>Three ways to hold the key, chosen per file at upload</caption>
+    <thead>
+      <tr>
+        <th scope="col">Provider</th>
+        <th scope="col">Choose it when</th>
+        <th scope="col">The key</th>
+        <th scope="col">A request carries</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        PROVIDERS.map((p) => (
+          <tr>
+            <th scope="row"><code>{p.mode}</code></th>
+            <td>{p.when}</td>
+            <td>{p.key}</td>
+            <td>{p.carries}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</Section>
+
+<style>
+  .ciphertext {
+    position: relative;
+    padding: 1.25rem;
+    overflow: hidden;
+    background: var(--vola-ground);
+    border: 1px solid var(--vola-rule);
+  }
+  .on-top {
+    position: relative;
+    z-index: 1;
+  }
+  table {
+    display: block;
+    margin-top: 2rem;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+  caption {
+    display: block;
+    margin-bottom: 0.75rem;
+    text-align: start;
+    color: var(--vola-ink);
+    font-weight: 560;
+  }
+  th,
+  td {
+    padding: 0.8rem 1.25rem 0.8rem 0;
+    min-width: 9rem;
+    vertical-align: top;
+    text-align: start;
+    border-top: 1px solid var(--vola-rule);
+  }
+  thead th {
+    padding-block: 0.4rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--vola-ink-3);
+    border-top: 0;
+  }
+  tbody th {
+    min-width: 5.5rem;
+    font-weight: 500;
+  }
+  tbody code {
+    font-size: 0.9375rem;
+    color: var(--vola-accent);
+  }
+</style>

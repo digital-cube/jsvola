@@ -112,14 +112,28 @@ under the API prefix).
 The demo pack and the seeder: [`apps/examples/ASSETS.md`](../apps/examples/ASSETS.md);
 `vola demo-seed --help`.
 
-## Stage deploy (for a person, after the merge)
+## Stage deploy
 
-The hostname, DNS record and server are the NON-AI ticket **TCK9D5KENM** (*Stage za jsvola
-examples*); nothing in the repository names a host — the site is reached on whatever
-`VOLA_PUBLIC_URL` says. In the stage checkout (compose project `jsvola`):
+The examples stack runs at `https://examples.stage.vol-a.com/`. `https://stage.vol-a.com/` is the
+website, a different thing with its own checkout: [DEPLOYMENT.md](DEPLOYMENT.md#the-website).
+
+| | |
+|---|---|
+| checkout | `/home/digital/sites/examples.stage.vol-a.com` (branch `main`) |
+| compose project | `COMPOSE_PROJECT_NAME=jsvola-stage` in `.env` |
+| ports | vola `127.0.0.1:8300`, PostgreSQL 5435, Redis 6382 |
+| vhost | [`deploy/examples/nginx/examples.stage.vol-a.com.conf`](../deploy/examples/nginx/examples.stage.vol-a.com.conf), linked into `/etc/nginx/sites-enabled/examples.stage.vol-a.com` |
+| TLS | ends at the edge in front of the VM, which forwards the name here with `Host` unchanged |
+
+**Set `COMPOSE_PROJECT_NAME`** whenever a stage shares a machine with development. The compose
+file's own name is `jsvola`, the same as the development infrastructure of `compose.yaml`, so
+without it `docker compose` would act on the dev containers and volumes.
+
+In the checkout, the first time:
 
 ```bash
-git pull
+git clone https://github.com/digital-cube/jsvola.git /home/digital/sites/examples.stage.vol-a.com
+cd /home/digital/sites/examples.stage.vol-a.com
 
 # one time: the key pair for .env (nothing is stored; the server stores them at its start)
 docker compose -f docker-compose.yaml run --rm --no-deps vola vola demo-keys
@@ -128,37 +142,55 @@ docker compose -f docker-compose.yaml run --rm --no-deps vola vola demo-keys
 
 # one time: the key file and the pepper file (encrypted files and keyrings on the site)
 mkdir -p secrets && chmod 700 secrets
+podman unshare chown 1000:1000 secrets      # rootless podman only, see below
 docker compose -f docker-compose.yaml run --rm --no-deps -v "$PWD/secrets:/out" vola \
   sh -c 'vola keys-generate --path /out/vola.key && vola pepper-generate --path /out/vola.pepper'
 
 docker compose -f docker-compose.yaml build vola
 docker compose -f docker-compose.yaml --profile demo up -d      # vola, vola-worker, postgres, redis, seeder
 docker compose -f docker-compose.yaml logs seeder               # "demo pack: 10 uploaded, …"
-curl -s https://<host>/vola/examples/config | head -c 200       # the read-only key
+curl -s https://examples.stage.vol-a.com/vola/examples/config | head -c 200   # the read-only key
+
+sudo ln -sfn "$PWD/deploy/examples/nginx/examples.stage.vol-a.com.conf" \
+  /etc/nginx/sites-enabled/examples.stage.vol-a.com
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-(`podman-compose` works the same way.) The stage `.env`, next to `docker-compose.yaml`:
+**Rootless podman.** Inside the container the CLI runs as uid 1000, which on the host is a uid
+from your sub-uid range, not you. A `secrets/` you own is not writable from there and
+`vola keys-generate` fails with `EACCES`; `podman unshare chown 1000:1000 secrets` hands it to the
+container's uid. On the host the directory then shows an owner like `100999`, which is expected.
+`up --wait` also fails on podman, because the worker runs without a health check
+(`unexpected health status ""`), even though the stack is fine: leave out `--wait` and poll
+`/vola/health/ready`.
+
+The stage `.env`, next to `docker-compose.yaml`:
 
 ```bash
+COMPOSE_PROJECT_NAME=jsvola-stage        # not "jsvola": that is the dev infrastructure on this VM
+COMPOSE_PROFILES=demo                    # the seeder at every `up`
+VOLA_IMAGE=localhost/jsvola-stage:latest # what `build` tags, so nothing pulls over it
 # the site
 VOLA_EXAMPLES=true
 VOLA_DEMO_API_KEY=vola_live_…            # from `vola demo-keys`
 VOLA_DEMO_WRITE_KEY=vola_live_…          # from `vola demo-keys`
-VOLA_PUBLIC_URL=https://<host>           # the stage hostname, no path, no trailing slash
-VOLA_TRUST_PROXY=true                    # behind nginx / traefik
-COMPOSE_PROFILES=demo                    # the seeder at every `up`
+VOLA_PUBLIC_URL=https://examples.stage.vol-a.com   # no path, no trailing slash
+VOLA_TRUST_PROXY=true                    # behind nginx
 VOLA_SECRETS_DIR=./secrets               # vola.key + vola.pepper (default)
 # the stack
 POSTGRES_PASSWORD=<strong>
-VOLA_HOST_PORT=8300                      # what the reverse proxy forwards to
+POSTGRES_PORT=5435
+REDIS_PORT=6382
+VOLA_HOST_PORT=8300                      # what the vhost forwards to
 # optional
 VOLA_DEMO_TTL_HOURS=24
 VOLA_DEMO_RATE_LIMIT=60
 VOLA_OCR_ENABLED=auto
 ```
 
-The reverse proxy forwards the hostname to `VOLA_HOST_PORT` with WebSocket upgrades allowed
-(`/vola/udc/subscribe`) and a body limit of at least 6 MiB. After every later change:
+Another host works the same way: the reverse proxy forwards the hostname to `VOLA_HOST_PORT` with
+WebSocket upgrades allowed (`/vola/udc/subscribe`) and a body limit of at least 6 MiB. After every
+later change:
 `git pull && docker compose -f docker-compose.yaml build vola && docker compose -f docker-compose.yaml --profile demo up -d`.
 
 ## Verification
@@ -177,5 +209,4 @@ The reverse proxy forwards the hostname to `VOLA_HOST_PORT` with WebSocket upgra
 
 ## Out of scope
 
-The production site; self-service registration (memento's `service.`); the hostname, DNS
-and server (TCK9D5KENM).
+The production site; self-service registration (memento's `service.`).

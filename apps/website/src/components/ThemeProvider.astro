@@ -1,0 +1,12 @@
+---
+/*
+ * Starlight's ThemeProvider, dark first: no stored choice means dark, whatever the system says.
+ * Inlined so no page paints in the wrong theme. The home page and the 404 use the same one, so
+ * the choice follows the reader between them and the docs.
+ */
+---
+
+<script is:inline>
+  document.documentElement.dataset.theme =
+    localStorage.getItem("starlight-theme") === "light" ? "light" : "dark";
+</script>

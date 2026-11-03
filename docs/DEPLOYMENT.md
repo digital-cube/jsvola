@@ -352,6 +352,55 @@ curl -s localhost:8300/vola/examples/config | jq .tenant                        
 
 Design, limits, the purge and the stage deploy: [EXAMPLES-SITE.md](EXAMPLES-SITE.md).
 
+On podman, `--wait` fails on the worker, which runs without a health check, even though the stack
+is fine; leave it out and poll `/vola/health/ready`. Rootless podman also needs
+`podman unshare chown 1000:1000 secrets` before `vola keys-generate` can write there
+([EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
+
+## The website
+
+`https://stage.vol-a.com/` is `apps/website` (`@vola/website`): vola's own website, Astro +
+Starlight, static files served by nginx on the stage VM. It is **not part of the image** (the
+Dockerfile's turbo filters leave it out) and has no server: one build, swapped in under a symlink.
+The examples stack is separate and lives at `https://examples.stage.vol-a.com/`
+([EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
+
+The build reads two variables (`apps/website/src/site.mjs`); the defaults are production's:
+
+| variable | | default | stage |
+|---|---|---|---|
+| `SITE_URL` | the site's own origin (canonical links, sitemap) | `https://vol-a.com` | `https://stage.vol-a.com` |
+| `EXAMPLE_URL` | the examples site ("Open the live examples") | `https://examples.stage.vol-a.com` | the same |
+
+No production examples instance exists yet, so `EXAMPLE_URL` defaults to stage; the default moves
+when one does.
+
+On the stage VM, from any copy of the repository:
+
+```bash
+deploy/website/stage.sh --install                    # once: links the vhost, nginx -t, reload, deploy
+deploy/website/stage.sh                              # every deploy: builds origin/main and swaps it in
+deploy/website/stage.sh --branch <name>              # a branch before review
+REPO_URL=/home/digital/work/jsvola deploy/website/stage.sh --branch main   # commits not pushed yet
+```
+
+It clones or fetches the repository into `/home/digital/sites/stage.vol-a.com/src`, checks out
+`origin/<branch>`, installs `@vola/website` and its dependencies only (`pnpm install
+--frozen-lockfile --filter @vola/website...`, pnpm from `packageManager` through corepack, Node 24
+from nvm), builds with the stage variables, copies `apps/website/dist` to `releases/<short sha>/`,
+repoints `current` atomically, keeps three releases, and fails unless `/` answers 200 and a missing
+page the site's 404 through nginx on 127.0.0.1, and `/` answers this build through the edge. The
+same commit with the same variables rebuilds nothing. `deploy/website/stage.sh --help` has the
+options and exit codes.
+
+The vhost is `deploy/website/nginx/stage.vol-a.com.conf`, linked into
+`/etc/nginx/sites-enabled/stage.vol-a.com` from the deployed checkout: `:80` only (TLS ends at the
+edge), `server_name stage.vol-a.com;`, `root …/current`, `/_astro/` cached for a year
+(content-hashed), the rest `no-cache`, `error_page 404 /404.html`, `absolute_redirect off`.
+
+How the site is put together, and how to record its snippets and screenshots:
+[`apps/website/README.md`](../apps/website/README.md).
+
 ## Checking a deployment
 
 ```sh

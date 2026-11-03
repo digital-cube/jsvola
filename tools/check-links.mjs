@@ -23,10 +23,15 @@ const SKIP_DIRS = new Set([
   "secrets",
 ]);
 
+// Pages of the website: their links are routes of the site, checked by its build
+// (starlight-links-validator), and most are generated from the documents checked here.
+const SKIP_PATHS = new Set([join(root, "apps", "website", "src", "content")]);
+
 function* markdownFiles(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) yield* markdownFiles(join(dir, entry.name));
+      const path = join(dir, entry.name);
+      if (!SKIP_DIRS.has(entry.name) && !SKIP_PATHS.has(path)) yield* markdownFiles(path);
     } else if (entry.name.endsWith(".md")) {
       yield join(dir, entry.name);
     }

@@ -1,0 +1,85 @@
+---
+/*
+ * A band of the home page: the rule, the mono number and name on it, then the 5/7 grid. `head`
+ * is the heading and its prose (the 5), the default slot is what they talk about (the 7); `wide`
+ * is whatever needs the full width underneath.
+ */
+interface Props {
+  id: string;
+  number: string;
+  name: string;
+  title: string;
+}
+
+const { id, number, name, title } = Astro.props;
+---
+
+<section class="band" aria-labelledby={id}>
+  <p class="band-label" aria-hidden="true">{number} / {name}</p>
+  <div class="band-grid">
+    <div class="band-head">
+      <h2 id={id}>{title}</h2>
+      <slot name="head" />
+    </div>
+    <div class="band-body"><slot /></div>
+  </div>
+  <slot name="wide" />
+</section>
+
+<style>
+  .band {
+    margin-inline: auto;
+    max-width: var(--page-width);
+    padding: 0 var(--page-gutter) clamp(3.5rem, 8vw, 6.5rem);
+  }
+  .band-label {
+    margin: 0;
+    padding-block: 0.7rem clamp(2rem, 5vw, 3.75rem);
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    color: var(--vola-accent);
+    border-top: 1px solid var(--vola-rule-strong);
+  }
+  .band-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+  h2 {
+    margin: 0;
+    max-width: 16ch;
+    font-size: clamp(1.9rem, 3.4vw, 2.85rem);
+    font-stretch: 112%;
+    font-weight: 560;
+    line-height: 1.06;
+    letter-spacing: -0.018em;
+    color: var(--vola-ink);
+    text-wrap: balance;
+  }
+  .band-head :global(p) {
+    margin: 1.25rem 0 0;
+    max-width: 44ch;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    color: var(--vola-ink-2);
+  }
+  .band-head :global(p code) {
+    font-family: var(--vola-font-mono);
+    font-size: 0.86em;
+    color: var(--vola-ink);
+  }
+  .band-body {
+    min-width: 0;
+  }
+  @media (min-width: 62rem) {
+    .band-grid {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: clamp(2rem, 4vw, 4.5rem);
+    }
+    .band-head {
+      position: sticky;
+      top: 1.5rem;
+      align-self: start;
+    }
+  }
+</style>

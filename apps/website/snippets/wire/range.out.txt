@@ -1,0 +1,10 @@
+HTTP/1.1 206 Partial Content
+Content-Type: image/jpeg
+Content-Length: 8192
+Content-Range: bytes 8192-16383/41167
+Accept-Ranges: bytes
+ETag: "4d88c02489c92231…"
+Cache-Control: private, no-cache
+Content-Disposition: inline; filename="aurora.jpg"
+
+<8192 bytes of image/jpeg>

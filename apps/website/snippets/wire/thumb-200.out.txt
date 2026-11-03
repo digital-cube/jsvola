@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: image/webp
+Content-Length: 1960
+ETag: "4d88c02489c92231….thumb-256-cover.webp"
+Cache-Control: private, max-age=86400
+X-Thumbnail-Status: ready
+
+<1960 bytes of image/webp>

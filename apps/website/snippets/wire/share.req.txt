@@ -1,0 +1,9 @@
+POST /vola/shares HTTP/1.1
+Authorization: Bearer $KEY
+Content-Type: application/json
+
+{
+  "file_id": "01a19fd3",
+  "expires_at": "2026-11-04T05:13:03Z",
+  "max_downloads": 3
+}

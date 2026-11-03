@@ -1,0 +1,1 @@
+{"status":"ok","checks":{"database":"ok","redis":"ok"}}

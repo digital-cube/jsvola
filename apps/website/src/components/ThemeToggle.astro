@@ -1,0 +1,41 @@
+---
+/*
+ * One button instead of Starlight's three-way select: dark is the site's own default and light is
+ * the choice you make, so there is no "auto" to explain. The label names the theme it switches to.
+ */
+---
+
+<button type="button" class="vola-theme-toggle" data-vola-theme-toggle>
+  <span data-when="dark">Light</span>
+  <span data-when="light">Dark</span>
+</button>
+
+<script>
+  for (const button of document.querySelectorAll("[data-vola-theme-toggle]")) {
+    button.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("starlight-theme", next);
+    });
+  }
+</script>
+
+<style>
+  .vola-theme-toggle {
+    padding: 0.25rem 0.6rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    color: var(--vola-ink-2);
+    background: transparent;
+    border: 1px solid var(--vola-rule);
+    cursor: pointer;
+  }
+  .vola-theme-toggle:hover {
+    color: var(--vola-ink);
+    border-color: var(--vola-rule-strong);
+  }
+  :global(:root[data-theme="light"]) [data-when="dark"],
+  :global(:root:not([data-theme="light"])) [data-when="light"] {
+    display: none;
+  }
+</style>

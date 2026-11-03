@@ -1,0 +1,18 @@
+---
+title: Get started
+description: Four ways in to vola, from a whole server in Docker to one plugin in your own Fastify application.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+vola is a server your application talks to over HTTP. Which page you want depends on what you already have.
+
+| You have | Read | You end up with |
+| --- | --- | --- |
+| Docker and nothing else | [Run it with Docker](/get-started/docker/) | The server, the worker, PostgreSQL and Redis on your machine, a tenant, a key and a first upload |
+| A vola server, and a backend or a browser app | [Call it with @vola/client](/get-started/client/) | Typed calls for every route, with Range reads and thumbnails handled |
+| A vola server and a React app | [Draw it with @vola/react](/get-started/react/) | A file browser with uploads, thumbnails, a PIN gate and share links |
+| A Fastify application | [Embed it with volaPlugin](/get-started/embedded/) | vola's routes inside your own process, next to your own |
+
+To see it working first, without installing anything, open the [live examples](/examples/). Every command on these pages was run as written, and the programs are compiled against this repository whenever the site is built.

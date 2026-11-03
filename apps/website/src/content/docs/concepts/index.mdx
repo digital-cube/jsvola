@@ -1,0 +1,48 @@
+---
+title: Concepts
+description: A map of the ideas behind vola, from how bytes are stored to how a list stays live.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+vola is a file service that runs beside your application. Your application hands it files and gets back ids, downloads with `Range`, thumbnails, OCR text, share links, folders and versions, separated per tenant and per entity in your own data model.
+
+These pages explain how that works and why. For the exact routes, headers and error codes, go to the [Reference](/reference/). To run something first, go to [Get started](/get-started/).
+
+## Storage and identity
+
+[Files and storage](/concepts/files-and-storage/) covers the model everything else builds on.
+
+- How a blob is stored once under its SHA-256, and when it leaves the disk.
+- The instance model: every file belongs to a tenant and to an entity of your application.
+- Folders, slugs and versions.
+- Tenants, API keys and scopes.
+
+Read it first if you are new to vola.
+
+## What happens to an upload
+
+[Uploads and processing](/concepts/uploads-and-processing/) follows the bytes after they arrive.
+
+- The two steps every upload ends in.
+- Resumable uploads over tus.
+- The worker and its queue.
+- Thumbnails and the `202` rules every client has to follow.
+- OCR and full-text search.
+
+## Encryption at rest
+
+[Encryption](/concepts/encryption/) describes the four modes (`tenant`, `keyring`, `caller` and `client`), who holds which key, what each mode costs you and what a stolen dump reveals. The byte-level format is in the [crypto reference](/reference/crypto/).
+
+## Live lists
+
+[Real-time](/concepts/real-time/) explains the `/udc/subscribe` WebSocket: what it carries, who publishes the events and how a list on screen stays current without polling.
+
+## The public demo
+
+[The examples site](/concepts/examples-site/) explains how a public site can let anonymous visitors upload, share and set a PIN: a read-only key in the browser, a write proxy with a policy, a rate limit and a purge. The pages themselves are under [Examples](/examples/).
+
+## Coming from the old service
+
+[Migrating from vola-spp](/concepts/migrating-from-vola-spp/) is for applications that call vola-spp today. It lists what changes on the wire, what stays the same and a checklist per consumer. There is no data migration.

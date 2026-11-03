@@ -1,0 +1,92 @@
+---
+/*
+ * The API: the routes table (src/routes.mjs, which scripts/check-snippets.mjs holds to docs/API.md)
+ * and curl with the demo key, the commands and what they printed from snippets/api/.
+ */
+import { Code } from "@astrojs/starlight/components";
+import key from "../../../snippets/api/1-key.sh?raw";
+import listOut from "../../../snippets/api/2-list.out.txt?raw";
+import list from "../../../snippets/api/2-list.sh?raw";
+import rangeOut from "../../../snippets/api/3-range.out.txt?raw";
+import range from "../../../snippets/api/3-range.sh?raw";
+import { ROUTES } from "../../routes.mjs";
+import Section from "../Section.astro";
+
+---
+
+<Section id="the-api" number="04" name="API" title="The API">
+  <Fragment slot="head">
+    <p>
+      Plain HTTP under one prefix, <code>/vola</code>. A key belongs to one tenant and holds scopes;
+      another tenant's file is a <code>404</code>, never a <code>403</code>.
+    </p>
+    <p>These commands work as written against the live examples, with the key that instance gives everyone.</p>
+    <p><a href="/reference/api/">Every route, with its answers and error codes</a></p>
+  </Fragment>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Route</th>
+        <th scope="col">What it does</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        ROUTES.map((r) => (
+          <tr>
+            <th scope="row"><code>{r.route}</code></th>
+            <td>{r.does}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+
+  <div class="curl">
+    <Code code={key.trimEnd()} lang="sh" />
+    <Code code={list.trimEnd()} lang="sh" />
+    <Code code={listOut.trimEnd()} lang="txt" title="What it printed" />
+    <Code code={range.trimEnd()} lang="sh" />
+    <Code code={rangeOut.trimEnd()} lang="txt" title="What it printed" />
+  </div>
+</Section>
+
+<style>
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  th,
+  td {
+    padding: 0.55rem 1.5rem 0.55rem 0;
+    text-align: start;
+    vertical-align: top;
+    border-top: 1px solid var(--vola-rule);
+  }
+  thead th {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--vola-ink-3);
+    border-top: 0;
+  }
+  tbody th {
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  code {
+    font-size: 0.8125rem;
+    color: var(--vola-ink);
+  }
+  .curl {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 2.25rem;
+  }
+  .curl :global(.expressive-code) {
+    margin: 0;
+  }
+</style>

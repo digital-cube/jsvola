@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "env": ["SITE_URL", "EXAMPLE_URL"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!src/content/docs/reference/**",
+        "!src/content/docs/packages/changelog.md",
+        "$TURBO_ROOT$/docs/**",
+        "$TURBO_ROOT$/CHANGELOG.md",
+        "$TURBO_ROOT$/menu.yaml",
+        "$TURBO_ROOT$/packages/*/package.json"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "env": ["SITE_URL", "EXAMPLE_URL"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!src/content/docs/reference/**",
+        "!src/content/docs/packages/changelog.md",
+        "$TURBO_ROOT$/docs/**",
+        "$TURBO_ROOT$/CHANGELOG.md",
+        "$TURBO_ROOT$/menu.yaml"
+      ]
+    }
+  }
+}

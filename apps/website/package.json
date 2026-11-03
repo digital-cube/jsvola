@@ -1,0 +1,43 @@
+{
+  "name": "@vola/website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "vol-a.com: the website of vola (Astro + Starlight), static files built by deploy/website/stage.sh; not part of the Docker image.",
+  "type": "module",
+  "scripts": {
+    "gen": "node scripts/gen-reference.mjs && node scripts/gen-changelog.mjs",
+    "dev": "pnpm run gen && astro dev",
+    "build": "pnpm run gen && astro build",
+    "preview": "astro preview",
+    "typecheck": "pnpm run gen && astro check && node scripts/check-snippets.mjs",
+    "shots": "node scripts/shots.mjs",
+    "capture": "node scripts/capture.mjs",
+    "check:snippets": "node scripts/check-snippets.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.8",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "astro": "^7.4.4",
+    "sharp": "^0.35.5",
+    "starlight-links-validator": "^0.27.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@jsudc/core": "0.2.0",
+    "@jsudc/react": "0.2.0",
+    "@tanstack/react-query": "5.104.4",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@vola/client": "workspace:*",
+    "@vola/core": "workspace:*",
+    "@vola/react": "workspace:*",
+    "@vola/server": "workspace:*",
+    "fastify": "^5.12.7",
+    "github-slugger": "2.0.0",
+    "marked": "18.1.2",
+    "playwright": "1.64.1",
+    "react": "^19.3.1",
+    "typescript": "^5.9.3"
+  }
+}

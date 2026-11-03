@@ -1,0 +1,28 @@
+---
+title: Draw it with @vola/react
+description: A file browser, uploads, thumbnails, the keyring PIN gate and the share dialog as React 19 components.
+sidebar:
+  order: 3
+---
+
+import { Code } from "@astrojs/starlight/components";
+import app from "../../../../snippets/react/App.tsx?raw";
+
+`@vola/react` is the interface for one instance of your application, for example the files of one ticket. Every request goes through a `VolaClient`.
+
+<Code code={app} lang="tsx" title="App.tsx" />
+
+The [Browse example](/examples/browse/) is this component running against a demo instance.
+
+## What you get
+
+| Component | What it draws |
+| --- | --- |
+| `VolaProvider` | Nothing itself: the client, English and Serbian strings, the data view's providers, the keyring store and its auto-lock |
+| `VolaFileBrowser` | Breadcrumbs, subfolders, a live table with search and filters, row actions and a drop zone |
+| `VolaUploadButton`, `useVolaUpload` | Plain uploads under 8 MiB, resumable above, with progress, cancel and resume after a reload |
+| `VolaThumb` | A thumbnail that waits out the 202 with a backoff and never caches the placeholder |
+| `VolaPinGate`, `useVolaKeyring` | PIN setup with the recovery key shown once, unlock, wrong attempts, the lock-out countdown, recovery and reset |
+| `VolaShareDialog` | Password, expiry, download cap, copy, list and revoke |
+
+The peers and every prop are in the [package README](https://github.com/digital-cube/jsvola/blob/main/packages/react/README.md).

@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{
+  "id": "01a19fd3",
+  "hash": "4d88c02489c92231…",
+  "size": 41167,
+  "filename": "aurora.jpg",
+  "mime_type": "image/jpeg",
+  "kind": "image",
+  "encryption": "none",
+  "processing_status": "RUNNING"
+}

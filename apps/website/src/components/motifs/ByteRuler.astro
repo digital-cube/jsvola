@@ -1,0 +1,91 @@
+---
+/*
+ * A Range read as a strip of the file: 48 cells, each showing the real byte at its offset in the
+ * demo pack's aurora.jpg, with the cells of the recorded 206 lit. Offsets come out of the recorded
+ * Content-Range (snippets/wire/range.out.txt), never typed here.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { headerOf, statusOf } from "../../wire";
+
+const CELLS = 48;
+const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headerOf("range", "Content-Range"));
+if (!match) throw new Error("snippets/wire/range.out.txt: no Content-Range");
+const [start, end, size] = match.slice(1).map(Number) as [number, number, number];
+const bytes = readFileSync(join(process.cwd(), "..", "examples", "assets", "images", "aurora.jpg"));
+const cells = Array.from({ length: CELLS }, (_, i) => {
+  const from = Math.floor((i * size) / CELLS);
+  const to = Math.floor(((i + 1) * size) / CELLS) - 1;
+  return {
+    hex: (bytes[from % bytes.length] ?? 0).toString(16).padStart(2, "0"),
+    lit: to >= start && from <= end,
+  };
+});
+const first = (start / size) * 100;
+const last = ((end + 1) / size) * 100;
+const status = statusOf("range");
+const label = `Of ${size} bytes, the answer holds bytes ${start} to ${end}: ${status}.`;
+---
+
+<figure class="ruler" role="img" aria-label={label}>
+  <div class="scale" aria-hidden="true">
+    <span class="tick" style="left: 0">0</span>
+    <span class="tick" style={`left: ${first}%`}>{start}</span>
+    <span class="tick" style={`left: ${last}%`}>{end}</span>
+    <span class="tick end" style="right: 0">{size}</span>
+  </div>
+  <div class="cells" aria-hidden="true">
+    {cells.map((c) => <span class:list={["cell", { lit: c.lit }]}>{c.hex}</span>)}
+  </div>
+</figure>
+
+<style>
+  .ruler {
+    margin: 0;
+    padding: 0.5rem 0 0;
+    overflow-x: auto;
+  }
+  .scale {
+    position: relative;
+    height: 1.4rem;
+    min-width: 40rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.6875rem;
+    color: var(--vola-ink-3);
+  }
+  .tick {
+    position: absolute;
+    bottom: 0.15rem;
+    padding-inline-start: 0.25rem;
+    border-inline-start: 1px solid var(--vola-rule-strong);
+    line-height: 1.25rem;
+  }
+  .tick.end {
+    padding-inline: 0 0.25rem;
+    border-inline: 0;
+    border-inline-end: 1px solid var(--vola-rule-strong);
+  }
+  .cells {
+    display: grid;
+    grid-template-columns: repeat(48, minmax(0, 1fr));
+    min-width: 40rem;
+    border: 1px solid var(--vola-rule-strong);
+    font-family: var(--vola-font-mono);
+    font-size: 0.5625rem;
+    text-align: center;
+  }
+  .cell {
+    padding-block: 0.65rem;
+    color: var(--vola-ink-3);
+    border-inline-start: 1px solid var(--vola-rule);
+  }
+  .cell:first-child {
+    border-inline-start: 0;
+  }
+  .lit {
+    color: var(--vola-accent-ink);
+    font-weight: 600;
+    background: var(--vola-accent);
+    border-inline-start-color: var(--vola-accent);
+  }
+</style>

@@ -1,0 +1,204 @@
+/*
+ * Starlight wearing vola's tokens (tokens.css): every colour, font and rule of the docs comes from
+ * there. No rounded cards, no shadows: hairlines and grids. Unlayered, so it overrides Starlight's
+ * own layers.
+ */
+:root,
+:root[data-theme="light"] {
+  --sl-font: var(--vola-font-sans);
+  --sl-font-mono: var(--vola-font-mono);
+  --sl-color-white: var(--vola-ink);
+  --sl-color-gray-1: var(--vola-ink);
+  --sl-color-gray-2: var(--vola-ink-2);
+  --sl-color-gray-3: var(--vola-ink-3);
+  --sl-color-gray-4: var(--vola-rule-strong);
+  --sl-color-gray-5: var(--vola-rule);
+  --sl-color-gray-6: var(--vola-surface);
+  --sl-color-gray-7: var(--vola-surface);
+  --sl-color-black: var(--vola-ground);
+  --sl-color-bg: var(--vola-ground);
+  --sl-color-bg-nav: var(--vola-ground);
+  --sl-color-bg-sidebar: var(--vola-ground);
+  --sl-color-bg-inline-code: var(--vola-raised);
+  --sl-color-text: var(--vola-ink-2);
+  --sl-color-text-accent: var(--vola-accent);
+  --sl-color-text-invert: var(--vola-accent-ink);
+  --sl-color-accent-low: var(--vola-accent-low);
+  --sl-color-accent: var(--vola-accent);
+  --sl-color-accent-high: var(--vola-accent);
+  --sl-color-hairline: var(--vola-rule);
+  --sl-color-hairline-light: var(--vola-rule);
+  --sl-color-hairline-shade: var(--vola-rule);
+  --sl-color-backdrop-overlay: color-mix(in srgb, var(--vola-ground) 80%, transparent);
+  --sl-shadow-sm: none;
+  --sl-shadow-md: none;
+  --sl-shadow-lg: none;
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.625rem;
+  --sl-text-h3: 1.25rem;
+  --sl-text-h4: 1.0625rem;
+  --sl-line-height-headings: 1.15;
+  --sl-sidebar-width: 17rem;
+  --sl-nav-height: 3.5rem;
+}
+
+html {
+  font-synthesis: none;
+}
+
+::selection {
+  color: var(--vola-accent-ink);
+  background: var(--vola-accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--vola-accent);
+  outline-offset: 2px;
+}
+
+/* Headings: the home page's grotesk, a little wide, never italic. */
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6),
+h1#_top {
+  font-family: var(--vola-font-sans);
+  font-stretch: 108%;
+  font-weight: 560;
+  letter-spacing: -0.012em;
+}
+
+.sl-markdown-content em {
+  font-style: normal;
+  color: var(--vola-ink);
+}
+
+.sl-markdown-content h2,
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  width: 100%;
+}
+.sl-markdown-content h2 {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--vola-rule);
+}
+
+.sl-markdown-content a {
+  color: var(--vola-accent);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+.sl-markdown-content a:hover {
+  color: var(--vola-ink);
+}
+
+/* Inline code is a label, the mono carrying the same weight as the sentence around it. */
+.sl-markdown-content :not(pre) > code {
+  padding: 0.08em 0.32em;
+  font-size: 0.86em;
+  color: var(--vola-ink);
+  background: var(--vola-raised);
+  border: 0;
+  border-radius: 0;
+}
+
+/* Tables: rules only. */
+.sl-markdown-content table {
+  font-size: var(--sl-text-sm);
+  border-collapse: collapse;
+}
+.sl-markdown-content :is(th, td) {
+  padding: 0.5rem 0.9rem 0.5rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--vola-rule);
+}
+.sl-markdown-content :is(th, td):first-child {
+  padding-inline-start: 0;
+}
+.sl-markdown-content th {
+  color: var(--vola-ink);
+  font-weight: 600;
+  background: transparent;
+  border-bottom-color: var(--vola-rule-strong);
+}
+.sl-markdown-content tr:nth-child(2n) {
+  background: transparent;
+}
+
+/* Asides: a rule on the left, no filled box. */
+.starlight-aside {
+  padding: 0.25rem 0 0.25rem 1rem;
+  background: transparent;
+  border: 0;
+  border-inline-start: 2px solid var(--vola-accent);
+  color: var(--vola-ink-2);
+}
+.starlight-aside__title {
+  color: var(--vola-ink);
+  font-family: var(--vola-font-mono);
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+}
+.starlight-aside__icon {
+  display: none;
+}
+
+/* Sidebar and header: flat, ruled, the current page marked by a bar in the accent. */
+.sidebar-pane {
+  border-inline-end: 1px solid var(--vola-rule);
+}
+.sidebar-content a {
+  border-radius: 0;
+  border-inline-start: 2px solid transparent;
+  color: var(--vola-ink-2);
+}
+.sidebar-content a:hover {
+  color: var(--vola-ink);
+}
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  color: var(--vola-ink);
+  background: transparent;
+  border-inline-start-color: var(--vola-accent);
+  font-weight: 600;
+}
+.sidebar-content .group-label .large {
+  font-family: var(--vola-font-mono);
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  color: var(--vola-ink-3);
+}
+.header {
+  border-bottom: 1px solid var(--vola-rule);
+}
+site-search button[data-open-modal] {
+  border-radius: 0;
+  background: transparent;
+  border-color: var(--vola-rule);
+  color: var(--vola-ink-3);
+}
+site-search dialog {
+  border-radius: 0;
+}
+.pagination-links a {
+  border-radius: 0;
+  border-color: var(--vola-rule);
+  box-shadow: none;
+}
+.sl-link-button {
+  border-radius: 0;
+}
+.right-sidebar {
+  border-inline-start: 1px solid var(--vola-rule);
+}
+.right-sidebar a[aria-current="true"] {
+  color: var(--vola-accent);
+}
+.sl-markdown-content summary {
+  color: var(--vola-ink);
+}
+
+/* Numbered steps: square markers, like everything else here. */
+.sl-steps > li::before {
+  border-radius: 0;
+  font-family: var(--vola-font-mono);
+  font-size: var(--sl-text-xs);
+}

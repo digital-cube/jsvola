@@ -1,0 +1,30 @@
+---
+title: Call it with @vola/client
+description: The fetch SDK for every route of vola, typed by @vola/core, for Node 24 and browsers.
+sidebar:
+  order: 2
+---
+
+import { Code } from "@astrojs/starlight/components";
+import install from "../../../../snippets/client/install.sh?raw";
+import output from "../../../../snippets/client/output.txt?raw";
+import read from "../../../../snippets/client/read.ts?raw";
+
+`@vola/client` wraps every route in a typed call. It runs in Node 24 and in browsers, and it never puts a key, a token or a secret in a URL.
+
+<Code code={install} lang="sh" title="Terminal" />
+
+This program reads the live examples instance, using the read-only key that instance hands to every visitor, so you can run it right now:
+
+<Code code={read} lang="ts" title="read.ts" />
+<Code code={output} lang="txt" title="What it printed" />
+
+## Two answers to handle
+
+**A thumbnail can answer 202.** That status counts as success, and its body is a grey placeholder, so `vola.files.thumb` tells you which one you got through `status`: `ready`, `generating` or `failed`. Retry `generating` with a backoff, and don't cache it.
+
+**A failed call throws a `VolaError`** carrying the server's `status`, `code` and `message`. A file that needs an unlock it doesn't have throws `VolaLockedError`, and a wrong key or damaged bytes throw `VolaIntegrityError`.
+
+## What else it covers
+
+Resumable uploads that continue after an abort, folders, share links, keyrings and their unlock tokens, statistics and UDC collections. The [package README](https://github.com/digital-cube/jsvola/blob/main/packages/client/README.md) has an example of each.

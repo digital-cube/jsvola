@@ -1,0 +1,6 @@
+created tenant acme (Acme Inc) id=01a19fc9
+created key vola_live… "backend" for tenant acme
+  id      01a19fc9
+  scopes  files:read, files:write, folders:read, folders:write, shares:write
+  Plaintext key (shown ONCE — store it now, it cannot be recovered):
+  vola_live_...

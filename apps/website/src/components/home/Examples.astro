@@ -1,0 +1,90 @@
+---
+/* The examples, live: one row per page of menu.yaml, a real screenshot and the link to the page. */
+import { EXAMPLES } from "../../examples.mjs";
+import { EXAMPLE_URL } from "../../site.mjs";
+import ExampleShot from "../ExampleShot.astro";
+import Section from "../Section.astro";
+---
+
+<Section id="examples" number="02" name="Live" title="The examples, live">
+  <Fragment slot="head">
+    <p>
+      A running vola with a demo tenant and a read-only key for you. Nothing to install or sign up
+      for. You can upload, share and encrypt there; what you leave is purged after a day.
+    </p>
+    <p><a class="button primary" href={EXAMPLE_URL}>Open the live examples</a></p>
+  </Fragment>
+
+  <ul class="rows">
+    {
+      EXAMPLES.map((example) => (
+        <li>
+          <div class="text">
+            <h3>
+              <a href={EXAMPLE_URL + example.path}>{example.label}</a>
+            </h3>
+            <code>{example.path.split("?")[0]}</code>
+            <p>{example.shows}</p>
+          </div>
+          <a class="shot" href={EXAMPLE_URL + example.path} tabindex="-1" aria-hidden="true">
+            <ExampleShot name={example.name} alt="" sizes="(min-width: 62rem) 24rem, 100vw" />
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</Section>
+
+<style>
+  .rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem 2rem;
+    padding-block: 1.5rem;
+    border-top: 1px solid var(--vola-rule);
+  }
+  li:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+  h3 {
+    margin: 0;
+    font-size: 1.1875rem;
+    font-stretch: 108%;
+    font-weight: 560;
+  }
+  h3 a {
+    color: var(--vola-ink);
+    text-decoration: none;
+  }
+  h3 a:hover {
+    color: var(--vola-accent);
+    text-decoration: underline;
+  }
+  code {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    color: var(--vola-ink-3);
+  }
+  p {
+    margin: 0.6rem 0 0;
+    max-width: 44ch;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+  .shot {
+    display: block;
+    min-width: 0;
+  }
+  @media (min-width: 48rem) {
+    li {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    }
+  }
+</style>

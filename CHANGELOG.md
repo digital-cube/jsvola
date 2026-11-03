@@ -7,7 +7,26 @@ share one version.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`apps/website` (`@vola/website`, private): the website and documentation, for vol-a.com.**
+  Astro with Starlight under the docs and Pagefind search; a home page of its own, dark first, in
+  Archivo and JetBrains Mono, drawn from the product: a thumbnail going from 202 to 200, a byte
+  ruler over a recorded `206`, a contact sheet of real renditions, the JSV v1 segment diagram.
+  Every request and answer it shows is recorded (`scripts/capture.mjs`), every command was run,
+  every program compiles against the workspace (`scripts/check-snippets.mjs`, part of
+  `typecheck`). The Reference section and the changelog page are generated from `docs/` and
+  `CHANGELOG.md`, and a broken link fails the build. Not part of the Docker image.
+- `deploy/website/stage.sh` and `deploy/website/nginx/stage.vol-a.com.conf`: build-and-swap of the
+  website at `https://stage.vol-a.com/`; `deploy/examples/nginx/examples.stage.vol-a.com.conf`:
+  the examples stack's vhost, now in the repository and answering its own name only.
+
+### Changed
+
+- The examples stack moved to `/home/digital/sites/examples.stage.vol-a.com` and is reached only
+  at `https://examples.stage.vol-a.com/`; `docs/EXAMPLES-SITE.md` has the real stage procedure,
+  including `COMPOSE_PROJECT_NAME` on a shared machine and what rootless podman needs, and
+  `docs/DEPLOYMENT.md` has a chapter on the website.
 
 ## [1.0.0] - 2026-11-02
 

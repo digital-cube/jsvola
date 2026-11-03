@@ -1,0 +1,30 @@
+---
+title: Packages
+description: The six published @vola packages and the Docker image, all on one version.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import PackageTable from "../../../components/PackageTable.astro";
+
+Most deployments run the Docker image and use one of the client packages. Reach for `@vola/server` only to embed vola in your own Fastify application.
+
+<PackageTable />
+
+## Which one do you need
+
+| You are | Install |
+| --- | --- |
+| Calling a vola server from a backend or a browser | `@vola/client` |
+| Drawing files in a React app | `@vola/react`, `@vola/client` and their peers |
+| Mounting vola inside Fastify | `@vola/server`, `@vola/core` |
+| Sharing types with your own HTTP client | `@vola/core` |
+
+The `vola` command line (`@vola/cli`) is already inside the image, and `@vola/lookups` is what the server uses for its controlled vocabulary.
+
+## The image
+
+`ghcr.io/digital-cube/jsvola` holds the server, the worker, the command line, the examples site and the tools the worker needs. The tags and every setting are in the [deployment guide](https://github.com/digital-cube/jsvola/blob/main/docs/DEPLOYMENT.md#the-image).
+
+What changed in each release: [Changelog](/packages/changelog/).

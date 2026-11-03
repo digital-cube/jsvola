@@ -1,0 +1,90 @@
+---
+/*
+ * One file as vola renders it: a filmstrip of every size at its true pixel size, and a second of
+ * the three crops. The images are what the server answered (src/assets/wire/, scripts/capture.mjs).
+ */
+const images = import.meta.glob<{ default: ImageMetadata }>("../../assets/wire/*.webp", {
+  eager: true,
+});
+const frame = (size: number, crop: string) => {
+  const image = images[`../../assets/wire/aurora-${size}-${crop}.webp`]?.default;
+  if (!image) throw new Error(`no aurora-${size}-${crop}.webp; run pnpm run capture`);
+  return image;
+};
+const SIZES = [64, 128, 256, 512];
+const CROPS = ["cover", "fit", "attention"];
+---
+
+<figure class="sheet">
+  <figcaption>That file as the server rendered it: every size at its true pixel size, then each crop.</figcaption>
+  <div class="strip" tabindex="0" role="group" aria-label="aurora.jpg at every thumbnail size">
+    {
+      SIZES.map((size) => {
+        const image = frame(size, "cover");
+        return (
+          <div class="exposure">
+            <img src={image.src} width={image.width} height={image.height} alt={`aurora.jpg at ${size} pixels`} loading="lazy" decoding="async" />
+            <span>{size}</span>
+          </div>
+        );
+      })
+    }
+  </div>
+  <div class="strip" tabindex="0" role="group" aria-label="aurora.jpg in each crop mode">
+    {
+      CROPS.map((crop) => {
+        const image = frame(256, crop);
+        return (
+          <div class="exposure">
+            <img src={image.src} width={image.width} height={image.height} alt={`aurora.jpg, crop ${crop}, 256 pixels`} loading="lazy" decoding="async" />
+            <span>256 ?crop={crop}</span>
+          </div>
+        );
+      })
+    }
+  </div>
+</figure>
+
+<style>
+  .sheet {
+    margin: 2.5rem 0 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  figcaption {
+    color: var(--vola-ink);
+    font-weight: 560;
+  }
+  .strip {
+    --sprocket: var(--vola-rule-strong);
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    overflow-x: auto;
+    padding: 1.6rem 1.25rem;
+    background-color: var(--vola-surface);
+    /* the perforations of a strip of film, along both edges */
+    background-image:
+      repeating-linear-gradient(90deg, var(--sprocket) 0 0.5rem, transparent 0.5rem 1.25rem),
+      repeating-linear-gradient(90deg, var(--sprocket) 0 0.5rem, transparent 0.5rem 1.25rem);
+    background-repeat: repeat-x;
+    background-size: auto 0.4rem;
+    background-position: 0 0.5rem, 0 calc(100% - 0.5rem);
+    border-block: 1px solid var(--vola-rule-strong);
+  }
+  .exposure {
+    flex: none;
+    display: grid;
+    gap: 0.4rem;
+  }
+  img {
+    display: block;
+    max-width: none;
+  }
+  span {
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    color: var(--vola-ink-2);
+  }
+</style>

@@ -1,0 +1,112 @@
+---
+title: Files and storage
+description: How vola stores bytes once, ties them to your application's entities, and separates tenants.
+sidebar:
+  order: 1
+---
+
+vola keeps two things apart. The bytes live on disk, named by their hash. Everything a person would call a file (its name, folder, owner, versions) is a row in PostgreSQL that points at those bytes.
+
+## Content addressing
+
+A blob is stored under the SHA-256 of its bytes, at `blobs/aa/bb/cc/<sha256>`, with no extension, because the name is not data.
+
+The same bytes uploaded twice are one blob, whoever uploads them and in whichever tenant. Two rows simply cite the same hash. A blob is never overwritten: when two uploads of the same bytes race, one of them discards its temporary file.
+
+Thumbnails are stored next to the blob they were rendered from, so files with the same content share them too. An encrypted file is the exception: its key and nonce are random per file, so its blob is unique to one row and is never deduplicated.
+
+The rest of the storage directory holds work in progress:
+
+| Path | What it holds |
+| --- | --- |
+| `blobs/aa/bb/cc/<sha256>` | A blob |
+| `blobs/aa/bb/cc/<sha256>.thumb-<size>-<crop>.webp` | A thumbnail of a plain file |
+| `blobs/aa/bb/cc/<sha256>.enc-<file id>-thumb-<size>-<crop>` | A sealed thumbnail of an encrypted file |
+| `tmp/<uuid>` | A multipart upload in flight |
+| `uploads/<upload id>.part` | The bytes of a resumable upload so far |
+| `uploads/<upload id>.partial` | The sealed incomplete segment of an encrypted resumable upload |
+
+Every path is derived from a validated hash or a validated derived name, so no input from a request reaches the file system. The filesystem is the only storage backend in v1.0. The interface it implements is what an S3 backend would implement later.
+
+## Delete and purge
+
+A delete is soft: the row gets a `deleted_at` and the bytes stay. A purge is the only hard delete of a file, and it is the one moment a blob may leave the disk. It goes only when no row of any tenant cites its hash.
+
+Uploads and purges take the same PostgreSQL advisory lock on the hash. That is what makes deduplication safe: a purge cannot remove a blob at the moment a new upload starts citing it.
+
+## The instance model
+
+A file belongs to a tenant and to an **instance**: a pair of `instance_type` and `instance_id` that names an entity in your application. `tickets/<uuid>` is the files of one ticket, and `users/<uuid>` is the files of one user.
+
+`instance_type` is a lowercase identifier and `instance_id` is a UUID. vola does not know what a ticket is. Your application keeps its own data model, and vola keeps the bytes and the hierarchy under it. The instance is in every file route:
+
+```sh
+curl -s -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET | jq '.files | length'
+```
+
+## Folders
+
+Folders are virtual. They are a hierarchy in the database inside one instance, and the blob store stays flat.
+
+- A path looks like `docs/2026`. It can have at most 32 levels, and each segment is 1 to 255 characters. Names may hold spaces and Unicode.
+- Creating a folder is idempotent and creates its parents.
+- Renaming or moving a folder rewrites every descendant path in one transaction. No blob moves.
+- Deleting a folder that is not empty needs `?recursive=1`, otherwise the answer is `409 folder_not_empty`.
+- An upload into a folder where the name already exists is renamed: `a.pdf` becomes `a (1).pdf`.
+
+A folder can also carry an encryption policy, described under [Encryption](/concepts/encryption/).
+
+## Slugs
+
+A slug gives a file a fixed name within an instance, such as `avatar` or `logo`. There is one live file per slug. `PUT /vola/files/:type/:id/slug/:slug` is an upsert: the new upload soft-deletes the previous live file of that slug in the same transaction.
+
+Use a slug when your application asks for a role rather than a file: the current avatar of this user.
+
+## Versions
+
+A version is an upload with a `parent_id`. The new row points at the previous one and inherits its name and folder unless given new ones, and the same name is no collision against its own chain.
+
+The previous version stays live. A download by path answers the newest file of that name. `GET …/:fileId/versions` lists the chain from any member, and a purge removes the whole chain.
+
+## Who may read a file
+
+| Field | Who can read |
+| --- | --- |
+| Neither set | Keys of the owning tenant with `files:read` |
+| `is_public` | Any authenticated tenant, by its full `(type, id, fileId)` |
+| `is_global_public` | Anyone, without a key, through `GET /vola/public/:fileId` |
+
+An encrypted file can never be `is_global_public`. Share links are a separate mechanism: a token that opens one file or one folder, with an optional password, expiry and download cap. The [Share example](/examples/share/) shows them.
+
+## Tenants and keys
+
+Every row that belongs to a tenant carries its id, and every query is scoped by it. Another tenant's file does not exist as far as a request can tell: the answer is `404`, never `403`.
+
+An API key looks like `vola_live_…`, `vola_test_…` or `vola_admin_…`. The plaintext is shown once, and only its SHA-256 is stored. A request sends it in `Authorization: Bearer` or `X-Api-Key`, and a WebSocket sends it as a subprotocol.
+
+| Scope | Allows |
+| --- | --- |
+| `files:read`, `files:write` | Reading and writing files, including resumable uploads |
+| `folders:read`, `folders:write` | Listing and changing folders |
+| `shares:write` | Creating, listing and revoking share links |
+| `keys:write` | Managing API keys |
+| `keyrings:write` | The PIN routes of a keyring |
+| `encryption:caller` | Sending a per-request content key |
+| `admin` | Admin routes |
+
+Two headers complete the picture:
+
+- `X-Tenant-Slug` says which tenant an admin key acts for. An admin key can act for any tenant.
+- `X-User-Id` names the acting user of your application. It is recorded as the uploader, and it is the owner of a keyring.
+
+Tenants and keys are made with the `vola` command, inside the container: see the [CLI reference](/reference/cli/).
+
+## Moving instances between tenants
+
+An admin transfer moves every row of a set of instances from one tenant to another in one transaction: files with all their versions, folders, share links, processing jobs and OCR metadata. Blobs stay where they are, because they are content-addressed and shared.
+
+`tenant`-encrypted keys are re-wrapped for the destination in the same transaction. An instance that holds a `keyring`, `caller` or `client` file refuses the whole call, because the server holds no key to re-wrap with. A `dry_run` runs the same statements and rolls back.
+
+## Reading lists
+
+There are two ways to list files. The REST routes (`GET /vola/files/:type/:id`, `GET /vola/folders/:type/:id`) answer one instance or one folder level. The `files` UDC collection (`POST /vola/udc/list`) adds filters, sorting and an opaque cursor, and it requires a top-level `instance_type` filter. [Real-time](/concepts/real-time/) keeps those same rows live.

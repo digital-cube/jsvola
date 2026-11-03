@@ -1,0 +1,16 @@
+POST /vola/udc/list HTTP/1.1
+Authorization: Bearer $KEY
+Content-Type: application/json
+
+{
+  "collection": "files",
+  "filter": {
+    "and": [
+      {"field": "instance_type", "op": "eq", "value": "demo"},
+      {"field": "instance_id", "op": "eq", "value": "00000000"},
+      {"field": "filename", "op": "eq", "value": "aurora.jpg"}
+    ]
+  },
+  "sort": [{"field": "created_at", "dir": "desc"}],
+  "page": {"limit": 1}
+}

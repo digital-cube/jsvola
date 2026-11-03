@@ -1,0 +1,23 @@
+---
+import Api from "../components/home/Api.astro";
+import AtRest from "../components/home/AtRest.astro";
+import Examples from "../components/home/Examples.astro";
+import Hero from "../components/home/Hero.astro";
+import OneFile from "../components/home/OneFile.astro";
+import Packages from "../components/home/Packages.astro";
+import QuickStarts from "../components/home/QuickStarts.astro";
+import Base from "../layouts/Base.astro";
+---
+
+<Base
+  title="vola: self-hosted file storage for applications"
+  description="A self-hosted, multi-tenant, content-addressable file service: uploads and resumable uploads, Range and streaming, thumbnails and OCR, folders and versions, share links, encryption per file."
+>
+  <Hero />
+  <OneFile />
+  <Examples />
+  <AtRest />
+  <Api />
+  <QuickStarts />
+  <Packages />
+</Base>

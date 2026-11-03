@@ -1,0 +1,132 @@
+---
+title: Uploads and processing
+description: What happens to bytes after they arrive, from the two upload steps to the worker, thumbnails and OCR.
+sidebar:
+  order: 2
+---
+
+Every way bytes arrive at vola ends in the same code path. Work that takes time (thumbnails, OCR) happens after the upload, in a separate worker process.
+
+## Two steps: stageUpload and finalizeUpload
+
+`POST /vola/files/:type/:id` (multipart), `PUT …/slug/:slug` and the last `PATCH` of a resumable upload all end in these two steps.
+
+**`stageUpload`** puts the bytes on disk:
+
+1. It keeps the first 4100 bytes for MIME detection.
+2. If the file is encrypted, it encrypts the stream under a fresh file key.
+3. It writes to `tmp/<uuid>`, computing the SHA-256 on the way, then calls `fsync`.
+
+**`finalizeUpload`** makes it a file:
+
+1. It detects the MIME type, extension and kind from the head of the file, the name and the declared type.
+2. In one transaction, under an advisory lock on the hash, it links the temporary file to `blobs/aa/bb/cc/<hash>` (or discards it if that blob exists), soft-deletes the previous live file of the slug, renames on a name collision within the folder, and inserts the row.
+3. It requests the thumbnail and OCR jobs.
+4. It publishes a `created` event, plus `deleted` for a file the slug replaced.
+
+One consequence for clients: in a multipart body, the `encryption` field and the folder must arrive **before** the `file` part, because they decide what is written to disk while the part streams.
+
+## Resumable uploads
+
+`/vola/uploads` speaks tus 1.0 core with the `creation`, `termination` and `expiration` extensions. `tus-js-client` works unchanged, and `@vola/client`'s `uploads.resumable()` wraps it.
+
+| Route | What it does |
+| --- | --- |
+| `POST /uploads` | Creates the upload from `Upload-Length` and `Upload-Metadata`; `instance_type`, `instance_id` and `filename` are required |
+| `HEAD /uploads/:id` | Answers the current `Upload-Offset`, so a client knows where to go on |
+| `PATCH /uploads/:id` | Appends a chunk at `Upload-Offset`; the offset is committed only after `fsync` |
+| `DELETE /uploads/:id` | Removes the row and the partial bytes |
+
+A few rules follow from this:
+
+- `Upload-Offset` must equal the server's, or the answer is `409 upload_offset_mismatch`. A parallel `PATCH` on the same upload is `409 upload_locked`.
+- The length must be known up front. `Upload-Defer-Length` is `400`, and a length over `VOLA_MAX_UPLOAD_BYTES` is `413 file_too_large`.
+- An upload belongs to the tenant, so any `files:write` key of that tenant may resume it.
+- An upload not finished within `VOLA_UPLOAD_TTL_HOURS` (24) is swept, every 15 minutes.
+
+Completion takes the same path as a multipart upload: hash, dedup, MIME detection, collision rename, folder, version, slug. The last `PATCH` answers with `Vola-File-Id`, and so does every `HEAD` after it.
+
+An encrypted upload is sealed segment by segment as it arrives. `keyring` and `caller` uploads need their token or key on every `PATCH`.
+
+## The worker and its queue
+
+The worker is a second process of the same image (`node dist/worker.js`), reading BullMQ jobs from Redis. The server picks its mode at start:
+
+| `VOLA_WORKER_ENABLED` | `VOLA_REDIS_URL` set | Mode |
+| --- | --- | --- |
+| `auto` (default) | yes | `async`: jobs go to the queue |
+| `auto` | no | `sync`: thumbnails render inline on `/thumb`, no OCR, no stats job |
+| `1` | no | One error line in the log, then `sync` |
+| `0` | any | `sync`, for a deployment with Redis but no worker consuming the queue |
+
+If Redis is set and no worker runs, set `VOLA_WORKER_ENABLED=0`, or `/thumb` answers `202` forever.
+
+There is one queue, with five jobs:
+
+| Job | When | What the worker does |
+| --- | --- | --- |
+| `thumbnail` | After an upload of a raster image or PDF, and on a `/thumb` cache miss | Renders a WebP with sharp and stores it next to the blob |
+| `ocr` | After an upload of a raster image (not SVG or GIF) or PDF | Runs `tesseract` and stores the text |
+| `sweep-uploads` | Every 15 minutes | Removes expired resumable uploads |
+| `refresh-stats` | Every half `VOLA_STATS_TTL_MIN` | Recomputes old statistics snapshots of active tenants |
+| `audit` | When memento is configured | Pushes the event to memento |
+
+A processing job gets 3 tries with exponential backoff, then ends as `FAILED` with a short error. `processing_status` on a file is the aggregate of its jobs, and the worker publishes a `processing` event after each job, so a [live list](/concepts/real-time/) shows the status moving.
+
+The worker needs the same storage directory as the server, because derived files are written next to the blobs. For `tenant`-encrypted files it needs the same key file too. It never needs the pepper file. `VOLA_WORKER_CONCURRENCY` (2) jobs run at once per process, and you scale with more processes.
+
+## Thumbnails and the 202 rules
+
+An upload of a raster image (not SVG) or a PDF queues four thumbnails at crop `cover`: 64, 128, 256 and 512 pixels. Other crops (`fit`, `attention`) are rendered on their first request. Renditions are WebP at quality 80 with EXIF orientation applied. A PDF gives its first page.
+
+`GET …/:fileId/thumb/:size?crop=` takes the rendering off the request path, so it has two outcomes a client must tell apart:
+
+| Status | Body | Headers | Meaning |
+| --- | --- | --- | --- |
+| `200` | The WebP | `X-Thumbnail-Status: ready`, `Cache-Control: private, max-age=86400`, `ETag` | The rendition exists |
+| `202` | A grey placeholder of about 50 bytes | `X-Thumbnail-Status: generating`, `Cache-Control: no-cache`, no `ETag` | The job is queued; retry |
+
+:::caution
+`202` is a success status. It passes `response.ok`, so the placeholder looks like a valid thumbnail unless you check for it.
+:::
+
+Every consumer follows four rules:
+
+1. **Branch on the status code.** `status !== 202` is the reliable test that the bytes are a real thumbnail.
+2. **Never cache a `202` body under a key derived from the content**, such as a hash or an ETag. That key never invalidates, so the grey square outlives the real thumbnail.
+3. **If you proxy a thumbnail onwards, pass the status and `no-cache` through.** Do not repackage it into your own `max-age` and `ETag` answer.
+4. **Retry with backoff** (1 s, 2 s, 4 s). The worker usually fills the cache within about a second.
+
+`@vola/client`'s `files.thumb()` and `@vola/react`'s `VolaThumb` implement these rules. The [Thumbnails example](/examples/thumbnails/) lets you watch the sequence.
+
+```sh
+curl -s -o thumb.webp -w '%{http_code} %header{x-thumbnail-status}\n' -H "Authorization: Bearer $KEY" \
+     "localhost:8300/vola/files/tickets/$TICKET/$FILE/thumb/256?crop=fit"
+```
+
+The other answers:
+
+- A file that cannot be rendered answers `200` with the placeholder and `X-Thumbnail-Status: failed`. Its jobs end as `FAILED` after 3 tries.
+- If the queue cannot be reached, or the server runs in `sync` mode, it renders inline and answers `200`.
+- Anything but a raster image or PDF (text, video, SVG, a `client` blob) is `404 no_thumbnail`.
+- A bad size or crop is `400 invalid_size` or `400 invalid_crop`.
+
+An encrypted file's thumbnail is sealed under its file key and served decrypted with `Cache-Control: no-store`. A `tenant` file can answer `202` while the worker renders it. A `keyring` or `caller` file renders inline in the request that holds the key, and answers `423` without it.
+
+## OCR
+
+An upload of a raster image (not SVG or GIF) or a PDF also queues one OCR job. The worker runs `tesseract` on an image directly, or on a PDF after rasterising up to `VOLA_OCR_MAX_PAGES` (20) pages. The languages come from `VOLA_OCR_LANGS` (`eng+srp+deu`). `VOLA_OCR_ENABLED=0` turns it off.
+
+There are three ways to read the result:
+
+| Where | What you get |
+| --- | --- |
+| `GET …/:fileId/info` | `ocr: {status, lang, pages, text_preview}`, with the first 500 characters |
+| `GET …/:fileId/info?ocr=full` | The same, plus `ocr.text` with the whole text |
+| The UDC `files` filter on the `ocr` field | A full-text search: every word must occur, in any order, case-insensitive, with no stemming |
+
+`ocr.status` goes from `PENDING` through `RUNNING` to `DONE`, or `FAILED` after 3 tries. It is `SKIPPED` when the worker cannot run OCR, and `null` when no job was created.
+
+A `tenant`-encrypted file is read by the worker and its text is sealed. You can read that text through `…/info`, but it is not in the full-text search, because an index of the plaintext would be the plaintext. `keyring`, `caller` and `client` files get no OCR.
+
+The variables above are all in [Environment variables](/reference/environment/), and the routes in the [API reference](/reference/api/).

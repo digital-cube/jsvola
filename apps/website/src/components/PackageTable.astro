@@ -1,0 +1,127 @@
+---
+/*
+ * Every published package: name, what it is, version, licence and which @vola packages it uses,
+ * read from packages/*\/package.json when the site is built (no network, no registry). Nothing
+ * here names a version; bump the package and the page follows.
+ */
+import cli from "../../../../packages/cli/package.json";
+import client from "../../../../packages/client/package.json";
+import core from "../../../../packages/core/package.json";
+import lookups from "../../../../packages/lookups/package.json";
+import react from "../../../../packages/react/package.json";
+import server from "../../../../packages/server/package.json";
+import { REPO_URL } from "../site.mjs";
+
+type Manifest = {
+  name: string;
+  version: string;
+  description?: string;
+  license?: string;
+  dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+};
+const rows = (
+  [
+    ["core", core],
+    ["lookups", lookups],
+    ["server", server],
+    ["cli", cli],
+    ["client", client],
+    ["react", react],
+  ] as [string, Manifest][]
+).map(([dir, pkg]) => ({
+  dir,
+  name: pkg.name,
+  version: pkg.version,
+  license: pkg.license ?? "unlicensed",
+  description: (pkg.description ?? "")
+    .replace(/^JSVola[^:]*:\s*/, "")
+    .replace(/^[a-z]/, (c) => c.toUpperCase()),
+  uses: Object.keys({ ...pkg.dependencies, ...pkg.peerDependencies }).filter((d) => d.startsWith("@vola/")),
+}));
+const versions = [...new Set(rows.map((r) => r.version))];
+const licences = [...new Set(rows.map((r) => r.license))];
+---
+
+<div class="pkg-scroll not-content">
+  <table class="pkg-table">
+    <thead>
+      <tr>
+        <th scope="col">Package</th>
+        <th scope="col">Version</th>
+        <th scope="col">Uses</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map((p) => (
+          <tr>
+            <th scope="row">
+              <a href={`${REPO_URL}/tree/main/packages/${p.dir}`}><code>{p.name}</code></a>
+              <span class="desc">{p.description}</span>
+            </th>
+            <td><code>{p.version}</code></td>
+            <td>{p.uses.length ? p.uses.map((u) => <code class="dep">{u}</code>) : "None"}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+<p class="pkg-note">
+  Read from <code>packages/*/package.json</code> when this site was built: {versions.length === 1 ? `one version, ${versions[0]}, for all ${rows.length}` : `versions ${versions.join(", ")}`}. Licence: {licences.join(", ")}.
+</p>
+
+<style>
+  .pkg-scroll {
+    overflow-x: auto;
+  }
+  .pkg-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  th,
+  td {
+    padding: 0.7rem 1.25rem 0.7rem 0;
+    text-align: start;
+    vertical-align: top;
+    border-top: 1px solid var(--vola-rule);
+  }
+  thead th {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--vola-ink-3);
+    border-top: 0;
+  }
+  tbody th {
+    min-width: 18rem;
+    font-weight: 400;
+  }
+  code {
+    font-family: var(--vola-font-mono);
+    font-size: 0.875rem;
+    color: var(--vola-ink);
+  }
+  a code {
+    color: var(--vola-accent);
+    font-weight: 500;
+  }
+  .desc {
+    display: block;
+    margin-top: 0.2rem;
+    max-width: 62ch;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--vola-ink-2);
+  }
+  .dep {
+    display: block;
+    white-space: nowrap;
+  }
+  .pkg-note {
+    margin: 0.9rem 0 0;
+    font-size: 0.875rem;
+    color: var(--vola-ink-2);
+  }
+</style>

@@ -1,0 +1,56 @@
+---
+/*
+ * One screenshot of an example page in the reader's theme:
+ * src/assets/examples/<name>-<theme>.webp, written by `pnpm run shots` (scripts/shots.mjs). A
+ * missing light shot fails the build; without a dark one, the light shot stands in for both.
+ */
+import { Image } from "astro:assets";
+
+interface Props {
+  name: string;
+  alt: string;
+  sizes?: string;
+}
+
+const { name, alt, sizes = "(min-width: 72rem) 46rem, 100vw" } = Astro.props;
+const shots = import.meta.glob<{ default: ImageMetadata }>("../assets/examples/*.webp", {
+  eager: true,
+});
+const shot = (theme: "light" | "dark") => shots[`../assets/examples/${name}-${theme}.webp`]?.default;
+const light = shot("light");
+if (!light) throw new Error(`no screenshot ${name}-light.webp; run pnpm run shots -- ${name}`);
+const dark = shot("dark");
+const image = { alt, widths: [640, 1280, 1920], sizes, loading: "lazy" as const };
+---
+
+<figure class="example-shot not-content">
+  {
+    dark ? (
+      <>
+        <Image class="for-light" src={light} {...image} />
+        <Image class="for-dark" src={dark} {...image} />
+      </>
+    ) : (
+      <Image src={light} {...image} />
+    )
+  }
+</figure>
+
+<style>
+  .example-shot {
+    margin: 0;
+  }
+  .example-shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--vola-rule);
+  }
+  :global(:root:not([data-theme="light"])) .example-shot img:not(.for-dark) {
+    filter: brightness(0.82);
+  }
+  :global([data-theme="light"]) .example-shot img.for-dark,
+  :global(:root:not([data-theme="light"])) .example-shot img.for-light {
+    display: none;
+  }
+</style>

@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+
+{
+  "rows": [
+    {
+      "id": "01a19fd3",
+      "filename": "aurora.jpg",
+      "kind": "image",
+      "size": 41167,
+      "hash": "4d88c02489c92231…",
+      "processing_status": "DONE",
+      "thumb_url": "/vola/files/demo/00000000/01a19fd3/thumb/256",
+      "download_url": "/vola/files/demo/00000000/01a19fd3"
+    }
+  ],
+  "total": 2
+}
