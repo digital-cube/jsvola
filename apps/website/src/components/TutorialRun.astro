@@ -1,0 +1,29 @@
+---
+/*
+ * One command of a chapter of the tutorial and what it printed: snippets/tutorial/step-<n>/run/
+ * <name>.sh and <name>.out.txt. `scripts/tutorial.mjs run <n>` runs the first and holds it to the
+ * second. The site's own address in a command is this build's, so stage downloads from stage.
+ */
+import { Code } from "@astrojs/starlight/components";
+import { SITE_URL } from "../site.mjs";
+
+interface Props {
+  step: number;
+  name: string;
+}
+
+const { step, name } = Astro.props;
+const files = import.meta.glob<string>("../../snippets/tutorial/*/run/*", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+const base = `../../snippets/tutorial/step-${step}/run/${name}`;
+const command = files[`${base}.sh`];
+const output = files[`${base}.out.txt`];
+if (command === undefined) throw new Error(`no command for step ${step}: ${name}`);
+const printed = Astro.locals.starlightRoute.lang === "sr" ? "Šta je ispisano" : "What it printed";
+---
+
+<Code code={command.replaceAll("https://vol-a.com", SITE_URL)} lang="sh" />
+{output !== undefined && <Code code={output} lang="txt" title={printed} />}

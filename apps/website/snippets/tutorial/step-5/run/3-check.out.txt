@@ -1,0 +1,2 @@
+<title>Ticket desk</title>
+/config 200

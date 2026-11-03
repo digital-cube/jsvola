@@ -1,0 +1,5 @@
+# The kanban renderer asks for a board. The desk has one.
+default_renderer: table
+available_renderers: [table]
+columns:
+  - { field: name }

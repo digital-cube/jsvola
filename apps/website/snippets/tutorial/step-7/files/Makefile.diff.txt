@@ -1,0 +1,20 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1,4 +1,4 @@
+-.PHONY: up setup down clean
++.PHONY: up setup e2e down clean
+ 
+ up:
+ 	docker compose up -d --build
+@@ -7,6 +7,11 @@ up:
+ setup:
+ 	sh scripts/setup.sh
+ 
++# The main flow, against the stack that is up.
++e2e:
++	pnpm install --frozen-lockfile
++	set -a; . ./.env; set +a; pnpm test:e2e
++
+ down:
+ 	docker compose down
+ 

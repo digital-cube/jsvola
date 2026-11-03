@@ -1,0 +1,69 @@
+--- a/src/web/TicketPage.tsx
++++ b/src/web/TicketPage.tsx
+@@ -1,5 +1,4 @@
+-import { useMementoEvents } from "@memento/react";
+-import { type FormEvent, useEffect, useState } from "react";
++import { type FormEvent, useCallback, useEffect, useState } from "react";
+ import { useParams } from "react-router";
+ import { STATUSES, type Ticket } from "../shared/desk.ts";
+ import { Activity } from "./Activity.tsx";
+@@ -12,17 +11,17 @@ export function TicketPage() {
+   const { user, users } = useSession();
+   const [ticket, setTicket] = useState<Ticket | null>(null);
+   const [text, setText] = useState("");
+-  const feed = useMementoEvents({ instance_type: "tickets", instance_id: id }, { live: false });
+ 
+-  useEffect(() => {
++  // Read at the start, and again on every new event: somebody else may have just moved it.
++  const reload = useCallback(() => {
+     getTicket(id, user).then(setTicket);
+   }, [id, user]);
++  useEffect(reload, [reload]);
+ 
+   const submitComment = async (event: FormEvent) => {
+     event.preventDefault();
+     await comment(id, user, text);
+     setText("");
+-    feed.reload();
+   };
+ 
+   if (!ticket) return null;
+@@ -34,13 +33,7 @@ export function TicketPage() {
+         <div className="row">
+           <label>
+             Status{" "}
+-            <select
+-              value={ticket.status}
+-              onChange={async (e) => {
+-                setTicket(await setStatus(id, user, e.target.value));
+-                feed.reload();
+-              }}
+-            >
++            <select value={ticket.status} onChange={(e) => setStatus(id, user, e.target.value)}>
+               {STATUSES.map((status) => (
+                 <option key={status}>{status}</option>
+               ))}
+@@ -50,10 +43,7 @@ export function TicketPage() {
+             Assignee{" "}
+             <select
+               value={ticket.assignee ?? ""}
+-              onChange={async (e) => {
+-                setTicket(await assign(id, user, e.target.value));
+-                feed.reload();
+-              }}
++              onChange={(e) => assign(id, user, e.target.value)}
+             >
+               <option value="" disabled>
+                 nobody
+@@ -75,9 +65,9 @@ export function TicketPage() {
+             Comment
+           </button>
+         </form>
+-        <Files ticketId={id} onAttached={feed.reload} />
++        <Files ticketId={id} />
+       </div>
+-      <Activity events={feed.events} />
++      <Activity ticketId={id} onEvent={reload} />
+     </main>
+   );
+ }

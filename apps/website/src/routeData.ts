@@ -21,6 +21,8 @@ const groupOf = (entries: Entry[], href: string, parent?: string): string | unde
 
 export const onRequest = defineRouteMiddleware((context) => {
   const route = context.locals.starlightRoute;
+  // The site has no locales, so one page can be Serbian without /sr/ copies of all the others.
+  if (route.id.endsWith("-sr")) route.lang = "sr";
   for (const link of [route.pagination.prev, route.pagination.next]) {
     if (link?.label !== "Overview") continue;
     const group = groupOf(route.sidebar as Entry[], link.href);

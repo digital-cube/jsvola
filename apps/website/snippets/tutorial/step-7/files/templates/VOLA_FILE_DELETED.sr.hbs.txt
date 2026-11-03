@@ -1,0 +1,1 @@
+{{actor_id}} briše fajl {{payload.filename}}

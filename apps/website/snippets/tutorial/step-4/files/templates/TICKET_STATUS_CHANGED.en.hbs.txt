@@ -1,0 +1,1 @@
+{{actor_id}} moved the ticket: {{payload.previous}} → {{payload.status}}

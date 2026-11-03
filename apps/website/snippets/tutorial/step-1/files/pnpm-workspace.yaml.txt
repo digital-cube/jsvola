@@ -1,0 +1,15 @@
+# This folder is its own project, not a member of any repository around it. A file here also
+# stops pnpm from walking up to a parent workspace.
+packages:
+  - "."
+
+# Not on npm yet: see vendor/README.md.
+overrides:
+  "@vola/core": "file:vendor/vola-core-1.0.0.tgz"
+  "@vola/client": "file:vendor/vola-client-1.0.0.tgz"
+  "@vola/react": "file:vendor/vola-react-1.0.0.tgz"
+  "@memento/core": "file:vendor/memento-core-1.0.0.tgz"
+  "@memento/react": "file:vendor/memento-react-1.0.0.tgz"
+
+allowBuilds:
+  esbuild: true

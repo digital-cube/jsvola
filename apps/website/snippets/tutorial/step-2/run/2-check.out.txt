@@ -1,0 +1,7 @@
+MEMENTO_SERVER_KEY
+VOLA_SERVER_KEY
+MEMENTO_BROWSER_KEY
+VOLA_BROWSER_KEY
+"slug":"desk"
+"name":"desk-browser"
+"name":"desk-server"

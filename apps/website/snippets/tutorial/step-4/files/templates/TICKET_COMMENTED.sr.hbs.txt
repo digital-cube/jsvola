@@ -1,0 +1,1 @@
+{{actor_id}} komentariše: „{{truncate payload.text 120}}"

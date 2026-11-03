@@ -1,0 +1,7 @@
+{"ok":true}
+desk: running
+memento: running
+postgres: running
+redis: running
+vola: running
+vola-worker: running

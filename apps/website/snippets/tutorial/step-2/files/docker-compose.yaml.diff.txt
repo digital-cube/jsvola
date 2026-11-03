@@ -1,0 +1,14 @@
+--- a/docker-compose.yaml
++++ b/docker-compose.yaml
+@@ -94,6 +94,11 @@ services:
+       memento: { condition: service_healthy }
+     environment:
+       PORT: 8080
++      # `make setup` writes these to .env.
++      MEMENTO_SERVER_KEY: ${MEMENTO_SERVER_KEY:-}
++      MEMENTO_BROWSER_KEY: ${MEMENTO_BROWSER_KEY:-}
++      VOLA_SERVER_KEY: ${VOLA_SERVER_KEY:-}
++      VOLA_BROWSER_KEY: ${VOLA_BROWSER_KEY:-}
+     ports:
+       - "${DESK_PORT:-8080}:8080"
+ 

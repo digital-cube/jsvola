@@ -9,6 +9,10 @@ share one version.
 
 ### Added
 
+- **A tutorial on vol-a.com: a ticket desk on vola and memento, from an empty folder.** Seven steps,
+  in English and Serbian, written from the history of `apps/tutorial/ticket-desk`; every command on
+  the page was run as written (`apps/website/scripts/tutorial.mjs`). Code blocks of the site now keep
+  their tabs, so a copied Makefile works.
 - **`apps/website` (`@vola/website`, private): the website and documentation, for vol-a.com.**
   Astro with Starlight under the docs and Pagefind search; a home page of its own, dark first, in
   Archivo and JetBrains Mono, drawn from the product: a thumbnail going from 202 to 200, a byte

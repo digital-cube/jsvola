@@ -1,0 +1,20 @@
+--- a/src/web/Files.tsx
++++ b/src/web/Files.tsx
+@@ -9,7 +9,7 @@ import { useSession } from "./session.ts";
+  * with `X-User-Id`. After an upload it tells the backend, which records TICKET_FILE_ATTACHED.
+  * Sharing a file with somebody outside is the browser's Share action (`VolaShareDialog`).
+  */
+-export function Files({ ticketId, onAttached }: { ticketId: string; onAttached: () => void }) {
++export function Files({ ticketId }: { ticketId: string }) {
+   const { user, vola_key, locale } = useSession();
+   const client = useMemo(
+     () => new VolaClient({ baseUrl: "/vola", apiKey: vola_key, userId: user }),
+@@ -23,7 +23,7 @@ export function Files({ ticketId, onAttached }: { ticketId: string; onAttached:
+         instanceType="tickets"
+         instanceId={ticketId}
+         onUploaded={({ fileId }) => {
+-          fileAttached(ticketId, user, fileId).then(onAttached);
++          fileAttached(ticketId, user, fileId);
+         }}
+       />
+       <VolaFileBrowser

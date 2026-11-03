@@ -1,0 +1,6 @@
+ana moved the ticket: new → in_progress
+ana commented: "On my way"
+igor opened the ticket "Printer on fire"
+ana menja status tiketa: new → in_progress
+ana komentariše: „On my way"
+igor otvara tiket „Printer on fire"

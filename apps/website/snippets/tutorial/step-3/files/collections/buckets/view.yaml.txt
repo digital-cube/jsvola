@@ -1,0 +1,6 @@
+# The columns of the board. A column's id is a value of the tickets' `status`.
+default_renderer: table
+available_renderers: [table]
+columns:
+  - { field: name }
+  - { field: order }

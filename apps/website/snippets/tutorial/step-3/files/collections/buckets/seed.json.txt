@@ -1,0 +1,17 @@
+[
+  { "__meta": { "id": "new" }, "board_id": "desk", "name": "New", "color": "info", "order": 100 },
+  {
+    "__meta": { "id": "in_progress" },
+    "board_id": "desk",
+    "name": "In progress",
+    "color": "warning",
+    "order": 200
+  },
+  {
+    "__meta": { "id": "done" },
+    "board_id": "desk",
+    "name": "Done",
+    "color": "success",
+    "order": 300
+  }
+]

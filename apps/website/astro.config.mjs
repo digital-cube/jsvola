@@ -33,6 +33,8 @@ export default defineConfig({
       expressiveCode: {
         themes: [codeDark, codeLight],
         defaultProps: { wrap: true, preserveIndent: true, frame: "code" },
+        // A tab stays a tab: a Makefile copied from the tutorial does not work with spaces.
+        tabWidth: 0,
         styleOverrides: {
           borderRadius: "0",
           borderColor: "var(--vola-rule)",
@@ -60,6 +62,8 @@ export default defineConfig({
       ],
       sidebar: [
         { label: "Get started", items: [{ autogenerate: { directory: "get-started" } }] },
+        // Hand-written, one page per language; the code comes from the program's history.
+        { label: "Tutorials", items: [{ autogenerate: { directory: "tutorials" } }] },
         { label: "Concepts", items: [{ autogenerate: { directory: "concepts" } }] },
         {
           // Written by scripts/gen-reference.mjs from docs/ (pnpm run gen; REFERENCE in

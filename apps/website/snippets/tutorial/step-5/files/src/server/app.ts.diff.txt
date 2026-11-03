@@ -1,0 +1,56 @@
+--- a/src/server/app.ts
++++ b/src/server/app.ts
+@@ -1,7 +1,11 @@
++import { existsSync } from "node:fs";
++import fastifyStatic from "@fastify/static";
+ import { type CollectionRegistry, createDispatcher, udcPlugin } from "@jsudc/server";
+ import Fastify, { type FastifyServerOptions } from "fastify";
++import { USERS } from "../shared/desk.ts";
+ import { emitOnDrag } from "./drag.ts";
+ import type { Emit } from "./memento.ts";
++import { proxyServices, type Upstreams } from "./proxy.ts";
+ import { type FileLookup, ticketRoutes } from "./tickets.ts";
+ 
+ export interface AppOptions {
+@@ -10,11 +14,18 @@ export interface AppOptions {
+   emit: Emit;
+   /** Asks vola about one file. */
+   lookupFile: FileLookup;
++  /** The keys the browser works with. There is no login: anybody who opens the page gets them. */
++  browserKeys: { memento: string; vola: string };
++  /** vola and memento, for the browser. */
++  upstreams?: Upstreams;
++  /** The built frontend, served when it is there. */
++  webRoot?: string;
+   logger?: FastifyServerOptions["logger"];
+ }
+ 
+ /** The whole backend, with everything it talks to passed in: that is what the tests replace. */
+-export async function buildApp({ registry, emit, lookupFile, logger = false }: AppOptions) {
++export async function buildApp(options: AppOptions) {
++  const { registry, emit, lookupFile, browserKeys, upstreams, webRoot, logger = false } = options;
+   const app = Fastify({ logger });
+   const tickets = registry.get("tickets").source;
+ 
+@@ -30,5 +41,21 @@ export async function buildApp({ registry, emit, lookupFile, logger = false }: A
+   });
+   await app.register(ticketRoutes, { tickets, emit, lookupFile });
+ 
++  // What the page needs to know to start.
++  app.get("/config", async (_request, reply) => {
++    if (!browserKeys.memento || !browserKeys.vola) {
++      return reply.code(503).send({ error: "no keys yet: run `make setup`" });
++    }
++    return { users: USERS, memento_key: browserKeys.memento, vola_key: browserKeys.vola };
++  });
++
++  if (upstreams) await proxyServices(app, upstreams);
++
++  if (webRoot && existsSync(webRoot)) {
++    await app.register(fastifyStatic, { root: webRoot });
++    // A page of the frontend (/t/<id>) is index.html: the router in the browser takes it from there.
++    app.setNotFoundHandler((_request, reply) => reply.sendFile("index.html"));
++  }
++
+   return app;
+ }
