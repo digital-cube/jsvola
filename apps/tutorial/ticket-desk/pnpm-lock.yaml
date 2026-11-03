@@ -21,6 +21,9 @@ importers:
       '@jsudc/server':
         specifier: ^0.2.1
         version: 0.2.1(@jsudc/core@0.2.0)(drizzle-orm@0.45.4(@types/pg@8.23.1)(pg@8.23.1))(fastify@5.12.8)(pg@8.23.1)(zod@4.6.7)
+      '@vola/client':
+        specifier: file:vendor/vola-client-1.0.0.tgz
+        version: file:vendor/vola-client-1.0.0.tgz
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
@@ -309,6 +312,16 @@ packages:
 
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
+
+  '@vola/client@file:vendor/vola-client-1.0.0.tgz':
+    resolution: {integrity: sha512-WxQrYoEPIsQ761fr9V7IjmBFJp0EjxDMFnrCyrDi3FUGhiuGLne8u1qm+uZXgEv4VP3LCRO4GeQ5HhgPzTQnpQ==, tarball: file:vendor/vola-client-1.0.0.tgz}
+    version: 1.0.0
+    engines: {node: '>=24'}
+
+  '@vola/core@file:vendor/vola-core-1.0.0.tgz':
+    resolution: {integrity: sha512-4JP3whPZcyuaJn3JqNahrqFQC9egrDaQcB4dmVotDoAnR624cYYyJ0NEsQoGlESIVEX30sAnkCwPxwmYGCYz9w==, tarball: file:vendor/vola-core-1.0.0.tgz}
+    version: 1.0.0
+    engines: {node: '>=24'}
 
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
@@ -1035,6 +1048,15 @@ snapshots:
       vite: 8.3.5(@types/node@24.19.2)(yaml@2.9.1)
 
   '@vitest/spy@5.0.5': {}
+
+  '@vola/client@file:vendor/vola-client-1.0.0.tgz':
+    dependencies:
+      '@jsudc/core': 0.2.0
+      '@vola/core': file:vendor/vola-core-1.0.0.tgz
+
+  '@vola/core@file:vendor/vola-core-1.0.0.tgz':
+    dependencies:
+      zod: 4.6.7
 
   abstract-logging@2.0.1: {}
 

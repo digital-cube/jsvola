@@ -74,3 +74,33 @@ curl -X POST localhost:8080/tickets -H 'x-user-id: igor' -H 'content-type: appli
   -d '{"title":"Printer on fire"}'
 pnpm install && pnpm test    # the routes, on tickets kept in memory
 ```
+
+## 4. The events
+
+Everything that happens to a ticket is one event in memento. [`src/server/events.ts`](src/server/events.ts)
+says which, and [`src/server/memento.ts`](src/server/memento.ts) sends it, with `POST /memento/events`:
+
+| action | `event_type` | `payload` |
+|---|---|---|
+| `POST /tickets` | `TICKET_CREATED` | `title` |
+| `POST /tickets/:id/comments` | `TICKET_COMMENTED` | `text` |
+| `PATCH /tickets/:id/status`, or a card dragged on the board | `TICKET_STATUS_CHANGED` | `status`, `previous` |
+| `POST /tickets/:id/assign` | `TICKET_ASSIGNED` | `assignee` |
+| `POST /tickets/:id/files` | `TICKET_FILE_ATTACHED` | `file_id`, `filename`, `size`, `mime_type` |
+
+All of them on the instance `tickets/<id>`, with the user as the actor. A comment has no table of
+its own: the event is the comment.
+
+The board writes through UDC's `POST /udc/mutate`, not through these routes, so
+[`src/server/drag.ts`](src/server/drag.ts) puts two Fastify hooks around that route. A dragged card
+gives the same event as the status route.
+
+`templates/<EVENT_TYPE>.<locale>.hbs` are the sentences, in English and Serbian. `make setup` hands
+them to `memento create-template`, so a reader sees a sentence instead of JSON:
+
+```sh
+make setup    # again: it adds the templates and keeps the keys
+curl "localhost:8080/memento/entities/tickets/<id>/events?locale=sr" \
+  -H "Authorization: Bearer $MEMENTO_BROWSER_KEY"
+# "rendered": "igor komentariše: „On my way\""
+```

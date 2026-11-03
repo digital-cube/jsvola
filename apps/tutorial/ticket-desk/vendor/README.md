@@ -12,4 +12,5 @@ are the Docker images in `docker-compose.yaml`.
 Each one is `pnpm --filter <package>... build && pnpm pack` in that repository.
 
 The day the packages are on npm: delete this folder and the `overrides` in
-`pnpm-workspace.yaml`, put `^1.0.0` in `package.json`, run `pnpm install`. Nothing else changes.
+`pnpm-workspace.yaml`, replace each `file:vendor/…` in `package.json` with `^1.0.0`, run
+`pnpm install`. Nothing else changes.
