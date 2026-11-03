@@ -298,6 +298,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@fastify/busboy':
+        specifier: ^3.2.4
+        version: 3.2.4
       '@fastify/multipart':
         specifier: ^10.1.6
         version: 10.1.6

@@ -37,7 +37,8 @@ export interface DemoPurgeResult {
 }
 
 /**
- * The demo job (plan 8.1): everything a visitor left behind more than `ttlMs` ago goes —
+ * The demo job (plan 8.1): everything a visitor made more than `ttlMs` ago goes, each row by
+ * its own `created_at` —
  * their files (`created_by` is not the seeder's; the whole version chain is theirs too, a
  * visitor cannot write to a seeded file), their keyrings (a crypto-shred, exactly as
  * `POST /keyrings/me/reset`), then their folders. The seeder's files are never touched, so

@@ -308,7 +308,7 @@ worker is an optimisation, not a requirement. The worker publishes a `processing
 every job, so a live `files` list sees `processing_status` move without polling.
 
 An **encrypted** file's thumbnail is a sealed sibling under the file key ([CRYPTO.md § 11](CRYPTO.md#11-thumbnails-and-ocr-of-encrypted-files-phase-63)):
-`200` decrypted, `Cache-Control: no-store`, an `ETag` of the file id; `202` only for a `tenant`
+`200` decrypted, `Cache-Control: no-store`, an `ETag` of `"<file id>.thumb-<size>-<crop>.webp"`; `202` only for a `tenant`
 file the worker is rendering; a `keyring` / `caller` file renders inline in the request that
 holds the key (`423` without it); `404 no_thumbnail` above `VOLA_ENC_INLINE_DERIVE_MAX_BYTES`.
 
@@ -320,12 +320,13 @@ curl -s -o thumb.webp -w '%{http_code} %header{x-thumbnail-status}\n' -H "Author
 
 ## OCR
 
-An upload of a raster image (not SVG, not GIF) or a PDF that is not encrypted also queues one
-`OCR` job (`VOLA_OCR_ENABLED`, [DEPLOYMENT.md](DEPLOYMENT.md#ocr)). The worker runs the system
+An upload of a raster image (not SVG, not GIF) or a PDF, plain or `tenant`-encrypted, also queues
+one `OCR` job (`VOLA_OCR_ENABLED`, [DEPLOYMENT.md](DEPLOYMENT.md#ocr)). The worker runs the system
 `tesseract` — an image as it is, a PDF page by page after `pdftoppm -r 200 -png` rasterised the
 first `VOLA_OCR_MAX_PAGES` (20) pages, the texts joined with `\f` — with the languages of
 `VOLA_OCR_LANGS` (`eng+srp+deu`). The result lands in `vola_file_metadata` (`ocr_text`,
-`ocr_lang`, `ocr_pages`, `ocr_at`, and `ocr_tsv`, a `tsvector` under a GIN index).
+`ocr_lang`, `ocr_pages`, `ocr_at`, and `ocr_tsv`, a `tsvector` under a GIN index); for a `tenant`
+file, sealed, as below.
 
 | | |
 |---|---|
@@ -730,9 +731,9 @@ Present only with `VOLA_EXAMPLES=true` ([EXAMPLES-SITE.md](EXAMPLES-SITE.md)); `
 | route | auth | notes |
 |---|---|---|
 | `GET /examples/config` | none | `{api_key, tenant, instance_type, instance_id, user_prefix, write_path, limits: {max_upload_bytes, ttl_hours, rate_limit, rate_window_s, mime_types}, features: {keyring, tenant_encryption, worker}}` — the **read-only** visitor key and the demo instance |
-| `ANY /examples/write/<route>` | the visitor key + `X-User-Id: demo-…` | replays a visitor's write (uploads, the tus protocol with `Location` rewritten, the visitor's own files and folders, shares with the expiry capped, the visitor's keyring) under the server's write key, after the policy: `413 demo_too_large` (5 MiB), `415 demo_mime_not_allowed`, `403 demo_forbidden` (a seeded or another visitor's row), `400 demo_user_required`, `429 demo_rate_limited` + `Retry-After` (60 writes per address per ten minutes) |
-| `POST /examples/regenerate/:fileId` | the visitor key | drops a file's thumbnails so the `202 → 200` sequence can be watched again |
-| `POST /examples/purge` | admin key | removes what visitors left after `VOLA_DEMO_TTL_HOURS` (the server runs it every `VOLA_DEMO_PURGE_INTERVAL_MIN` anyway) |
+| `ANY /examples/write/<route>` | none, `X-User-Id: demo-…` | replays a visitor's write (uploads, the tus protocol with `Location` rewritten, the visitor's own files and folders, the visitor's own shares with the expiry capped, the visitor's keyring) under the server's write key, after the policy: `413 demo_too_large` (5 MiB), `415 demo_mime_not_allowed`, `403 demo_forbidden` (a seeded or another visitor's row: `created_by` differs from `X-User-Id`, which is self-declared, [EXAMPLES-SITE.md](EXAMPLES-SITE.md#the-write-proxy-packagesserversrcexamples)), `400 demo_user_required`, `429 demo_rate_limited` + `Retry-After` (60 writes per address per ten minutes) |
+| `POST /examples/regenerate/:fileId` | none | drops a file's thumbnails so the `202 → 200` sequence can be watched again |
+| `POST /examples/purge` | admin key | removes what visitors made more than `VOLA_DEMO_TTL_HOURS` ago, going by each row's own `created_at` (the server runs it every `VOLA_DEMO_PURGE_INTERVAL_MIN` anyway) |
 
 ## OpenAPI
 

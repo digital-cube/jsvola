@@ -215,7 +215,8 @@ One queue, `vola-processing` under `VOLA_QUEUE_PREFIX` (default `vola`), with fi
 | `refresh-stats` | a repeatable job (every half `VOLA_STATS_TTL_MIN`) | recomputes `vola_tenant_stats` snapshots older than the TTL for tenants with activity since |
 | `audit` | the server and the CLI, when memento is configured | pushes the event to memento (5 tries, backoff) |
 
-Every job has 30 s, 3 tries with exponential backoff, then `FAILED` with a short `error`; its
+A thumbnail job has 30 s, an OCR job `VOLA_OCR_TIMEOUT_S` (120 s) per page or image. Every job has
+3 tries with exponential backoff, then `FAILED` with a short `error`; its
 row in `vola_processing_job` is what `processing_status` aggregates, and the worker publishes a
 `processing` event after each one so live lists move. `VOLA_WORKER_CONCURRENCY` (2) jobs run
 at once per process; scale with more processes (`--scale vola-worker=N`). The worker needs the

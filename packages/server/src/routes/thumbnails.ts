@@ -99,8 +99,8 @@ export function noThumbnail(reason: string): VolaError {
  *
  * An ENCRYPTED file (plan 6.3, `docs/CRYPTO.md` § 11) answers only to a request that holds
  * its key — the key file for `tenant`, `X-Vola-Unlock` for `keyring` (`423` without),
- * `X-Vola-Content-Key` for `caller` — with `Cache-Control: no-store` and an `ETag` of the file
- * id, never of the blob. The sealed sibling is decrypted for the answer; a miss is rendered
+ * `X-Vola-Content-Key` for `caller` — with `Cache-Control: no-store` and an `ETag` of
+ * `"<file id>.thumb-<size>-<crop>.webp"`, never of the blob. The sealed sibling is decrypted for the answer; a miss is rendered
  * INLINE for `keyring` and `caller` (never `202`: no worker holds those keys) and queued or
  * rendered inline for `tenant` as for a plain file.
  */

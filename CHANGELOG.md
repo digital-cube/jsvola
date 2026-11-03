@@ -21,6 +21,25 @@ share one version.
   website at `https://stage.vol-a.com/`; `deploy/examples/nginx/examples.stage.vol-a.com.conf`:
   the examples stack's vhost, now in the repository and answering its own name only.
 
+### Fixed
+
+- **Examples write proxy: a visitor can only change what that visitor made.** It only refused
+  seeded rows, so any `X-User-Id: demo-…` could rename, delete or purge another visitor's file or
+  folder, and list, read or revoke their shares. `created_by` must now equal `X-User-Id`, else
+  `403 demo_forbidden`; `GET shares` lists the visitor's own. The same goes for the ways round it:
+  an upload's `parent_id` (a planted version let a purge take a seeded file's whole chain), a
+  resumable upload's `slug` (completing it replaced the file of that slug, the pack's are public),
+  another visitor's resumable upload, and an own folder holding someone else's rows. `X-User-Id`
+  is self-declared, so this stops accidents and casual edits, not an attacker
+  (`docs/EXAMPLES-SITE.md`).
+- The examples site's Share page: **Open in a new tab** and the `curl` of an encrypted file's link
+  answered `401 share_secret_required`, since a tab never sends the part after `#`. Both now send
+  `X-Share-Secret`, and the page says what a recipient needs.
+- Docs that disagreed with themselves or the code: the examples routes' auth, the disk and Redis
+  rows of `CRYPTO.md` § 5 and § 8.7, an encrypted thumbnail's `ETag`, which files get OCR, the job
+  timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
+  The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
+
 ### Changed
 
 - The examples stack moved to `/home/digital/sites/examples.stage.vol-a.com` and is reached only

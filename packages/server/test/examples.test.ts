@@ -325,11 +325,19 @@ describe("demoAction (the policy)", () => {
     });
     expect(demoAction("GET", `folders/demo/${INSTANCE}/a`, scope)).toBeNull();
     expect(demoAction("POST", "uploads", scope)).toEqual({ kind: "upload-create" });
-    expect(demoAction("PATCH", `uploads/${fileId}`, scope)).toEqual({ kind: "upload-continue" });
+    expect(demoAction("PATCH", `uploads/${fileId}`, scope)).toEqual({
+      kind: "upload-continue",
+      uploadId: fileId,
+    });
+    expect(demoAction("PATCH", `uploads/${fileId.replace("-", "%2D")}`, scope)).toBeNull();
     expect(demoAction("GET", `uploads/${fileId}`, scope)).toBeNull();
-    expect(demoAction("POST", "shares", scope)).toEqual({ kind: "share", create: true });
-    expect(demoAction("GET", "shares", scope)).toEqual({ kind: "share", create: false });
-    expect(demoAction("DELETE", "shares/x", scope)).toEqual({ kind: "share", create: false });
+    expect(demoAction("POST", "shares", scope)).toEqual({ kind: "share-create" });
+    expect(demoAction("GET", "shares", scope)).toEqual({ kind: "share-list" });
+    expect(demoAction("DELETE", `shares/${fileId}`, scope)).toEqual({
+      kind: "share-item",
+      shareId: fileId,
+    });
+    expect(demoAction("DELETE", `shares/${fileId.replace("-", "%2D")}`, scope)).toBeNull();
     expect(demoAction("GET", "keyrings/me/status", scope)).toEqual({ kind: "keyring" });
     expect(demoAction("POST", "keyrings/me", scope)).toEqual({ kind: "keyring" });
     expect(demoAction("POST", "keyrings/me/unlock/close", scope)).toBeNull();
@@ -340,8 +348,8 @@ describe("demoAction (the policy)", () => {
   });
   it("counts the writes, not the reads, and not every chunk of a resumable upload", () => {
     expect(isCountedWrite("POST", { kind: "upload" })).toBe(true);
-    expect(isCountedWrite("GET", { kind: "share", create: false })).toBe(false);
-    expect(isCountedWrite("PATCH", { kind: "upload-continue" })).toBe(false);
+    expect(isCountedWrite("GET", { kind: "share-list" })).toBe(false);
+    expect(isCountedWrite("PATCH", { kind: "upload-continue", uploadId: "x" })).toBe(false);
     expect(isCountedWrite("POST", { kind: "upload-create" })).toBe(true);
   });
   it("knows the types a visitor may keep", () => {
@@ -515,6 +523,347 @@ describe("the write proxy", () => {
       payload: { filename: "x" },
     });
     expect(missing.statusCode).toBe(404);
+  });
+
+  describe("another visitor's rows", () => {
+    const OTHER = "demo-otherone42";
+    const other = (extra: Record<string, string> = {}) => ({ "x-user-id": OTHER, ...extra });
+    const tus = { "tus-resumable": "1.0.0" };
+
+    async function mineFile(name: string) {
+      const up = await uploadVia(`${WRITE}/${DEMO}`, Buffer.from(`a file: ${name}`), name, {
+        contentType: "text/plain",
+      });
+      expect(up.statusCode).toBe(201);
+      return FileInfoSchema.parse(up.json());
+    }
+
+    async function liveFile(id: string) {
+      return app.inject({
+        method: "GET",
+        url: `/vola/${DEMO}/${id}/info`,
+        headers: bearer(READ_KEY),
+      });
+    }
+
+    it("refuses a PATCH, DELETE or purge of another visitor's file; the owner still can", async () => {
+      const file = await mineFile("theirs.txt");
+      for (const [method, tail, payload] of [
+        ["PATCH", file.id, { filename: "stolen.txt" }],
+        ["DELETE", file.id, undefined],
+        ["DELETE", `${file.id}/purge`, undefined],
+      ] as const) {
+        const refused = await app.inject({
+          method,
+          url: `${WRITE}/${DEMO}/${tail}`,
+          headers: other(),
+          ...(payload ? { payload } : {}),
+        });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().error).toMatchObject({ code: "demo_forbidden", file_id: file.id });
+      }
+      const after = await liveFile(file.id);
+      expect(after.statusCode).toBe(200);
+      expect(after.json().filename).toBe("theirs.txt");
+      const renamed = await app.inject({
+        method: "PATCH",
+        url: `${WRITE}/${DEMO}/${file.id}`,
+        headers: visitor(),
+        payload: { filename: "still-mine.txt" },
+      });
+      expect(renamed.statusCode).toBe(200);
+      const purged = await app.inject({
+        method: "DELETE",
+        url: `${WRITE}/${DEMO}/${file.id}/purge`,
+        headers: visitor(),
+      });
+      expect(purged.statusCode).toBe(200);
+    });
+
+    it("refuses a PATCH or DELETE of another visitor's folder", async () => {
+      const made = await app.inject({
+        method: "POST",
+        url: `${WRITE}/folders/demo/${INSTANCE}/their-folder`,
+        headers: visitor(),
+      });
+      expect(made.statusCode).toBe(201);
+      for (const [method, payload] of [
+        ["PATCH", { name: "stolen" }],
+        ["DELETE", undefined],
+      ] as const) {
+        const refused = await app.inject({
+          method,
+          url: `${WRITE}/folders/demo/${INSTANCE}/their-folder`,
+          headers: other(),
+          ...(payload ? { payload } : {}),
+        });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().error).toMatchObject({
+          code: "demo_forbidden",
+          path: "their-folder",
+        });
+      }
+      // A path the real route normalises or decodes is the same folder.
+      for (const spelled of ["their-folder/", "./their-folder", "their%2Dfolder"]) {
+        const refused = await app.inject({
+          method: "DELETE",
+          url: `${WRITE}/folders/demo/${INSTANCE}/${spelled}`,
+          headers: other(),
+        });
+        expect(refused.statusCode).not.toBe(200);
+      }
+      const gone = await app.inject({
+        method: "DELETE",
+        url: `${WRITE}/folders/demo/${INSTANCE}/their-folder`,
+        headers: visitor(),
+      });
+      expect(gone.statusCode).toBe(200);
+    });
+
+    it("refuses a recursive delete or a move of an own folder holding another visitor's file", async () => {
+      const made = await app.inject({
+        method: "POST",
+        url: `${WRITE}/folders/demo/${INSTANCE}/shared-room`,
+        headers: visitor(),
+      });
+      expect(made.statusCode).toBe(201);
+      const guest = await app.inject({
+        method: "POST",
+        url: `${WRITE}/${DEMO}`,
+        headers: multipartHeaders(other()),
+        payload: fileUpload("guest.txt", Buffer.from("a guest's file"), {
+          contentType: "text/plain",
+          fields: { folder_path: "shared-room" },
+        }),
+      });
+      expect(guest.statusCode).toBe(201);
+      const guestId = FileInfoSchema.parse(guest.json()).id;
+      for (const [method, query, payload] of [
+        ["DELETE", "?recursive=1", undefined],
+        ["PATCH", "", { name: "renamed-room" }],
+      ] as const) {
+        const refused = await app.inject({
+          method,
+          url: `${WRITE}/folders/demo/${INSTANCE}/shared-room${query}`,
+          headers: visitor(),
+          ...(payload ? { payload } : {}),
+        });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().error.code).toBe("demo_forbidden");
+      }
+      expect((await liveFile(guestId)).statusCode).toBe(200);
+    });
+
+    it("refuses a new version of another visitor's or a seeded file, multipart and resumable", async () => {
+      const theirs = await mineFile("versioned.txt");
+      const seeded = await seed("seeded-version.png", await pngFixture(), "image/png");
+      for (const parent of [theirs.id, seeded.id]) {
+        const refused = await app.inject({
+          method: "POST",
+          url: `${WRITE}/${DEMO}`,
+          headers: multipartHeaders(other()),
+          payload: fileUpload("planted.txt", Buffer.from("planted"), {
+            contentType: "text/plain",
+            fields: { parent_id: parent },
+          }),
+        });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().error.code).toBe("demo_forbidden");
+        const resumable = await app.inject({
+          method: "POST",
+          url: `${WRITE}/uploads`,
+          headers: {
+            ...other(tus),
+            "upload-length": "7",
+            "upload-metadata": encodeTusMetadata({
+              instance_type: "demo",
+              instance_id: INSTANCE,
+              filename: "planted.txt",
+              parent_id: parent,
+            }),
+          },
+        });
+        expect(resumable.statusCode).toBe(403);
+      }
+      // The media type is case-insensitive: another spelling is the same upload.
+      const headers = multipartHeaders(other());
+      const respelled = await app.inject({
+        method: "POST",
+        url: `${WRITE}/${DEMO}`,
+        headers: {
+          ...headers,
+          "content-type": String(headers["content-type"]).replace(
+            "multipart/form-data",
+            "Multipart/Form-Data",
+          ),
+        },
+        payload: fileUpload("planted.txt", Buffer.from("planted"), {
+          contentType: "text/plain",
+          fields: { parent_id: seeded.id },
+        }),
+      });
+      expect(respelled.statusCode).toBe(403);
+      // A type the demo does not keep, naming a seeded parent: the clean-up must not reach it.
+      const notKept = await app.inject({
+        method: "POST",
+        url: `${WRITE}/${DEMO}`,
+        headers: multipartHeaders(other()),
+        payload: fileUpload("x.zip", Buffer.from("PK\u0003\u0004 not kept"), {
+          contentType: "application/zip",
+          fields: { parent_id: seeded.id },
+        }),
+      });
+      expect(notKept.statusCode).toBe(403);
+      expect((await liveFile(seeded.id)).statusCode).toBe(200);
+      // The owner's own new version still works.
+      const own = await app.inject({
+        method: "POST",
+        url: `${WRITE}/${DEMO}`,
+        headers: multipartHeaders(visitor()),
+        payload: fileUpload("versioned.txt", Buffer.from("version two"), {
+          contentType: "text/plain",
+          fields: { parent_id: theirs.id },
+        }),
+      });
+      expect(own.statusCode).toBe(201);
+      expect(FileInfoSchema.parse(own.json()).parent_id).toBe(theirs.id);
+    });
+
+    it("refuses a resumable upload whose slug would replace a seeded or another visitor's file", async () => {
+      const seeded = await app.inject({
+        method: "PUT",
+        url: `/vola/${DEMO}/slug/slugged-seed`,
+        headers: multipartHeaders({ ...bearer(WRITE_KEY), "x-user-id": SEEDER_USER }),
+        payload: fileUpload("slugged.png", await pngFixture(), { contentType: "image/png" }),
+      });
+      expect([200, 201]).toContain(seeded.statusCode);
+      const seededId = FileInfoSchema.parse(seeded.json()).id;
+      const slugged = (who: Record<string, string>, slug: string, length = 2) =>
+        app.inject({
+          method: "POST",
+          url: `${WRITE}/uploads`,
+          headers: {
+            ...who,
+            "upload-length": String(length),
+            "upload-metadata": encodeTusMetadata({
+              instance_type: "demo",
+              instance_id: INSTANCE,
+              filename: "over.txt",
+              slug,
+            }),
+          },
+        });
+      const refused = await slugged(other(tus), "slugged-seed");
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().error).toMatchObject({ code: "demo_forbidden", slug: "slugged-seed" });
+      expect((await liveFile(seededId)).statusCode).toBe(200);
+      // A slug nobody holds, and one's own again, is an upsert as ever.
+      for (const round of [1, 2]) {
+        const created = await slugged(other(tus), "own-slug");
+        expect(created.statusCode, `round ${round}`).toBe(201);
+        const done = await app.inject({
+          method: "PATCH",
+          url: String(created.headers.location),
+          headers: {
+            ...other(tus),
+            "upload-offset": "0",
+            "content-type": "application/offset+octet-stream",
+          },
+          payload: Buffer.from("hi"),
+        });
+        expect(done.statusCode, `round ${round}`).toBe(204);
+      }
+      // And another visitor cannot take it over.
+      const takeover = await slugged(visitor(tus), "own-slug");
+      expect(takeover.statusCode).toBe(403);
+    });
+
+    it("refuses HEAD, PATCH and DELETE of another visitor's resumable upload", async () => {
+      const created = await app.inject({
+        method: "POST",
+        url: `${WRITE}/uploads`,
+        headers: {
+          ...visitor(tus),
+          "upload-length": "5",
+          "upload-metadata": encodeTusMetadata({
+            instance_type: "demo",
+            instance_id: INSTANCE,
+            filename: "resumed.txt",
+          }),
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      const location = String(created.headers.location);
+      for (const method of ["HEAD", "DELETE"] as const) {
+        const refused = await app.inject({ method, url: location, headers: other(tus) });
+        expect(refused.statusCode).toBe(403);
+      }
+      const injected = await app.inject({
+        method: "PATCH",
+        url: location,
+        headers: {
+          ...other(tus),
+          "upload-offset": "0",
+          "content-type": "application/offset+octet-stream",
+        },
+        payload: Buffer.from("hello"),
+      });
+      expect(injected.statusCode).toBe(403);
+      const head = await app.inject({ method: "HEAD", url: location, headers: visitor(tus) });
+      expect(head.statusCode).toBe(200);
+      expect(head.headers["upload-offset"]).toBe("0");
+    });
+
+    it("lists only a visitor's own shares and refuses reading or revoking another's", async () => {
+      const seeded = await seed("share-owner.png", await pngFixture(), "image/png");
+      const created = await app.inject({
+        method: "POST",
+        url: `${WRITE}/shares`,
+        headers: visitor(),
+        payload: { file_id: seeded.id },
+      });
+      expect(created.statusCode).toBe(201);
+      const share = ShareCreatedSchema.parse(created.json());
+      const ids = async (who: Record<string, string>, query = "") => {
+        const listed = await app.inject({
+          method: "GET",
+          url: `${WRITE}/shares${query}`,
+          headers: who,
+        });
+        expect(listed.statusCode).toBe(200);
+        return listed.json().shares.map((s: { id: string }) => s.id);
+      };
+      expect(await ids(visitor())).toContain(share.id);
+      expect(await ids(visitor(), `?file_id=${seeded.id}`)).toContain(share.id);
+      expect(await ids(other())).not.toContain(share.id);
+      expect(await ids(other(), `?file_id=${seeded.id}`)).not.toContain(share.id);
+      for (const method of ["GET", "DELETE"] as const) {
+        const refused = await app.inject({
+          method,
+          url: `${WRITE}/shares/${share.id}`,
+          headers: other(),
+        });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().error).toMatchObject({ code: "demo_forbidden", share_id: share.id });
+      }
+      const open = await app.inject({ method: "GET", url: `/vola/s/${share.token}` });
+      expect(open.statusCode).toBe(200);
+      // An unknown share is the real route's 404; the owner reads and revokes.
+      const missing = await app.inject({
+        method: "GET",
+        url: `${WRITE}/shares/${randomUUID()}`,
+        headers: other(),
+      });
+      expect(missing.statusCode).toBe(404);
+      const own = await app.inject({
+        method: "DELETE",
+        url: `${WRITE}/shares/${share.id}`,
+        headers: visitor(),
+      });
+      expect(own.statusCode).toBe(200);
+      expect(await ids(visitor(), "?include_revoked=1")).toContain(share.id);
+      expect(await ids(visitor())).not.toContain(share.id);
+    });
   });
 
   it("caps a share's expiry at the demo TTL and keeps shares on the demo instance", async () => {

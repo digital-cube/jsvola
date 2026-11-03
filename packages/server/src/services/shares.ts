@@ -393,6 +393,8 @@ export interface ListSharesInput {
   fileId?: string | undefined;
   folderId?: string | undefined;
   includeRevoked?: boolean | undefined;
+  /** Only the shares this user made (the examples site's visitors see their own). */
+  createdBy?: string | undefined;
 }
 
 /** Shares the list of a tenant may be filtered by (ids that are not UUIDs match nothing). */
@@ -418,6 +420,7 @@ export async function listShares(
         idFilter(shareLinks.fileId, input.fileId),
         idFilter(shareLinks.folderId, input.folderId),
         input.includeRevoked ? undefined : isNull(shareLinks.revokedAt),
+        input.createdBy === undefined ? undefined : eq(shareLinks.createdBy, input.createdBy),
       ),
     )
     .orderBy(desc(shareLinks.createdAt), desc(shareLinks.id))

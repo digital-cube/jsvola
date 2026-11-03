@@ -17,8 +17,8 @@ image), **PostgreSQL 16** and **Redis 7**. Every `${VAR}` can be set in the shel
 next to the file (`.env.example` lists them all).
 
 ```sh
-docker compose -f docker-compose.yaml up -d --wait
-curl localhost:8300/vola/health/ready            # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
+docker compose -f docker-compose.yaml up -d
+until curl -sf localhost:8300/vola/health/ready; do sleep 2; done   # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
 
 # a tenant and its first key, with the CLI bundled in the image
 docker compose -f docker-compose.yaml exec vola vola create-tenant --slug acme --name "Acme Inc"
@@ -352,8 +352,9 @@ curl -s localhost:8300/vola/examples/config | jq .tenant                        
 
 Design, limits, the purge and the stage deploy: [EXAMPLES-SITE.md](EXAMPLES-SITE.md).
 
-On podman, `--wait` fails on the worker, which runs without a health check, even though the stack
-is fine; leave it out and poll `/vola/health/ready`. Rootless podman also needs
+On podman, `--wait` (here and in the upgrade steps) fails on the worker, which runs without a
+health check, even though the stack is fine; leave it out and poll `/vola/health/ready`, as the
+quick start does. Rootless podman also needs
 `podman unshare chown 1000:1000 secrets` before `vola keys-generate` can write there
 ([EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
 

@@ -21,8 +21,8 @@ export const EXAMPLES_MESSAGES: Messages = {
     },
     VISITOR: { en: "Visitor id", sr: "ID posetioca" },
     VISITOR_HINT: {
-      en: "Your X-User-Id for this browser session: the owner of your uploads and of your keyring on the Encrypted files page. Purged with them after {hours} h.",
-      sr: "Vaš X-User-Id za ovu sesiju pregledača: vlasnik vaših upload-ova i vašeg keyring-a na stranici Šifrovani fajlovi. Briše se sa njima posle {hours} h.",
+      en: "Your X-User-Id for this tab: the owner of your uploads and of your keyring on the Encrypted files page, purged with them after {hours} h. A new identity cannot change what the old one made.",
+      sr: "Vaš X-User-Id za ovaj tab: vlasnik vaših upload-ova i vašeg keyring-a na stranici Šifrovani fajlovi, briše se sa njima posle {hours} h. Novi identitet ne može da menja ono što je stari napravio.",
     },
     NEW_VISITOR: { en: "New identity", sr: "Novi identitet" },
     CONNECT: { en: "Connect", sr: "Poveži" },
@@ -74,8 +74,8 @@ export const EXAMPLES_MESSAGES: Messages = {
       sr: "VolaFileBrowser nad demo instancom · UDC kolekcija files · uživo kroz /udc/subscribe",
     },
     NOTE: {
-      en: "Folders, breadcrumbs, search and filters, thumbnails, the row menu (download, rename, move, delete, versions, share, visibility) and a drop zone. The seeded files are read-only for every visitor; what you upload is yours for {hours} hours. Open another tab: a change here shows there without a reload.",
-      sr: "Folderi, putanja, pretraga i filteri, sličice, meni reda (preuzmi, preimenuj, premesti, obriši, verzije, deli, vidljivost) i zona za prevlačenje. Seed fajlovi su samo za čitanje za sve posetioce; ono što vi otpremite vaše je {hours} sati. Otvorite drugi tab: promena ovde vidi se tamo bez osvežavanja.",
+      en: "Folders, breadcrumbs, search and filters, thumbnails, the row menu (download, rename, move, delete, versions, share, visibility) and a drop zone. The seeded files and other visitors' files are read-only for you; what you upload is yours for {hours} hours, in this tab, which holds your visitor id. Open another tab, a new visitor: a change here shows there without a reload.",
+      sr: "Folderi, putanja, pretraga i filteri, sličice, meni reda (preuzmi, preimenuj, premesti, obriši, verzije, deli, vidljivost) i zona za prevlačenje. Seed fajlovi i fajlovi drugih posetilaca su za vas samo za čitanje; ono što vi otpremite vaše je {hours} sati, u ovom tabu, koji čuva vaš ID posetioca. Otvorite drugi tab, novog posetioca: promena ovde vidi se tamo bez osvežavanja.",
     },
   },
   UPLOAD: {
@@ -87,7 +87,7 @@ export const EXAMPLES_MESSAGES: Messages = {
     LIMITS: { en: "The demo's limits", sr: "Ograničenja demoa" },
     LIMIT_SIZE: { en: "up to {max} per file", sr: "do {max} po fajlu" },
     LIMIT_TYPES: {
-      en: "images, PDF, short video and audio, plain text",
+      en: "images, PDF, short video and audio, plain text, Markdown",
       sr: "slike, PDF, kratak video i audio, čist tekst",
     },
     LIMIT_TTL: { en: "purged after {hours} h", sr: "briše se posle {hours} h" },
@@ -163,6 +163,14 @@ export const EXAMPLES_MESSAGES: Messages = {
     OPEN: { en: "Share…", sr: "Deli…" },
     LAST: { en: "The last link", sr: "Poslednji link" },
     OPEN_LINK: { en: "Open in a new tab", sr: "Otvori u novom tabu" },
+    OPEN_FAILED: {
+      en: "The link did not open: it may have been revoked or used up.",
+      sr: "Link se nije otvorio: možda je opozvan ili potrošen.",
+    },
+    SECRET_NOTE: {
+      en: "This link is of an encrypted file. A browser never sends the part after #, so pasted into an address bar it answers 401 share_secret_required: whoever opens it needs a client that sends that part as X-Share-Secret, as the button and the curl below do.",
+      sr: "Ovo je link šifrovanog fajla. Pregledač nikad ne šalje deo posle #, pa nalepljen u adresnu traku odgovara 401 share_secret_required: ko ga otvara mora da koristi klijent koji taj deo šalje kao X-Share-Secret, kao dugme i curl ispod.",
+    },
     HOW: {
       en: "The link is /vola/s/<token>: no key, no tenant. With a password the first GET answers 401 and the recipient sends X-Share-Password; max_downloads counts only downloads that started; the demo caps expiry at {hours} h. Revoking a link ends it at once. For an encrypted file the secret after # is in the link alone — the server keeps nothing of it.",
       sr: "Link je /vola/s/<token>: bez ključa, bez tenanta. Sa lozinkom prvi GET odgovara 401 i primalac šalje X-Share-Password; max_downloads broji samo započeta preuzimanja; demo ograničava istek na {hours} h. Opoziv gasi link odmah. Kod šifrovanog fajla tajna posle # je samo u linku — server od nje ne čuva ništa.",
