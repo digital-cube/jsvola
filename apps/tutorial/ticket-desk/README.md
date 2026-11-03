@@ -143,3 +143,55 @@ There is one subscription to the whole desk, and [`feed.ts`](src/web/feed.ts) pi
 of it. A filter on `tickets/<id>` alone would be shorter, but step 7 shows why it would miss things.
 
 To see it: open the same ticket in two tabs, sign in as somebody else in one, and comment.
+
+## 7. The audit, without code
+
+vola can record its own destructive and security-relevant operations in memento. Switching that on
+takes two environment variables in [`docker-compose.yaml`](docker-compose.yaml), on `vola` and
+`vola-worker` alike, and one more key from `make setup`:
+
+```yaml
+VOLA_MEMENTO_URL: http://memento:3000/memento
+VOLA_MEMENTO_API_KEY: ${MEMENTO_AUDIT_KEY}
+```
+
+```sh
+make setup     # makes MEMENTO_AUDIT_KEY, adds the sentences, restarts vola with both
+```
+
+> This needs a vola image with the fix "The audit trail reaches memento" from vola's changelog. An
+> older image drops these events: `docker compose logs vola-worker` says `memento answered 422`.
+> Until a release has the fix, set `VOLA_IMAGE=ghcr.io/digital-cube/jsvola:edge` in `.env`.
+
+No line of the program changes. Open a ticket, attach a file, then open that file's menu: **Share**
+makes `VOLA_SHARE_CREATED`, **Delete** makes `VOLA_FILE_DELETED`, and both appear in the feed next
+to the program's own events, with the signed-in user as the actor, because the browser sent
+`X-User-Id` to vola. The sentences are `templates/VOLA_*.hbs`.
+
+This is what `feed.ts` from step 6 was for. vola puts these events on its own instances
+(`vola_file/<id>`, `vola_share/<id>`) because it knows nothing about tickets; the payload is what
+leads them back to the ticket. The full list of events is in vola's
+[docs/AUDIT.md](https://github.com/digital-cube/jsvola/blob/main/docs/AUDIT.md).
+
+## Everything, from nothing
+
+```sh
+docker compose up -d --build
+make setup
+open http://localhost:8080
+```
+
+```sh
+pnpm install
+pnpm test        # the backend and the feed, nothing has to be running
+pnpm test:e2e    # the main flow against the running stack (or `make e2e`)
+pnpm typecheck && pnpm lint
+```
+
+## What this program leaves out
+
+No real login: anybody who opens the page gets the browser's keys, and `X-User-Id` is taken at its
+word. No PIN or at-rest encryption, no OCR. The feed reads the desk's newest 200 events and picks a
+ticket's part of them, which is plenty here; a large desk would keep a `file → ticket` table and
+query per ticket. If memento is down an event is lost with a log line, on purpose: the change itself
+is already saved.

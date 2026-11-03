@@ -14,5 +14,13 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/server", "src/shared", "test", "vitest.config.ts"]
+  "include": [
+    "src/server",
+    "src/shared",
+    "src/web/feed.ts",
+    "test",
+    "e2e",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts"
+  ]
 }

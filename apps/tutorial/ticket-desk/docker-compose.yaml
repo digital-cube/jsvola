@@ -5,7 +5,7 @@ name: ticket-desk
 
 services:
   vola:
-    image: ghcr.io/digital-cube/jsvola:latest
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }
@@ -19,6 +19,11 @@ services:
       VOLA_OCR_ENABLED: "0"
       # Share links are built on this origin, the one the browser knows.
       VOLA_PUBLIC_URL: http://localhost:${DESK_PORT:-8080}
+      # The whole integration with memento: vola pushes its own events, and no code of ours runs.
+      # Both or neither, so there is no URL until `make setup` has made the key. With Redis the
+      # worker does the pushing: it reads this same block.
+      VOLA_MEMENTO_URL: ${MEMENTO_AUDIT_KEY:+http://memento:3000/memento}
+      VOLA_MEMENTO_API_KEY: ${MEMENTO_AUDIT_KEY:-}
     volumes:
       - vola-data:/data
     healthcheck:
@@ -30,7 +35,7 @@ services:
 
   # The same image: makes the thumbnails, on the same /data.
   vola-worker:
-    image: ghcr.io/digital-cube/jsvola:latest
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
     command: ["node", "dist/worker.js"]
     restart: unless-stopped
     depends_on:
@@ -42,7 +47,7 @@ services:
       disable: true
 
   memento:
-    image: ghcr.io/digital-cube/jsmemento:latest
+    image: ${MEMENTO_IMAGE:-ghcr.io/digital-cube/jsmemento:latest}
     restart: unless-stopped
     depends_on:
       postgres: { condition: service_healthy }

@@ -32,6 +32,9 @@ missing MEMENTO_SERVER_KEY \
   && memento create-key --tenant desk --name desk-server --scopes write | save_key MEMENTO_SERVER_KEY
 missing VOLA_SERVER_KEY \
   && vola create-key --tenant desk --name desk-server --scopes files:read | save_key VOLA_SERVER_KEY
+# vola pushes its own events to memento with this one: see VOLA_MEMENTO_* in docker-compose.yaml.
+missing MEMENTO_AUDIT_KEY \
+  && memento create-key --tenant desk --name vola-audit --scopes write | save_key MEMENTO_AUDIT_KEY
 # The browser reads the feed, and works with files directly on vola.
 missing MEMENTO_BROWSER_KEY \
   && memento create-key --tenant desk --name desk-browser --scopes read | save_key MEMENTO_BROWSER_KEY
