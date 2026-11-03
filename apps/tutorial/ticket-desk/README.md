@@ -51,3 +51,26 @@ again: a key `.env` already has is kept. `make clean` drops all the data and `.e
 
 There is no login in this program, so the browser gets its two keys from the backend. A real
 application hands them out to signed-in users only, and the backend would check the user itself.
+
+## 3. The backend
+
+The tickets are one UDC collection ([`collections/tickets`](collections/tickets)): `schema.json`
+says what a ticket is, `view.yaml` how the board shows it. `@jsudc/server` keeps the rows in
+PostgreSQL and serves them at `POST /udc/*`, and [`src/server/tickets.ts`](src/server/tickets.ts)
+adds the routes of the program:
+
+| route | what it does |
+|---|---|
+| `POST /tickets` | a new ticket at the top of the first column |
+| `GET /tickets/:id` | one ticket |
+| `PATCH /tickets/:id/status` | moves it to another column |
+| `POST /tickets/:id/assign` | gives it to somebody |
+
+Every write needs `X-User-Id`, one of the users in [`src/shared/desk.ts`](src/shared/desk.ts). That
+pick is the whole login of this program.
+
+```sh
+curl -X POST localhost:8080/tickets -H 'x-user-id: igor' -H 'content-type: application/json' \
+  -d '{"title":"Printer on fire"}'
+pnpm install && pnpm test    # the routes, on tickets kept in memory
+```

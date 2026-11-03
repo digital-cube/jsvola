@@ -90,10 +90,12 @@ services:
     build: .
     restart: unless-stopped
     depends_on:
+      postgres: { condition: service_healthy }
       vola: { condition: service_healthy }
       memento: { condition: service_healthy }
     environment:
       PORT: 8080
+      DATABASE_URL: postgresql://desk:desk@postgres:5432/desk
       # `make setup` writes these to .env.
       MEMENTO_SERVER_KEY: ${MEMENTO_SERVER_KEY:-}
       MEMENTO_BROWSER_KEY: ${MEMENTO_BROWSER_KEY:-}
