@@ -1,0 +1,148 @@
+---
+/*
+ * The hero: the label is the real hash of the file this page follows, the sentence says what vola
+ * is, the install line is the first command of the Docker quick start (snippets/docker/3-up.sh),
+ * and on the right the one animation, a thumbnail going from 202 to 200.
+ */
+import up from "../../../snippets/docker/3-up.sh?raw";
+import { EXAMPLE_URL } from "../../site.mjs";
+import { jsonField } from "../../wire";
+import HashTexture from "../motifs/HashTexture.astro";
+import ThumbState from "../motifs/ThumbState.astro";
+
+const hash = jsonField("info", "hash");
+const install = up.split("\n")[0] ?? "";
+---
+
+<div class="hero">
+  <HashTexture lines={26} />
+  <div class="hero-grid">
+    <div class="copy">
+      <p class="label">sha256:{hash}</p>
+      <h1>Your application’s files, stored once and read every way.</h1>
+      <p class="lede">
+        vola is a self-hosted, multi-tenant, content-addressable file service: upload or resume an
+        upload, stream with Range, get thumbnails and OCR, keep folders and versions, hand out share
+        links, and encrypt per file.
+      </p>
+      <div class="actions">
+        <a class="button primary" href={EXAMPLE_URL}>Open the live examples</a>
+        <a class="button secondary" href="/get-started/">Get started</a>
+      </div>
+      <div class="install">
+        <code><span aria-hidden="true">$ </span>{install}</code>
+        <button type="button" data-copy={install}>Copy</button>
+      </div>
+    </div>
+    <div class="specimen">
+      <ThumbState />
+    </div>
+  </div>
+</div>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+    button.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(button.dataset.copy ?? "");
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.textContent = "Copy";
+      }, 1600);
+    });
+  }
+</script>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    border-top: 1px solid var(--vola-rule-strong);
+  }
+  .hero-grid {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3rem;
+    margin-inline: auto;
+    max-width: var(--page-width);
+    padding: clamp(2.5rem, 7vw, 6rem) var(--page-gutter) clamp(3.5rem, 8vw, 6.5rem);
+  }
+  .label {
+    margin: 0;
+    font-family: var(--vola-font-mono);
+    font-size: clamp(0.8125rem, 1.4vw, 1rem);
+    color: var(--vola-accent);
+  }
+  h1 {
+    margin: 0.9rem 0 0;
+    max-width: 17ch;
+    font-size: clamp(2.6rem, 6.2vw, 5.25rem);
+    font-stretch: 116%;
+    font-weight: 580;
+    line-height: 0.99;
+    letter-spacing: -0.026em;
+    color: var(--vola-ink);
+    text-wrap: balance;
+  }
+  .lede {
+    margin: 1.75rem 0 0;
+    max-width: 58ch;
+    font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
+    line-height: 1.5;
+    color: var(--vola-ink-2);
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2.25rem;
+  }
+  .install {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.5rem 0.5rem 0.5rem 0.8rem;
+    background: var(--vola-ground);
+    border: 1px solid var(--vola-rule);
+  }
+  .install code {
+    min-width: 0;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    color: var(--vola-ink);
+    white-space: nowrap;
+  }
+  .install span {
+    color: var(--vola-ink-3);
+  }
+  .install button {
+    flex: none;
+    padding: 0.2rem 0.55rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    color: var(--vola-ink-2);
+    background: transparent;
+    border: 1px solid var(--vola-rule);
+    cursor: pointer;
+  }
+  .install button:hover {
+    color: var(--vola-ink);
+    border-color: var(--vola-rule-strong);
+  }
+  @media (min-width: 62rem) {
+    .hero-grid {
+      grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+      align-items: end;
+      gap: clamp(2rem, 4vw, 4.5rem);
+    }
+    .specimen {
+      justify-self: end;
+      width: 100%;
+      max-width: 24rem;
+    }
+  }
+</style>

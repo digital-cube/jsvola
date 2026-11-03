@@ -1,0 +1,29 @@
+---
+title: Examples
+description: What the public examples site is, and one page per capability of vola.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+The examples site is a React application running against a real vola server, with one page per capability. It opens with a read-only demo key, so nobody has to sign up or paste anything. Your writes go through a proxy with a policy, and what you make is purged after 24 hours.
+
+The demo instance holds a pack of generated files: images, documents, a video clip, an audio tone and two encrypted files. These stay as they are for every visitor. [The examples site](/concepts/examples-site/) explains how the demo works.
+
+## The pages
+
+| Page | What it shows |
+| --- | --- |
+| [Browse](/examples/browse/) | Folders, thumbnails and the row menu over the demo files, kept live over a WebSocket |
+| [Upload](/examples/upload/) | One multipart `POST` under 1 MiB, the resumable protocol above it, with progress, cancel and resume |
+| [Thumbnails](/examples/thumbnails/) | Every size and crop of one file, and a button to watch `202` become `200` |
+| [Range & streaming](/examples/streaming/) | A video and an audio element playing from vola, and a `Range` probe showing the `206` |
+| [Share](/examples/share/) | A link with a password, an expiry and a download cap, then revoking it |
+| [Encrypted files](/examples/encrypted/) | Tenant-encrypted files that read as usual, and a private folder behind a PIN |
+| [API](/examples/api/) | The routes behind these pages and `curl` commands with the demo key filled in |
+
+## Around the pages
+
+The menu also has **Collections**: any UDC collection the server lists (`files`, `menu`), drawn as a plain data view. The header switches between English and Serbian.
+
+**Settings**, also in the header, sets the API base URL, your own key in place of the demo key, another instance, and your visitor id, with a "New identity" button. This lets you point the same pages at your own server.

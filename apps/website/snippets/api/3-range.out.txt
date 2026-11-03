@@ -1,0 +1,3 @@
+HTTP/2 206 
+accept-ranges: bytes
+content-range: bytes 0-1023/41134

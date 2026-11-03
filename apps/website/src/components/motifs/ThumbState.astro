@@ -1,0 +1,157 @@
+---
+/*
+ * The site's one animation: /thumb/256 as a client sees it. The grey placeholder of the 202, then
+ * the rendition of the 200, with the status lines of the two recorded answers. It plays once when
+ * the page opens and again on Replay; with reduced motion it simply shows the 200.
+ */
+import { Image } from "astro:assets";
+import thumb from "../../assets/wire/aurora-512-cover.webp";
+import { headerOf, statusOf } from "../../wire";
+
+const before = { status: statusOf("thumb-202"), state: headerOf("thumb-202", "X-Thumbnail-Status") };
+const after = { status: statusOf("thumb-200"), state: headerOf("thumb-200", "X-Thumbnail-Status") };
+const length = headerOf("thumb-200", "Content-Length");
+---
+
+<figure class="thumb-state" data-thumb-state>
+  <div class="frame">
+    <div class="placeholder" aria-hidden="true"></div>
+    <Image class="render" src={thumb} alt="A thumbnail of aurora.jpg, 256 pixels square" widths={[256, 512]} sizes="(min-width: 62rem) 24rem, 80vw" loading="eager" />
+  </div>
+  <figcaption>
+    <span class="path">GET …/thumb/256</span>
+    <span class="lines">
+      <span class="line line-202"><b>{before.status}</b> {before.state}</span>
+      <span class="line line-200"><b>{after.status}</b> {after.state}, {length} bytes</span>
+    </span>
+    <button type="button" data-replay>Replay</button>
+  </figcaption>
+</figure>
+
+<script>
+  for (const figure of document.querySelectorAll<HTMLElement>("[data-thumb-state]")) {
+    figure.querySelector("[data-replay]")?.addEventListener("click", () => {
+      figure.classList.remove("play");
+      // Reading a layout value makes the browser see the class gone before it comes back.
+      void figure.offsetWidth;
+      figure.classList.add("play");
+    });
+    figure.classList.add("play");
+  }
+</script>
+
+<style>
+  .thumb-state {
+    margin: 0;
+    width: 100%;
+    max-width: 24rem;
+    background: var(--vola-surface);
+    border: 1px solid var(--vola-rule-strong);
+  }
+  .frame {
+    position: relative;
+    aspect-ratio: 1;
+    overflow: hidden;
+  }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    background: #808080;
+  }
+  .render {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  figcaption {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.15rem 0.75rem;
+    align-items: center;
+    padding: 0.7rem 0.8rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--vola-ink-2);
+    border-top: 1px solid var(--vola-rule-strong);
+  }
+  .path {
+    color: var(--vola-ink);
+  }
+  .lines {
+    grid-column: 1;
+    display: grid;
+  }
+  .line {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+  .line b {
+    font-weight: 600;
+    color: var(--vola-accent);
+  }
+  .line-202 {
+    visibility: hidden;
+  }
+  button {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    padding: 0.2rem 0.5rem;
+    font: inherit;
+    color: var(--vola-ink-2);
+    background: transparent;
+    border: 1px solid var(--vola-rule);
+    cursor: pointer;
+  }
+  button:hover {
+    color: var(--vola-ink);
+    border-color: var(--vola-rule-strong);
+  }
+
+  /* 0 to 1.4 s the 202 and its grey square; then the render wipes in as the 200 arrives. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(.play) .render {
+      animation: render-in 0.7s steps(14) 1.4s both;
+    }
+    :global(.play) .line-202 {
+      animation: status-202 1.4s linear both;
+    }
+    :global(.play) .line-200 {
+      animation: status-200 1.4s linear both;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      display: none;
+    }
+  }
+  @keyframes render-in {
+    from {
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes status-202 {
+    0%,
+    99.9% {
+      visibility: visible;
+    }
+    100% {
+      visibility: hidden;
+    }
+  }
+  @keyframes status-200 {
+    0%,
+    99.9% {
+      visibility: hidden;
+    }
+    100% {
+      visibility: visible;
+    }
+  }
+</style>

@@ -1,0 +1,39 @@
+---
+title: Share
+description: Make a link with a password, an expiry and a download cap, open it in a new tab, then revoke it.
+sidebar:
+  order: 5
+---
+
+import ExampleShot from "../../../components/ExampleShot.astro";
+import LiveExample from "../../../components/LiveExample.astro";
+
+<LiveExample path="/examples/share" />
+
+<ExampleShot name="share" alt="The Share page of the examples site: an explanation, then a file picker with a Share button." />
+
+## What it shows
+
+A share link gives anyone with its token access to one file or one folder, with no API key and no tenant. This page shares a file. The link has the form `/vola/s/<token>`. vola stores only the token's SHA-256, so the link is shown once.
+
+The dialog sets a password, an expiry and a maximum number of downloads, then lists the file's links and lets you revoke them. The demo caps the expiry at 24 hours. After you create a link, the page shows it with an **Open in a new tab** button and a `curl` command.
+
+## What to try
+
+- Make a link with a password and open it. The first `GET` answers `401`, and the recipient has to send `X-Share-Password`.
+- Set the maximum downloads to 1 and download twice. The second start is `410`. Only a request that starts a download counts, so `HEAD` and a resumed `Range` do not.
+- Revoke a link, then open it again. The answer is `410`.
+- Pick a file marked `tenant`. The dialog warns that the recipient gets plaintext, and the link ends in `#` and a secret. A browser never sends that fragment to a server, so the client has to send it as `X-Share-Secret`. Without that header the answer is `401 share_secret_required`. [Encryption](/concepts/encryption/) explains these grants.
+
+## Routes
+
+| Route | What for |
+| --- | --- |
+| `POST /vola/examples/write/shares` | Creating a link, replayed against `POST /vola/shares` |
+| `GET /vola/examples/write/shares` | Listing links |
+| `DELETE /vola/examples/write/shares/:id` | Revoking one |
+| `GET /vola/s/:token` | Opening a link, with no key |
+
+## `@vola/react` pieces
+
+`VolaShareDialog` is the dialog: the fields, the link shown once, the list, revoke and the warning for an encrypted file. `useFilesLive` keeps the file picker's list current. For a recipient, `VolaClient.openShare` in `@vola/client` does the fragment step.

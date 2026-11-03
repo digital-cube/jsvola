@@ -1,0 +1,43 @@
+---
+title: Range & streaming
+description: A video and an audio element playing from vola, and a Range probe showing the 206 the page itself got.
+sidebar:
+  order: 4
+---
+
+import ExampleShot from "../../../components/ExampleShot.astro";
+import LiveExample from "../../../components/LiveExample.astro";
+
+<LiveExample path="/examples/streaming" />
+
+<ExampleShot name="streaming" alt="The Range and streaming page of the examples site: a file picker and a media player, then a Range probe with byte inputs and the status and headers of the last response." />
+
+## What it shows
+
+Plain `<video>` and `<audio>` elements pointed at vola's URLs. The browser seeks with `Range`, and vola answers `206 Partial Content`. There is no player library and no streaming server involved.
+
+The seeded `clip.mp4` and `tone.mp3` are `is_global_public`, so the elements load them from `/vola/public/:id` with no key.
+
+Below the player, a probe makes the same request from the page and shows what came back: the status, `Content-Range`, `Accept-Ranges`, `Content-Length`, `Content-Type`, `ETag`, `Cache-Control` and the bytes received. It runs once by itself with `bytes=0-1023`, so the page shows a `206` before you touch anything.
+
+## What to try
+
+- Seek in the player with your browser's network panel open. Each jump is a new `GET` with a `Range` header, answered `206`.
+- Change the byte range in the probe and press **Send**.
+- Ask for a range past the end of the file. The answer is `416`.
+- Press **HEAD** to see the same headers with no body.
+- Copy the `curl` command the page shows and run it yourself.
+
+## Routes
+
+| Route | What for |
+| --- | --- |
+| `GET /vola/public/:fileId` | The media and the probe, without a key |
+| `HEAD /vola/public/:fileId` | The probe's **HEAD** button |
+| `GET /vola/files/:type/:id` | The list behind the file picker |
+
+The authenticated download route, `GET /vola/files/:type/:id/:fileId`, follows the same `Range` rules. On an encrypted file they work in plaintext coordinates. The [API reference](/reference/api/) has the details.
+
+## `@vola/react` pieces
+
+Almost none, and that is the point: the players are ordinary HTML elements with a URL. The page uses `useVola` to get the client, whose `files.publicUrl()` builds that URL, and `useFilesLive` to keep the file list current.

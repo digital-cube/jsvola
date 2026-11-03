@@ -1,0 +1,72 @@
+---
+/*
+ * Packages: <PackageTable> reads packages/*\/package.json at build time; the image tags are the
+ * sentence of docs/DEPLOYMENT.md that defines them, so a new tag scheme shows up here by itself.
+ */
+import deployment from "../../../../../docs/DEPLOYMENT.md?raw";
+import PackageTable from "../PackageTable.astro";
+import Section from "../Section.astro";
+
+const line = /`(ghcr\.io\/[^`:]+):<version>` \(([^)]*)\)/.exec(deployment.replace(/\n/g, " "));
+if (!line?.[1] || !line[2]) throw new Error("docs/DEPLOYMENT.md: the image tags line has moved");
+const image = line[1];
+const tags = [...line[2].matchAll(/`([^`]+)`(?: = ([^,]+))?/g)].map((m) => ({
+  tag: m[1] ?? "",
+  means: (m[2] ?? "").replace(/`/g, "").trim() || "one commit",
+}));
+---
+
+<Section id="packages" number="06" name="Packages" title="Packages">
+  <Fragment slot="head">
+    <p>Six packages and one image, all on the same version. Take only what you need.</p>
+    <p><a href="/packages/">About each package</a></p>
+    <p><a href="/packages/changelog/">Changelog</a></p>
+  </Fragment>
+
+  <PackageTable />
+
+  <h3>The image</h3>
+  <p class="image"><code>{image}:&lt;version&gt;</code></p>
+  <dl>
+    {
+      tags.map((t) => (
+        <div>
+          <dt><code>{t.tag}</code></dt>
+          <dd>{t.means}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</Section>
+
+<style>
+  h3 {
+    margin: 2.25rem 0 0;
+    font-size: 1.1875rem;
+    font-stretch: 108%;
+    font-weight: 560;
+    color: var(--vola-ink);
+  }
+  .image {
+    margin: 0.5rem 0 0;
+  }
+  code {
+    font-size: 0.875rem;
+    color: var(--vola-ink);
+    overflow-wrap: anywhere;
+  }
+  dl {
+    margin: 0.75rem 0 0;
+  }
+  dl div {
+    display: grid;
+    grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
+    gap: 1rem;
+    padding-block: 0.45rem;
+    border-top: 1px solid var(--vola-rule);
+  }
+  dd {
+    margin: 0;
+    font-size: 0.9375rem;
+  }
+</style>

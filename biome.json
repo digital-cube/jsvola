@@ -13,7 +13,12 @@
       "!**/drizzle/meta",
       "!docs",
       "!**/*.md",
-      "!**/*.generated.ts"
+      "!**/*.generated.ts",
+      "!**/*.astro",
+      "!**/*.mdx",
+      "!apps/website/dist",
+      "!apps/website/.astro",
+      "!apps/website/snippets/wire"
     ]
   },
   "formatter": {

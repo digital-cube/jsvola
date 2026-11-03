@@ -1,0 +1,101 @@
+---
+title: The examples site
+description: How the public demo lets anonymous visitors write through a read-only key, a proxy with a policy, a rate limit and a purge.
+sidebar:
+  order: 5
+---
+
+The [examples site](/examples/) shows every capability of vola, one page per capability, over a demo tenant. Anyone can open it, upload a file, share it or set a PIN, without an account or a pasted key. This page explains what limits those visitors.
+
+The server serves the built site itself (`VOLA_UI_DIR`), so one container is both the API and the site. All the demo routes exist only when `VOLA_EXAMPLES=true`. Otherwise they answer `404` and the site asks for a key.
+
+## Two keys
+
+| Key | Scopes | Where it lives |
+| --- | --- | --- |
+| `VOLA_DEMO_API_KEY` | `files:read`, `folders:read` | Handed to every visitor by `GET /vola/examples/config`, along with the demo instance, the limits and the server's features |
+| `VOLA_DEMO_WRITE_KEY` | `files:write`, `folders:write`, `shares:write`, `keyrings:write` and the reads | Never leaves the server |
+
+At startup the server creates the `demo` tenant if it is missing and stores both keys by hash. A key that already exists is checked. The server refuses to start and says why if the visitor key has any write scope, if the write key is short of one, or if a key belongs to another tenant or is revoked.
+
+## The write proxy
+
+A visitor's write goes to `/vola/examples/write/<route>` without a key. The server checks it against a policy and replays it against `<route>` under the write key. The policy is the visitor's whole authority: anything it does not name is `403 demo_forbidden`, which includes keys, admin, stats, another instance and another tenant's file.
+
+| What | Route | Guard |
+| --- | --- | --- |
+| Upload | `POST files/demo/<id>` | `Content-Length` up to 5 MiB plus 64 KiB of multipart, else `413`. After the upload the type must be on the list, else the file is purged and the answer is `415 demo_mime_not_allowed` |
+| Resumable upload | `POST uploads`, then `HEAD`, `PATCH` and `DELETE` on `uploads/:id` | `Upload-Length` up to 5 MiB and the demo instance in the metadata. `Location` is rewritten to the proxy. The type is checked when the last `PATCH` completes |
+| Change a file or folder | `PATCH` and `DELETE` on `files/…/:fileId`, `POST`, `PATCH` and `DELETE` on `folders/…` | A seeded file or folder is `403`, so the demo pack stays as it is for everyone |
+| Shares | `POST` and `GET` on `shares`, `GET` and `DELETE` on `shares/:id` | The file must be in the demo instance. `expires_at` is capped at `VOLA_DEMO_TTL_HOURS` |
+| The visitor's keyring | `keyrings/me/*` | The visitor's own principal |
+
+The type list is images, PDF, mp4 and webm video, mp3, mp4, ogg and wav audio, and plain text.
+
+## The visitor id
+
+Every proxied request must carry `X-User-Id: demo-` followed by 6 to 32 lowercase letters or digits. The site makes one per browser session and keeps it in `sessionStorage`. Without it, the answer is `400 demo_user_required`.
+
+This id is the `created_by` of everything the visitor makes, which is what the purge selects on. It is also the principal of their keyring. **Settings** on the site has a "New identity" button.
+
+## Rate limit
+
+Writes are limited per address: `VOLA_DEMO_RATE_LIMIT` (60) per ten minutes, then `429 demo_rate_limited` with `Retry-After`. Behind a reverse proxy, set `VOLA_TRUST_PROXY=true` so the address is the visitor's and not the proxy's.
+
+## The purge
+
+Every `VOLA_DEMO_PURGE_INTERVAL_MIN` (15) minutes, and once at start, the server removes what visitors made more than `VOLA_DEMO_TTL_HOURS` (24) ago. It goes in this order:
+
+1. Their **keyrings**, as a crypto-shred. The files under them go first.
+2. Their **files** in the demo instance: every version, soft-deleted rows too. A blob no other row cites is removed from disk.
+3. Their **folders**.
+
+The seeder's files are never selected. Shares end with their capped expiry. An admin key can run the purge at once with `POST /vola/examples/purge`.
+
+## How the site talks to the server
+
+The site is Vite and React 19 on `@vola/react` and `@jsudc/react`. Its `VolaProvider` gets a `VolaClient` whose `fetch` is a small wrapper called `demoFetch`:
+
+- A request that needs the proxy goes to the write proxy without the key. That means anything other than `GET` or `HEAD`, the whole `/uploads` protocol, `/shares`, and `/keyrings/me/*`. The unlock beacon, the UDC actions and the demo routes are exceptions and do not use the proxy.
+- Everything else goes straight to the API with the read-only key.
+- With a key of the visitor's own, set in **Settings**, nothing is rewritten.
+
+The site sets the resumable threshold to 1 MiB and the chunk to 256 KiB, so the resumable path has room under the 5 MiB cap and the progress bar moves.
+
+One more demo route, `POST /vola/examples/regenerate/:fileId`, drops a demo file's thumbnails so the next `/thumb` answers `202` and queues the worker again. The [Thumbnails](/examples/thumbnails/) page's button calls it.
+
+## The demo pack
+
+`vola demo-seed`, run by the compose `seeder` service, upserts ten generated files under their slugs as `X-User-Id: seeder`: images, documents, a video clip and an audio tone marked `is_global_public`, and two `tenant`-encrypted files. A restart changes nothing when the bytes are the same. [ASSETS.md](https://github.com/digital-cube/jsvola/blob/main/apps/examples/ASSETS.md) lists them.
+
+The sidebar is the repository's [`menu.yaml`](https://github.com/digital-cube/jsvola/blob/main/menu.yaml), served as the `menu` UDC collection.
+
+## Running your own
+
+Make the key pair once for your `.env`. Nothing is stored until the server starts:
+
+```sh
+docker compose -f docker-compose.yaml run --rm --no-deps vola vola demo-keys
+```
+
+Then start the stack with the `demo` profile, which adds the seeder:
+
+```sh
+docker compose -f docker-compose.yaml --profile demo up -d      # vola, vola-worker, postgres, redis, seeder
+```
+
+Encrypted files and keyrings also need the key and pepper files. The reverse proxy must allow WebSocket upgrades on `/vola/udc/subscribe` and a body of at least 6 MiB.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `VOLA_UI_DIR` | None (image: `/app/ui`) | The built site; empty means API only |
+| `VOLA_EXAMPLES` | `false` | The demo routes; `true` needs both keys |
+| `VOLA_DEMO_TENANT` | `demo` | The tenant, created when missing |
+| `VOLA_DEMO_INSTANCE_TYPE`, `VOLA_DEMO_INSTANCE_ID` | `demo`, `00000000-0000-4000-8000-000000000001` | The one instance the site shows |
+| `VOLA_DEMO_MAX_UPLOAD_BYTES` | 5 MiB | The proxy's upload cap |
+| `VOLA_DEMO_TTL_HOURS` | 24 | How long a visitor's things live |
+| `VOLA_DEMO_RATE_LIMIT` | 60 | Writes per address per ten minutes |
+| `VOLA_DEMO_PURGE_INTERVAL_MIN` | 15 | `0` means never |
+| `VOLA_PUBLIC_URL` | None | The origin share links are built on |
+
+The operator's guide is [EXAMPLES-SITE.md](https://github.com/digital-cube/jsvola/blob/main/docs/EXAMPLES-SITE.md).

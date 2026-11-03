@@ -1,0 +1,158 @@
+---
+/*
+ * Start where you are: four ways in. The code is the snippets/ files Get started shows too; the
+ * TypeScript ones are compiled against the workspace by scripts/check-snippets.mjs, and the shell
+ * ones were run as written (their output is beside them).
+ */
+import { Code } from "@astrojs/starlight/components";
+import clientInstall from "../../../snippets/client/install.sh?raw";
+import clientOutput from "../../../snippets/client/output.txt?raw";
+import clientTs from "../../../snippets/client/read.ts?raw";
+import embeddedInstall from "../../../snippets/embedded/install.sh?raw";
+import serverTs from "../../../snippets/embedded/server.ts?raw";
+import appTsx from "../../../snippets/react/App.tsx?raw";
+import Section from "../Section.astro";
+
+const join = (files: Record<string, string>) =>
+  Object.keys(files)
+    .sort()
+    .map((name) => (files[name] ?? "").trimEnd())
+    .join("\n\n");
+// The Docker steps of Get started, joined in their order; tearing it down is left out.
+const dockerSh = join(
+  import.meta.glob<string>(["../../../snippets/docker/[1-5]-*.sh"], {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+);
+const dockerOutput = join(
+  import.meta.glob<string>("../../../snippets/docker/*.out.txt", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+);
+const TABS = [
+  { id: "docker", label: "Docker", page: "/get-started/docker/" },
+  { id: "client", label: "@vola/client", page: "/get-started/client/" },
+  { id: "react", label: "@vola/react", page: "/get-started/react/" },
+  { id: "embedded", label: "volaPlugin", page: "/get-started/embedded/" },
+];
+---
+
+<Section id="start" number="05" name="Start" title="Start where you are">
+  <Fragment slot="head">
+    <p>
+      Run your own, call it from a backend, draw it in React, or mount it inside the Fastify
+      application you already have. The commands were run as shown and the programs compile against
+      this repository.
+    </p>
+  </Fragment>
+
+  <div class="tabs" data-tabs>
+    <div role="tablist" aria-label="Ways to start">
+      {
+        TABS.map((tab, i) => (
+          <button type="button" role="tab" id={`tab-${tab.id}`} aria-controls={`panel-${tab.id}`} aria-selected={i === 0 ? "true" : "false"} tabindex={i === 0 ? 0 : -1}>
+            {tab.label}
+          </button>
+        ))
+      }
+    </div>
+
+    <div role="tabpanel" id="panel-docker" aria-labelledby="tab-docker">
+      <p>Docker with Compose: the server, the worker, PostgreSQL and Redis, with named volumes.</p>
+      <Code code={dockerSh} lang="sh" title="Terminal" />
+      <Code code={dockerOutput} lang="txt" title="What it printed" />
+      <p><a href={TABS[0]?.page}>Step by step, with what each one does</a></p>
+    </div>
+    <div role="tabpanel" id="panel-client" aria-labelledby="tab-client" hidden>
+      <p>The fetch SDK for every route, for Node 24 and browsers. This program reads the live examples instance.</p>
+      <Code code={clientInstall.trimEnd()} lang="sh" title="Terminal" />
+      <Code code={clientTs.trimEnd()} lang="ts" title="read.ts" />
+      <Code code={clientOutput.trimEnd()} lang="txt" title="What it printed" />
+      <p><a href={TABS[1]?.page}>Using the client</a></p>
+    </div>
+    <div role="tabpanel" id="panel-react" aria-labelledby="tab-react" hidden>
+      <p>A file browser, uploads, thumbnails, the PIN gate and the share dialog as React 19 components.</p>
+      <Code code={appTsx.trimEnd()} lang="tsx" title="App.tsx" />
+      <p><a href={TABS[2]?.page}>Using the components</a></p>
+    </div>
+    <div role="tabpanel" id="panel-embedded" aria-labelledby="tab-embedded" hidden>
+      <p>The same server as a Fastify plugin, next to your own routes.</p>
+      <Code code={embeddedInstall.trimEnd()} lang="sh" title="Terminal" />
+      <Code code={serverTs.trimEnd()} lang="ts" title="server.ts" />
+      <p><a href={TABS[3]?.page}>Embedding it</a></p>
+    </div>
+  </div>
+</Section>
+
+<script>
+  for (const root of document.querySelectorAll("[data-tabs]")) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const select = (tab: HTMLButtonElement) => {
+      for (const other of tabs) {
+        const selected = other === tab;
+        other.setAttribute("aria-selected", String(selected));
+        other.tabIndex = selected ? 0 : -1;
+        const panel = root.querySelector<HTMLElement>(`#${other.getAttribute("aria-controls")}`);
+        if (panel) panel.hidden = !selected;
+      }
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (event) => {
+        const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+        const next = tabs[(i + step + tabs.length) % tabs.length];
+        if (step && next) {
+          select(next);
+          next.focus();
+        }
+      });
+    });
+  }
+</script>
+
+<style>
+  [role="tablist"] {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--vola-rule-strong);
+  }
+  [role="tab"] {
+    padding: 0.55rem 0.9rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    color: var(--vola-ink-2);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+  }
+  [role="tab"]:hover {
+    color: var(--vola-ink);
+  }
+  [role="tab"][aria-selected="true"] {
+    color: var(--vola-ink);
+    border-bottom-color: var(--vola-accent);
+  }
+  [role="tabpanel"] {
+    display: grid;
+    gap: 0.9rem;
+    padding-top: 1.25rem;
+    min-width: 0;
+  }
+  [role="tabpanel"][hidden] {
+    display: none;
+  }
+  p {
+    margin: 0;
+    max-width: 62ch;
+  }
+  [role="tabpanel"] :global(.expressive-code) {
+    margin: 0;
+    min-width: 0;
+  }
+</style>

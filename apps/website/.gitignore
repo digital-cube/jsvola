@@ -1,0 +1,5 @@
+dist/
+.astro/
+# written by scripts/gen-reference.mjs and scripts/gen-changelog.mjs (pnpm run gen)
+src/content/docs/reference/
+src/content/docs/packages/changelog.md

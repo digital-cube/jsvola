@@ -1,0 +1,47 @@
+---
+title: API
+description: The routes behind the example pages and curl commands with the demo key filled in.
+sidebar:
+  order: 7
+---
+
+import ExampleShot from "../../../components/ExampleShot.astro";
+import LiveExample from "../../../components/LiveExample.astro";
+
+<LiveExample path="/examples/api" />
+
+<ExampleShot name="api" alt="The API page of the examples site: a table of routes with method, path, scope and what each does, followed by curl commands." />
+
+## What it shows
+
+A table of the routes the other pages use, with method, path, scope and a line on what each does. It covers health, the demo config, files, public files, folders, resumable uploads, shares, keyrings, UDC and the write proxy.
+
+Below the table are `curl` commands you can copy. They carry the same demo key the page itself uses: `files:read` and `folders:read` on the demo tenant, nothing more. For every route, see the [API reference](/reference/api/).
+
+## What to try
+
+- Run the health and config commands. Neither needs a key, and the config answer is where the site gets its demo key.
+- Run the list, info and folders commands against the demo instance.
+- Run the download with `Range` and read the `206` headers.
+- Fill in a file id from the list and run the thumbnail command. A rendition that does not exist yet answers `202`, then `200`.
+- Run the write with the demo key. The answer is `403`, because the key is read-only.
+- Run the same write through the proxy. It needs no key, only an `X-User-Id` of the form `demo-…`.
+
+## Routes
+
+| Command | Route |
+| --- | --- |
+| health | `GET /vola/health/ready` |
+| config | `GET /vola/examples/config` |
+| list | `GET /vola/files/:type/:id?limit=5` |
+| info | `GET /vola/files/:type/:id/:fileId/info?ocr=full` |
+| download with Range | `GET /vola/files/:type/:id/:fileId` |
+| thumbnail | `GET /vola/files/:type/:id/:fileId/thumb/256?crop=attention` |
+| folders | `GET /vola/folders/:type/:id/images` |
+| udc list | `POST /vola/udc/list` |
+| lookups | `GET /vola/lookups` |
+| write through the proxy | `POST /vola/examples/write/files/:type/:id` |
+
+## `@vola/react` pieces
+
+None. The page is a table and command blocks that the site builds from its connection settings: base URL, key and instance. Everything on it works from a terminal.

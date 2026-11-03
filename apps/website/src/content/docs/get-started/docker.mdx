@@ -1,0 +1,58 @@
+---
+title: Run it with Docker
+description: The server, the worker, PostgreSQL and Redis from the repository's docker-compose.yaml, then a tenant, a key and the first upload.
+sidebar:
+  order: 1
+---
+
+import { Code, Steps } from "@astrojs/starlight/components";
+import clone from "../../../../snippets/docker/1-clone.sh?raw";
+import env from "../../../../snippets/docker/2-env.sh?raw";
+import upOut from "../../../../snippets/docker/3-up.out.txt?raw";
+import up from "../../../../snippets/docker/3-up.sh?raw";
+import keyOut from "../../../../snippets/docker/4-key.out.txt?raw";
+import key from "../../../../snippets/docker/4-key.sh?raw";
+import uploadOut from "../../../../snippets/docker/5-upload.out.txt?raw";
+import upload from "../../../../snippets/docker/5-upload.sh?raw";
+import down from "../../../../snippets/docker/6-down.sh?raw";
+
+The repository's `docker-compose.yaml` is a production-like stack: the vola server, its worker, PostgreSQL and Redis, with health checks and named volumes. The server applies its migrations when it starts, and the `vola` command line is inside the image.
+
+<Steps>
+
+1. Get the compose file, with the rest of the repository:
+
+   <Code code={clone} lang="sh" />
+
+2. Give the database a password:
+
+   <Code code={env} lang="sh" />
+
+3. Build and start it, then wait until the server says it is ready. The first build takes a few minutes:
+
+   <Code code={up} lang="sh" />
+   <Code code={upOut} lang="txt" title="What it printed" />
+
+4. Make a tenant and an API key for it. The key is printed once; only its SHA-256 is stored:
+
+   <Code code={key} lang="sh" />
+   <Code code={keyOut} lang="txt" title="What it printed" />
+
+5. Upload a file to an instance of your application, here a ticket, and read part of it back:
+
+   <Code code={upload} lang="sh" />
+   <Code code={uploadOut} lang="txt" title="What it printed" />
+
+6. When you are done, stop it and delete its data:
+
+   <Code code={down} lang="sh" />
+
+</Steps>
+
+## What to do next
+
+- Every route, with its answers and error codes: [HTTP API](/reference/api/).
+- Encrypted files need a key file: [Encryption](/concepts/encryption/) explains the choice, and [Environment variables](/reference/environment/) lists the settings.
+- Call it from code with [@vola/client](/get-started/client/).
+
+Running on rootless podman, or behind a reverse proxy? The [deployment guide](https://github.com/digital-cube/jsvola/blob/main/docs/DEPLOYMENT.md) has what changes.

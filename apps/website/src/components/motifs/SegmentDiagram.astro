@@ -1,0 +1,118 @@
+---
+/*
+ * The JSV v1 blob as docs/CRYPTO.md § 2 states it: a 24-byte header and AES-256-GCM segments of
+ * 1 MiB, each with its own tag, its nonce derived and its AAD binding it to the file. Colours are
+ * the theme's tokens, so it follows the reader's theme.
+ */
+const HEADER = [
+  { name: "magic", size: "3", w: 56 },
+  { name: "ver", size: "1", w: 44 },
+  { name: "segment_size", size: "4", w: 128 },
+  { name: "nonce_prefix", size: "8", w: 136 },
+  { name: "plaintext_length", size: "8", w: 176 },
+];
+const segments = [
+  { label: "segment 0", x: 72 },
+  { label: "segment 1", x: 256 },
+  { label: "segment n−1", x: 456 },
+];
+let cursor = 80;
+const fields = HEADER.map((f) => {
+  const field = { ...f, x: cursor };
+  cursor += f.w;
+  return field;
+});
+---
+
+<figure class="segment-diagram" tabindex="0">
+  <svg viewBox="0 0 640 300" role="img" aria-labelledby="jsv-title jsv-desc">
+    <title id="jsv-title">The JSV v1 encrypted blob</title>
+    <desc id="jsv-desc">A 24-byte header holding the magic, version, segment size, nonce prefix and plaintext length, followed by segments of 1 MiB. Each segment is AES-256-GCM ciphertext with a 16-byte tag. The nonce is the prefix and the segment index. The additional authenticated data is the header, the file id, the index and a last-segment flag.</desc>
+
+    <text class="cap" x="0" y="24">header</text>
+    <text class="dim" x="0" y="42">24 B</text>
+    {
+      fields.map((f) => (
+        <g>
+          <rect class="cell" x={f.x} y="8" width={f.w} height="44" />
+          <text class="name" x={f.x + 8} y="27">{f.name}</text>
+          <text class="dim" x={f.x + 8} y="43">{f.size} B</text>
+        </g>
+      ))
+    }
+
+    <line class="lead" x1="80" y1="52" x2="72" y2="96" />
+    <line class="lead" x1="620" y1="52" x2="640" y2="96" />
+
+    <text class="cap" x="0" y="118">blob</text>
+    <rect class="hdr" x="44" y="96" width="28" height="44" />
+    {
+      segments.map((s, i) => (
+        <g>
+          <rect class="cell" x={s.x} y="96" width="184" height="44" />
+          <rect class="tag" x={s.x + 156} y="96" width="28" height="44" />
+          <text class="name" x={s.x + 8} y="115">{s.label}</text>
+          <text class="dim" x={s.x + 8} y="131">{i === 2 ? "≤ 1 MiB" : "1 MiB"} + tag</text>
+        </g>
+      ))
+    }
+    <text class="gap" x="448" y="124" text-anchor="middle">⋯</text>
+
+    <line class="lead accent" x1="346" y1="140" x2="346" y2="176" />
+    <text class="name" x="346" y="194" text-anchor="middle">segment i</text>
+    <text class="eq" x="0" y="222">ct_i ∥ tag_i = AES-256-GCM(FK, nonce_i, plaintext, aad_i)</text>
+    <text class="eq" x="0" y="248">nonce_i = nonce_prefix ∥ i</text>
+    <text class="eq" x="0" y="274">aad_i   = header ∥ file_id ∥ i ∥ last</text>
+  </svg>
+</figure>
+
+<style>
+  .segment-diagram {
+    margin: 0;
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 36rem;
+    height: auto;
+    font-family: var(--vola-font-mono);
+  }
+  .cell {
+    fill: var(--vola-surface);
+    stroke: var(--vola-rule-strong);
+    stroke-width: 1;
+  }
+  .hdr,
+  .tag {
+    fill: var(--vola-accent);
+  }
+  .lead {
+    stroke: var(--vola-rule-strong);
+    stroke-width: 1;
+  }
+  .accent {
+    stroke: var(--vola-accent);
+  }
+  .cap {
+    font-size: 12px;
+    fill: var(--vola-ink);
+  }
+  .name {
+    font-size: 11.5px;
+    fill: var(--vola-ink);
+  }
+  .dim {
+    font-size: 10.5px;
+    fill: var(--vola-ink-3);
+  }
+  .gap {
+    font-size: 14px;
+    fill: var(--vola-ink-3);
+  }
+  .eq {
+    font-size: 12.5px;
+    fill: var(--vola-ink-2);
+    white-space: pre;
+  }
+</style>

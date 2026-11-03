@@ -1,0 +1,42 @@
+---
+/* The link from an Examples page to the running page on EXAMPLE_URL (src/site.mjs). */
+import { EXAMPLE_URL } from "../site.mjs";
+
+interface Props {
+  /** A route of the examples site, as in src/examples.mjs. */
+  path: string;
+}
+
+const { path } = Astro.props;
+---
+
+<p class="live-example not-content">
+  <a href={EXAMPLE_URL + path}>Open this page on the live examples</a>
+  <code>{path.split("?")[0]}</code>
+</p>
+
+<style>
+  .live-example {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+    margin-block: 1rem 1.5rem;
+  }
+  a {
+    padding: 0.5rem 0.9rem;
+    font-weight: 560;
+    color: var(--vola-accent-ink);
+    text-decoration: none;
+    background: var(--vola-accent);
+  }
+  a:hover {
+    color: var(--vola-accent-ink);
+    background: var(--vola-ink);
+  }
+  code {
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    color: var(--vola-ink-3);
+  }
+</style>

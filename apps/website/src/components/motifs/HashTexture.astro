@@ -1,0 +1,41 @@
+---
+/*
+ * Decoration: lines of real SHA-256 digests, cut short, the way a directory of blobs reads. Hidden
+ * from assistive technology and from search; it says nothing the page does not.
+ */
+import { createHash } from "node:crypto";
+
+interface Props {
+  lines?: number;
+  seed?: string;
+}
+
+const { lines = 18, seed = "vola" } = Astro.props;
+const rows = Array.from({ length: lines }, (_, i) => {
+  const cell = (n: number) =>
+    createHash("sha256").update(`${seed}:${i}:${n}`).digest("hex").slice(0, 24 + ((i + n) % 4) * 8);
+  return `${cell(0)}  ${cell(1)}  ${cell(2)}  ${cell(3)}`;
+});
+---
+
+<div class="hash-texture" aria-hidden="true" data-pagefind-ignore>
+  {rows.map((row) => <div>{row}</div>)}
+</div>
+
+<style>
+  .hash-texture {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    padding-top: 0.5rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.9;
+    white-space: nowrap;
+    color: var(--vola-texture);
+    opacity: 0.055;
+    pointer-events: none;
+    user-select: none;
+  }
+</style>

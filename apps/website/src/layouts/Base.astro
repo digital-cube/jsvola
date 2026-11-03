@@ -1,0 +1,98 @@
+---
+/*
+ * The site's own pages (the home page, the 404): the head, the header and the footer. The docs
+ * are Starlight's; both read the same tokens and the same stored theme, so the two look like one
+ * site. No Pagefind here: search lives in the docs.
+ */
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource-variable/jetbrains-mono/wght.css";
+import "../styles/tokens.css";
+import "../styles/home.css";
+import SiteTitle from "../components/SiteTitle.astro";
+import ThemeProvider from "../components/ThemeProvider.astro";
+import ThemeToggle from "../components/ThemeToggle.astro";
+import { EXAMPLE_URL, REPO_URL } from "../site.mjs";
+
+interface Props {
+  title: string;
+  description: string;
+  noindex?: boolean;
+}
+
+const { title, description, noindex = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical.href} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical.href} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <ThemeProvider />
+  </head>
+  <body>
+    <header class="site-header">
+      <SiteTitle />
+      <nav aria-label="Main">
+        <a href="/get-started/">Docs</a>
+        <a href="/reference/api/">API</a>
+        <a href={EXAMPLE_URL}>Live examples</a>
+        <a href={REPO_URL}>GitHub</a>
+        <ThemeToggle />
+      </nav>
+    </header>
+    <main><slot /></main>
+    <footer class="site-footer">
+      <span>vola. MIT licensed, self-hosted, yours to run.</span>
+      <nav aria-label="Footer">
+        <a href="/get-started/docker/">Run it with Docker</a>
+        <a href="/packages/changelog/">Changelog</a>
+        <a href={`${REPO_URL}/blob/main/docs/DEPLOYMENT.md`}>Deployment</a>
+      </nav>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .site-header,
+  .site-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 2rem;
+    margin-inline: auto;
+    max-width: var(--page-width);
+    padding: 1rem var(--page-gutter);
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.4rem;
+    font-size: 0.9375rem;
+  }
+  nav a {
+    color: var(--vola-ink-2);
+    text-decoration: none;
+  }
+  nav a:hover {
+    color: var(--vola-ink);
+    text-decoration: underline;
+  }
+  .site-footer {
+    padding-block: 1.5rem 2.5rem;
+    font-size: 0.875rem;
+    border-top: 1px solid var(--vola-rule-strong);
+  }
+</style>

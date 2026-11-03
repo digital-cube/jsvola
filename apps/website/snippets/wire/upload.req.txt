@@ -1,0 +1,4 @@
+POST /vola/files/demo/00000000 HTTP/1.1
+Authorization: Bearer $KEY
+
+<multipart: file=aurora.jpg, 41167 bytes>

@@ -1,0 +1,12 @@
+HTTP/1.1 201 Created
+Content-Type: application/json; charset=utf-8
+
+{
+  "file_id": "01a19fd3",
+  "has_password": false,
+  "expires_at": "2026-11-04T05:13:03.000Z",
+  "max_downloads": 3,
+  "download_count": 0,
+  "token": "KYHHic7w…",
+  "url": "https://examples.stage.vol-a.com/vola/s/KYHHic7w…"
+}

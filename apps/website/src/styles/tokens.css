@@ -1,0 +1,47 @@
+/*
+ * vola's tokens: an archive shelf at night. Charcoal surfaces in warm greys, hairline rules, one
+ * warm accent. Dark is the primary theme (Starlight's :root); light is grey card stock, complete
+ * but second. Contrast of every text colour against the page, checked by scripts/contrast.mjs:
+ * body, secondary and accent text are all AA on both grounds and on both surfaces.
+ */
+:root {
+  --vola-ground: #1c1b19;
+  --vola-surface: #24221f;
+  --vola-raised: #2f2c28;
+  --vola-rule: #4a453d;
+  --vola-rule-strong: #6e675b;
+  --vola-ink: #efe9df;
+  --vola-ink-2: #c9c1b3;
+  --vola-ink-3: #a39b8d;
+  --vola-accent: #e8ad45;
+  --vola-accent-ink: #1c1b19;
+  --vola-accent-low: #3a2f1b;
+  --vola-texture: #efe9df;
+
+  --vola-font-sans:
+    "Archivo Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --vola-font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --vola-ground: #e6e4df;
+  --vola-surface: #efede9;
+  --vola-raised: #f7f6f3;
+  --vola-rule: #b4afa5;
+  --vola-rule-strong: #7d776c;
+  --vola-ink: #1c1a17;
+  --vola-ink-2: #45413a;
+  --vola-ink-3: #5c574e;
+  --vola-accent: #864709;
+  --vola-accent-ink: #f7f6f3;
+  --vola-accent-low: #e2d2bb;
+  --vola-texture: #1c1a17;
+}
+
+/* JetBrains Mono's ligatures would redraw what the wire says: `sha-<short>`, `->`, `!=`. */
+code,
+pre,
+kbd,
+samp {
+  font-variant-ligatures: none;
+}

@@ -42,6 +42,7 @@ Drizzle/PostgreSQL + Redis, published as `@vola/*` packages on npm and as one Do
 | [`@vola/client`](packages/client) | the fetch SDK for every route — Node 24+ and browsers |
 | [`@vola/react`](packages/react) | React 19 components: file browser, uploads, thumbnails, PIN gate, share dialog |
 | [`apps/examples`](apps/examples) | the examples site: one page per capability over a demo instance, served by the server at `/` (private) |
+| [`apps/website`](apps/website) | vol-a.com: the website and documentation, Astro + Starlight, static files outside the image (private) |
 | [`packages/e2e`](packages/e2e) | end-to-end tests against the built server (private) |
 
 Every package and the image share one version. Install what you need:

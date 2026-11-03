@@ -1,0 +1,23 @@
+---
+/* The docs' page title with its route above it in the mono, the way a shelf label reads. */
+const { entry, id } = Astro.locals.starlightRoute;
+const route = id ? `/${id}/` : "/";
+---
+
+<p class="route" data-pagefind-ignore>{route}</p>
+<h1 id="_top" data-page-title>{entry.data.title}</h1>
+
+<style>
+  .route {
+    margin: 1rem 0 0;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    color: var(--vola-accent);
+  }
+  h1 {
+    margin-top: 0.4rem;
+    font-size: var(--sl-text-h1);
+    line-height: var(--sl-line-height-headings);
+    color: var(--vola-ink);
+  }
+</style>

@@ -1,0 +1,109 @@
+---
+title: Real-time
+description: What the subscribe WebSocket carries and how a list of files stays live without polling.
+sidebar:
+  order: 4
+---
+
+A client showing the files of an instance, or of one folder, can see changes as they happen: an upload, a delete, a move, a rename, a visibility change or a new `processing_status`. The channel is a WebSocket at `GET /vola/udc/subscribe`. It carries the same rows the `files` list would answer, so a data view applies them without reloading.
+
+## From a write to a row on screen
+
+1. A writer (a request handler or the worker) commits its change.
+2. After the commit, it publishes an event on the file event bus.
+3. The event reaches every server process that has a client for that tenant.
+4. For each subscription whose instance matches, the server reads the row from the database, masks it as `list` would, and evaluates the subscription's filter against it.
+5. The client gets `udc.row.upsert` with the row, or `udc.row.remove` with its id.
+
+An event carries ids only: tenant, instance, folder, file and kind. The row is read at dispatch time, under the subscription's own context, so nothing an encrypted row hides crosses Redis. A subscriber sees `<encrypted>` when it cannot open the file, whatever the uploader could do.
+
+A failed publish is logged and never raised. The change is durable, and the request should not fail because a client will have to reload.
+
+## Connecting
+
+Browsers cannot set headers on a WebSocket, so the API key goes in the subprotocol list as `bearer.<key>`, next to `vola.v1`. The server selects `vola.v1`, so the key is not echoed back. Other clients may send `Authorization: Bearer` or `X-Api-Key` instead. The key is never read from the query string, because a URL gets logged.
+
+The key needs `files:read`, and an admin key picks its tenant with `X-Tenant-Slug`. Refusals happen before the upgrade, as ordinary HTTP answers: `401`, `403` or `400 tenant_required`. The tenant is the key's and nothing on the wire can change it.
+
+## Messages
+
+Every message is a JSON text frame of the shape `{kind, id, payload}`. For a subscription, `id` is the one the client chose, so several views can share one connection.
+
+The client sends:
+
+| Kind | Payload | What it does |
+| --- | --- | --- |
+| `udc.subscribe` | `{collection: "files", filter}` | Starts a subscription with the filter a `list` would take |
+| `udc.unsubscribe` | None | Ends the subscription `id` |
+| `udc.ping` | None | An application-level ping |
+
+The server sends:
+
+| Kind | When |
+| --- | --- |
+| `udc.welcome` | First, with the protocol version, tenant and limits |
+| `udc.subscribe.ok` | The subscription is live: every change from now on is delivered |
+| `udc.subscribe.err` | The subscription is refused |
+| `udc.row.upsert` | A row now matches the filter: put it in place by `__meta.id` |
+| `udc.row.remove` | A row the client may have no longer matches: take it out |
+| `udc.unsubscribe.ok` | The subscription ended |
+| `udc.pong` | The answer to `udc.ping` |
+| `udc.error` | A client message could not be acted on; the connection stays open |
+
+An upsert or remove also names the `event` the publisher saw: `created`, `updated`, `deleted`, `purged` or `processing`. `restored` is reserved, because no route restores a soft-deleted file yet.
+
+## What a subscription delivers
+
+The filter is the same one a `list` takes, and it must pin `instance_type` with a top-level `eq`. A subscription without it is refused, because there is nothing it could deliver. `instance_id` narrows it to one instance. Without it, an admin's view follows every instance of the type. `folder_path`, `filename`, `kind`, `mime_type`, `size` and `created_at` work as in `list`.
+
+The rule for each event:
+
+- The row matches the filter: `udc.row.upsert`.
+- It does not match (deleted, purged, moved to another folder, renamed out of a `filename contains`): `udc.row.remove`. The exception is `created`, which a client cannot have had.
+- A `remove` for a row the client never had is harmless and expected, because the server does not track what each client holds.
+
+With `include_deleted eq true` in the filter, a soft delete is an `upsert` with `deleted_at` set instead of a `remove`.
+
+Events are dispatched one after another per tenant, so every client sees them in publish order.
+
+## Who publishes what
+
+| Operation | Events |
+| --- | --- |
+| An upload, a slug `PUT`, a completed resumable upload or a new version | `created` for the new row; `deleted` for a file the slug replaced |
+| `PATCH` of a file (move, rename, visibility) | `updated` |
+| `DELETE` of a file | `deleted`, when it was live |
+| Purge of a file | `purged` for the row and every version of its chain |
+| `PATCH` of a folder (rename or move) | `updated` for every live file of the subtree |
+| `DELETE` of a folder with `?recursive=1` | `deleted` for every file it soft-deleted |
+| The worker, after a job | `processing` |
+
+## Lifecycle and limits
+
+| Situation | What happens |
+| --- | --- |
+| Heartbeat | A WebSocket ping every 30 s (`VOLA_WS_HEARTBEAT_MS`). A client that has not answered the previous one is terminated. Browsers answer pings automatically |
+| Slow consumer | At 1000 unwritten messages (`VOLA_WS_MAX_BUFFERED`) the connection closes with `4008`. Other clients are not affected |
+| Limits | 32 subscriptions per connection, 64 KiB per client message |
+| Server shutdown | The connection closes with `1001` |
+| Feed down | The subscription is refused and the connection closes with `1011` |
+
+**Nothing is replayed.** After any close, reconnect with backoff, subscribe again and reload the list once. What happened while you were away only reaches you through that reload.
+
+## How a list stays live
+
+`VolaFileBrowser` from `@vola/react` opens one WebSocket with the same instance and folder filter its lists carry.
+
+- An upsert of a row a cached page holds is patched into the cache in place, so a rename, a move or a new `processing_status` shows without a request.
+- A row the cache does not have (a new upload), or a remove, makes the lists refetch.
+- The socket reconnects with backoff and refetches once on every reconnect.
+
+The [Browse example](/examples/browse/) shows this: open it in two tabs and change something in one.
+
+## Deployment
+
+With `VOLA_REDIS_URL`, every server process and the worker publish on a per-tenant Redis channel, `vola:files:<tenant id>`. A change made through any process reaches the clients of every process. Without it, an in-process bus delivers only one server's own changes, which is enough for development and tests.
+
+A reverse proxy in front of vola has to allow WebSocket upgrades on `/vola/udc/subscribe`.
+
+The full message schemas are in the [real-time reference](/reference/realtime/).

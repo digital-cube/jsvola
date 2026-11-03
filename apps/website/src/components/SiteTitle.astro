@@ -1,0 +1,33 @@
+---
+/* The wordmark: a blob's header and segments as a mark, and `vola` in the display face. */
+import logo from "../assets/logo.svg?raw";
+---
+
+<a href="/" class="vola-wordmark" aria-label="vola, home">
+  <span class="mark" aria-hidden="true" set:html={logo} />
+  <span class="word" aria-hidden="true">vola</span>
+</a>
+
+<style>
+  .vola-wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--vola-ink);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .mark :global(svg) {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  .word {
+    font-family: var(--vola-font-sans);
+    font-stretch: 118%;
+    font-weight: 640;
+    font-size: 1.3rem;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+</style>

@@ -1,0 +1,104 @@
+---
+/*
+ * One file, every way to read it: the upload and the answers to it, in the order they happened,
+ * each record from snippets/wire/ (scripts/capture.mjs).
+ */
+import { headerOf } from "../../wire";
+import ByteRuler from "../motifs/ByteRuler.astro";
+import ContactSheet from "../motifs/ContactSheet.astro";
+import Section from "../Section.astro";
+import Wire from "../Wire.astro";
+
+const range = headerOf("range", "Content-Range");
+---
+
+<Section id="one-file" number="01" name="One file" title="One file, every way to read it">
+  <Fragment slot="head">
+    <p>
+      One upload to the live examples instance, then what vola answered. These are recordings of
+      real requests, cut to fit the column: nothing here was typed by hand.
+    </p>
+  </Fragment>
+
+  <ol class="reads">
+    <li>
+      <h3>Upload it</h3>
+      <p>The file is stored under the SHA-256 of its bytes. The same bytes uploaded twice, by anyone, are one blob on disk.</p>
+      <Wire name="upload" />
+    </li>
+    <li>
+      <h3>Ask what it is</h3>
+      <p>The worker is already rendering thumbnails, so <code>processing_status</code> moves on its own.</p>
+      <Wire name="info" />
+    </li>
+    <li>
+      <h3>Read part of it</h3>
+      <p>A <code>Range</code> header gets you a <code>206</code> with just those bytes: <code>{range}</code>. It's how video seeks and how a broken download picks up where it stopped.</p>
+      <ByteRuler />
+      <Wire name="range" />
+    </li>
+    <li>
+      <h3>See a thumbnail</h3>
+      <p>Rendering happens off the request path. The first answer is a <code>202</code> with a grey placeholder, and the next one is the image. Your client has to tell them apart, because <code>202</code> counts as success.</p>
+      <Wire name="thumb-202" />
+      <Wire name="thumb-200" answerOnly />
+    </li>
+    <li>
+      <h3>Hand out a link</h3>
+      <p>Anyone with the link can open the file without a key. It can carry a password, an expiry and a download cap, and you can revoke it.</p>
+      <Wire name="share" />
+      <Wire name="share-open" />
+    </li>
+    <li>
+      <h3>List it with everything else</h3>
+      <p>The same file is a row of the <code>files</code> UDC collection, which you can filter, sort, page and subscribe to.</p>
+      <Wire name="udc-row" />
+    </li>
+  </ol>
+
+  <ContactSheet slot="wide" />
+</Section>
+
+<style>
+  .reads {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: read;
+  }
+  li {
+    counter-increment: read;
+    display: grid;
+    gap: 0.9rem;
+    padding-block: 1.75rem;
+    border-top: 1px solid var(--vola-rule);
+  }
+  li:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+  h3 {
+    margin: 0;
+    font-size: 1.1875rem;
+    font-stretch: 108%;
+    font-weight: 560;
+    color: var(--vola-ink);
+  }
+  h3::before {
+    content: counter(read);
+    margin-inline-end: 0.6rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    color: var(--vola-accent);
+  }
+  p {
+    margin: 0;
+    max-width: 62ch;
+    line-height: 1.55;
+  }
+  code {
+    font-size: 0.875em;
+    color: var(--vola-ink);
+  }
+</style>

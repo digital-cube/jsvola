@@ -1,0 +1,23 @@
+---
+title: Embed it with volaPlugin
+description: vola's routes as a Fastify plugin inside the application you already run.
+sidebar:
+  order: 4
+---
+
+import { Code } from "@astrojs/starlight/components";
+import install from "../../../../snippets/embedded/install.sh?raw";
+import server from "../../../../snippets/embedded/server.ts?raw";
+
+If your application is already on Fastify, vola can live in the same process, with one database and one deploy.
+
+<Code code={install} lang="sh" title="Terminal" />
+<Code code={server} lang="ts" title="server.ts" />
+
+`loadConfig()` reads every `VOLA_*` variable and validates it; [Environment variables](/reference/environment/) lists them. `VOLA_DATABASE_URL` is required.
+
+## Things to run beside it
+
+**The worker is a separate process.** Thumbnails and OCR are rendered off the request path, so without a worker `/thumb` keeps answering 202. Run `node node_modules/@vola/server/dist/worker.js` with the same environment. It needs `VOLA_REDIS_URL`, the same `VOLA_STORAGE_PATH` and, for encrypted files, the same key file. PDF thumbnails and OCR need `pdftoppm` and `tesseract` on the machine.
+
+**Options you can pass.** Besides `prefix`, `config` and `db`, the plugin takes `redis`, `storage`, `events`, `audit`, `encryption`, `decorateRow` and `extend`. The [package README](https://github.com/digital-cube/jsvola/blob/main/packages/server/README.md) describes them.
