@@ -31,3 +31,23 @@ curl localhost:8080/health
 
 `@vola/*` and `@memento/*` are not on npm yet: `vendor/` holds their client packages as tarballs
 (see [vendor/README.md](vendor/README.md)).
+
+## 2. The keys
+
+```sh
+make setup
+```
+
+[`scripts/setup.sh`](scripts/setup.sh) makes a tenant called `desk` in both services through their
+CLIs, the four keys below, writes them to `.env` and restarts the stack with them. Safe to run
+again: a key `.env` already has is kept. `make clean` drops all the data and `.env` with it.
+
+| in `.env` | who holds it | scopes |
+|---|---|---|
+| `MEMENTO_SERVER_KEY` | the backend | `write`: it pushes the events |
+| `VOLA_SERVER_KEY` | the backend | `files:read`: it reads the name of an attached file |
+| `MEMENTO_BROWSER_KEY` | the browser | `read`: the feed |
+| `VOLA_BROWSER_KEY` | the browser | `files:*`, `folders:*`, `shares:write`: uploads go straight to vola |
+
+There is no login in this program, so the browser gets its two keys from the backend. A real
+application hands them out to signed-in users only, and the backend would check the user itself.
