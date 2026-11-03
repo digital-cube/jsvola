@@ -70,13 +70,14 @@ h1#_top {
   color: var(--vola-ink);
 }
 
-/* Starlight's wrapper around a heading and its anchor link shrinks to the text; the rule must not. */
-.sl-markdown-content .sl-heading-wrapper:has(> h2),
-.sl-markdown-content h2 {
-  display: block;
+/* The rule sits on Starlight's wrapper around a heading and its anchor link, which shrinks to the
+   text unless told otherwise; a bare h2 (no anchor link) carries it itself. */
+.sl-markdown-content .sl-heading-wrapper:has(> h2) {
   width: 100%;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--vola-rule);
 }
-.sl-markdown-content h2 {
+.sl-markdown-content :not(.sl-heading-wrapper) > h2 {
   padding-top: 1.25rem;
   border-top: 1px solid var(--vola-rule);
 }
