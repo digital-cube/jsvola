@@ -23,6 +23,11 @@ share one version.
 
 ### Fixed
 
+- **The audit trail reaches memento.** `POST <VOLA_MEMENTO_URL>/events` carried a top-level
+  `actor_type`, a field memento's strict `EventCreate` refuses with a `422`, so every audit event
+  was dropped after one try with a WARN line. The kind of actor now travels as
+  `payload.actor_type`. `docs/AUDIT.md`: its template lines are Handlebars now; memento refused
+  the old syntax with a parse error.
 - **Examples write proxy: a visitor can only change what that visitor made.** It only refused
   seeded rows, so any `X-User-Id: demo-…` could rename, delete or purge another visitor's file or
   folder, and list, read or revoke their shares. `created_by` must now equal `X-User-Id`, else
