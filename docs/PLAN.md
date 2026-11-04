@@ -86,8 +86,10 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 | 8.1 | TCKKR2PUDE | `apps/examples` + stage compose |
 | 8.2 | TCKT9JUU59 | Dokumentacija + npm release |
 | 9.1 | TCKQQ7PD5C | `apps/website`: prezentacioni sajt (Astro + Starlight) na `stage.vol-a.com`, `deploy/website/stage.sh`; examples samo na `examples.stage.vol-a.com` |
+| 10.1 | TCKPFK56W2 | Release `v1.0.0`: merge na `main`, CHANGELOG, tag, slika `ghcr.io/digital-cube/jsvola:1.0.0` i GitHub release (npm preskočen, nije bilo `NPM_TOKEN`) |
+| 10.3 | TCKRMHJ9HJ | npm scope `@vola` → `@vol-a` (organizacija `vol-a`; `vola` je zauzet), verzija `1.0.1`, tag `v1.0.1`, prva objava `@vol-a/*` na npm; tutorijal i video tiketi na novim imenima |
 
-NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `@vola`, `NPM_TOKEN`, tag `v1.0.0`).
+NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `vol-a` sa scope-om `@vol-a`, jer je `vola` zauzet; `NPM_TOKEN`; tag `v1.0.0`).
 
 ## Stage (2026-11-02)
 
