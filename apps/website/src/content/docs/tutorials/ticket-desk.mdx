@@ -62,7 +62,7 @@ Start with everything the program runs on, and a backend that only says it is al
 
 `mkdir ticket-desk && cd ticket-desk`
 
-`@vola/*` and `@memento/*` are not on npm yet, so the client packages come as five tarballs from this site. The services themselves are Docker images, so these five files are all you take from outside:
+`@vol-a/*` and `@memento/*` are not on npm yet, so the client packages come as five tarballs from this site. The services themselves are Docker images, so these five files are all you take from outside:
 
 <TutorialRun step={1} name="1-vendor" />
 
@@ -247,7 +247,7 @@ The board does not use these routes. It writes through UDC's `POST /udc/mutate`,
 <TutorialFile step={4} path="src/server/drag.ts" />
 <TutorialFile step={4} path="src/server/app.ts" />
 
-`main.ts` passes in the real memento and the real vola. This is the first use of `@vola/client`:
+`main.ts` passes in the real memento and the real vola. This is the first use of `@vol-a/client`:
 
 <TutorialFile step={4} path="src/server/main.ts" />
 <TutorialFile step={4} path="docker-compose.yaml" />
@@ -304,7 +304,7 @@ Three pieces do the work in the browser, and all three are components from the l
 | | component | talks to |
 |---|---|---|
 | the board | `<UdcDataView collection="tickets">` with `@jsudc/react/kanban`: search, columns, drag and drop | the backend's `/udc/*` |
-| the files | `<VolaFileBrowser>` and `<VolaUploadButton>` from `@vola/react`, on the instance `tickets/<id>` | vola, directly, with `X-User-Id` |
+| the files | `<VolaFileBrowser>` and `<VolaUploadButton>` from `@vol-a/react`, on the instance `tickets/<id>` | vola, directly, with `X-User-Id` |
 | the feed | `useMementoEvents` from `@memento/react` | memento, directly |
 
 ### One origin
@@ -463,8 +463,8 @@ The rest of this step is one test that walks the main flow against the running s
 
 ### Check it
 
-:::caution[This needs a vola image with the fix]
-vola 1.0.0 sends a field memento refuses, so with that image these events are lost: `docker compose logs vola-worker` says `memento answered 422`, and the end-to-end test fails. The fix is "The audit trail reaches memento" in [vola's changelog](/packages/changelog/). If the latest release does not have it yet, set `VOLA_IMAGE=ghcr.io/digital-cube/jsvola:edge` in `.env` before you run `make setup`.
+:::caution[This needs vola 1.0.0 or later]
+An older vola image (an `edge` from before the release) sends a field memento refuses, so with it these events are lost: `docker compose logs vola-worker` says `memento answered 422`, and the end-to-end test fails. The fix is "The audit trail reaches memento" in [vola's changelog](/packages/changelog/). If such an image is still on your machine as `latest`, run `docker compose pull vola` before `make setup`.
 :::
 
 <TutorialRun step={7} name="1-setup" />
@@ -486,7 +486,7 @@ The program leaves a lot out on purpose. It has no real login: anybody who opens
 From here:
 
 - **Encryption.** Files sealed at rest, per file: [how it works](/concepts/encryption/) and [the live example](/examples/encrypted/).
-- **A keyring and a PIN.** Keys only the user can unlock, with `VolaPinGate` from `@vola/react`: [the encryption reference](/reference/crypto/).
+- **A keyring and a PIN.** Keys only the user can unlock, with `VolaPinGate` from `@vol-a/react`: [the encryption reference](/reference/crypto/).
 - **Sharing.** Passwords, expiry and download limits on a share link: [the live example](/examples/share/).
 - **The Filter DSL.** Query memento's events by field instead of reading the newest ones, with `POST /memento/events/query`: [memento's API](https://github.com/digital-cube/jsmemento/blob/main/docs/API.md).
 - **A second tenant.** Run `create-tenant` and `create-key` again, with another slug, in both services. A key sees its own tenant and nothing else. One memento key takes the audit of a whole vola installation, with the vola tenant's slug in `payload.tenant`.

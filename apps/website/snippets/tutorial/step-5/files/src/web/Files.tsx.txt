@@ -1,5 +1,5 @@
-import { VolaClient } from "@vola/client";
-import { VolaFileBrowser, VolaProvider, VolaUploadButton } from "@vola/react";
+import { VolaClient } from "@vol-a/client";
+import { VolaFileBrowser, VolaProvider, VolaUploadButton } from "@vol-a/react";
 import { useMemo } from "react";
 import { fileAttached } from "./api.ts";
 import { useSession } from "./session.ts";

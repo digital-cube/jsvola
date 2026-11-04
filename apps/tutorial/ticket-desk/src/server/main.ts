@@ -7,7 +7,7 @@ import {
   readCollectionAssets,
   seedCollection,
 } from "@jsudc/server";
-import { VolaClient } from "@vola/client";
+import { VolaClient } from "@vol-a/client";
 import { sql } from "drizzle-orm";
 import { buildApp } from "./app.ts";
 import { mementoEmitter } from "./memento.ts";

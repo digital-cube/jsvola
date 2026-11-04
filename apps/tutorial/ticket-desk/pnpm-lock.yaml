@@ -5,9 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@vola/core': file:vendor/vola-core-1.0.0.tgz
-  '@vola/client': file:vendor/vola-client-1.0.0.tgz
-  '@vola/react': file:vendor/vola-react-1.0.0.tgz
+  '@vol-a/core': file:vendor/vol-a-core-1.0.1.tgz
+  '@vol-a/client': file:vendor/vol-a-client-1.0.1.tgz
+  '@vol-a/react': file:vendor/vol-a-react-1.0.1.tgz
   '@memento/core': file:vendor/memento-core-1.0.0.tgz
   '@memento/react': file:vendor/memento-react-1.0.0.tgz
 
@@ -48,12 +48,12 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@vola/client':
-        specifier: file:vendor/vola-client-1.0.0.tgz
-        version: file:vendor/vola-client-1.0.0.tgz
-      '@vola/react':
-        specifier: file:vendor/vola-react-1.0.0.tgz
-        version: file:vendor/vola-react-1.0.0.tgz(@jsudc/core@0.2.0)(@jsudc/react@0.2.1(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@dnd-kit/utilities@3.2.2(react@19.3.1))(@jsudc/core@0.2.0)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-table@8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1))(radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@vol-a/client':
+        specifier: file:vendor/vol-a-client-1.0.1.tgz
+        version: file:vendor/vol-a-client-1.0.1.tgz
+      '@vol-a/react':
+        specifier: file:vendor/vol-a-react-1.0.1.tgz
+        version: file:vendor/vol-a-react-1.0.1.tgz(@jsudc/core@0.2.0)(@jsudc/react@0.2.1(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@dnd-kit/utilities@3.2.2(react@19.3.1))(@jsudc/core@0.2.0)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-table@8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1))(radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
@@ -1207,19 +1207,19 @@ packages:
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
 
-  '@vola/client@file:vendor/vola-client-1.0.0.tgz':
-    resolution: {integrity: sha512-WxQrYoEPIsQ761fr9V7IjmBFJp0EjxDMFnrCyrDi3FUGhiuGLne8u1qm+uZXgEv4VP3LCRO4GeQ5HhgPzTQnpQ==, tarball: file:vendor/vola-client-1.0.0.tgz}
-    version: 1.0.0
+  '@vol-a/client@file:vendor/vol-a-client-1.0.1.tgz':
+    resolution: {integrity: sha512-OfiuVDk+kyISf0yxr+xjHoFO6VHrQwm5ErwCM2GlkWna/bYwJJMGOw0BMd54qZj20rg9zKr5muBnJMSr7IzzJw==, tarball: file:vendor/vol-a-client-1.0.1.tgz}
+    version: 1.0.1
     engines: {node: '>=24'}
 
-  '@vola/core@file:vendor/vola-core-1.0.0.tgz':
-    resolution: {integrity: sha512-4JP3whPZcyuaJn3JqNahrqFQC9egrDaQcB4dmVotDoAnR624cYYyJ0NEsQoGlESIVEX30sAnkCwPxwmYGCYz9w==, tarball: file:vendor/vola-core-1.0.0.tgz}
-    version: 1.0.0
+  '@vol-a/core@file:vendor/vol-a-core-1.0.1.tgz':
+    resolution: {integrity: sha512-amwc07e8Rvjpym1g8biKmycB8rXgXXJkTa3LF2AgqZIpWOjHUaqlsoqjbyCz7Rqwm3FeFLbKY4/yJXMkOTv3ug==, tarball: file:vendor/vol-a-core-1.0.1.tgz}
+    version: 1.0.1
     engines: {node: '>=24'}
 
-  '@vola/react@file:vendor/vola-react-1.0.0.tgz':
-    resolution: {integrity: sha512-ty4kQGjxhBn0cKnXzcOBtD+J5NralHA7Y1LCj98SxyfC1LNvqArIRbtQNLWwDUDdkqfB3WwppBqA5/rcOAh+YQ==, tarball: file:vendor/vola-react-1.0.0.tgz}
-    version: 1.0.0
+  '@vol-a/react@file:vendor/vol-a-react-1.0.1.tgz':
+    resolution: {integrity: sha512-ajKZB4tfy+tlncKZLoE/bsWy5iJqUfdUtw6pbh9hAfUQ/UxxCGIgObdELA+ftuXVkI8w+Yn1KWA6HeYyRL4FHg==, tarball: file:vendor/vol-a-react-1.0.1.tgz}
+    version: 1.0.1
     engines: {node: '>=24'}
     peerDependencies:
       '@jsudc/core': ^0.2.0
@@ -3071,22 +3071,22 @@ snapshots:
 
   '@vitest/spy@5.0.5': {}
 
-  '@vola/client@file:vendor/vola-client-1.0.0.tgz':
+  '@vol-a/client@file:vendor/vol-a-client-1.0.1.tgz':
     dependencies:
       '@jsudc/core': 0.2.0
-      '@vola/core': file:vendor/vola-core-1.0.0.tgz
+      '@vol-a/core': file:vendor/vol-a-core-1.0.1.tgz
 
-  '@vola/core@file:vendor/vola-core-1.0.0.tgz':
+  '@vol-a/core@file:vendor/vol-a-core-1.0.1.tgz':
     dependencies:
       zod: 4.6.7
 
-  '@vola/react@file:vendor/vola-react-1.0.0.tgz(@jsudc/core@0.2.0)(@jsudc/react@0.2.1(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@dnd-kit/utilities@3.2.2(react@19.3.1))(@jsudc/core@0.2.0)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-table@8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1))(radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@vol-a/react@file:vendor/vol-a-react-1.0.1.tgz(@jsudc/core@0.2.0)(@jsudc/react@0.2.1(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@dnd-kit/utilities@3.2.2(react@19.3.1))(@jsudc/core@0.2.0)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-table@8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1))(radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@jsudc/core': 0.2.0
       '@jsudc/react': 0.2.1(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1))(@dnd-kit/utilities@3.2.2(react@19.3.1))(@jsudc/core@0.2.0)(@tanstack/react-query@5.105.1(@types/react@19.3.0)(react@19.3.1))(@tanstack/react-table@8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(lucide-react@1.66.0(@types/react@19.3.0)(react@19.3.1))(radix-ui@1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react-router@7.18.5(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
       '@tanstack/react-query': 5.105.1(@types/react@19.3.0)(react@19.3.1)
-      '@vola/client': file:vendor/vola-client-1.0.0.tgz
-      '@vola/core': file:vendor/vola-core-1.0.0.tgz
+      '@vol-a/client': file:vendor/vol-a-client-1.0.1.tgz
+      '@vol-a/core': file:vendor/vol-a-core-1.0.1.tgz
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 

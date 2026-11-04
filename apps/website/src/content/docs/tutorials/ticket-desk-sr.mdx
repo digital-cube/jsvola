@@ -62,7 +62,7 @@ Počnite od svega na čemu program radi, uz backend koji samo javlja da je živ.
 
 `mkdir ticket-desk && cd ticket-desk`
 
-`@vola/*` i `@memento/*` još nisu na npm-u, pa klijentski paketi stižu kao pet tarball fajlova sa ovog sajta. Sami servisi su Docker slike, tako da je ovih pet fajlova sve što uzimate spolja:
+`@vol-a/*` i `@memento/*` još nisu na npm-u, pa klijentski paketi stižu kao pet tarball fajlova sa ovog sajta. Sami servisi su Docker slike, tako da je ovih pet fajlova sve što uzimate spolja:
 
 <TutorialRun step={1} name="1-vendor" />
 
@@ -247,7 +247,7 @@ Tabla ne koristi ove rute. Ona piše preko UDC rute `POST /udc/mutate`, pa oko t
 <TutorialFile step={4} path="src/server/drag.ts" />
 <TutorialFile step={4} path="src/server/app.ts" />
 
-`main.ts` prosleđuje pravi memento i pravu volu. Ovo je prva upotreba paketa `@vola/client`:
+`main.ts` prosleđuje pravi memento i pravu volu. Ovo je prva upotreba paketa `@vol-a/client`:
 
 <TutorialFile step={4} path="src/server/main.ts" />
 <TutorialFile step={4} path="docker-compose.yaml" />
@@ -304,7 +304,7 @@ U browseru posao rade tri dela, i sva tri su komponente iz biblioteka:
 | | komponenta | razgovara sa |
 |---|---|---|
 | tabla | `<UdcDataView collection="tickets">` sa `@jsudc/react/kanban`: pretraga, kolone, prevlačenje | `/udc/*` na backendu |
-| fajlovi | `<VolaFileBrowser>` i `<VolaUploadButton>` iz `@vola/react`, na instanci `tickets/<id>` | volom, direktno, sa `X-User-Id` |
+| fajlovi | `<VolaFileBrowser>` i `<VolaUploadButton>` iz `@vol-a/react`, na instanci `tickets/<id>` | volom, direktno, sa `X-User-Id` |
 | feed | `useMementoEvents` iz `@memento/react` | mementom, direktno |
 
 ### Jedan origin
@@ -463,8 +463,8 @@ Ostatak koraka je jedan test koji prolazi glavni tok na podignutom stack-u, kroz
 
 ### Provera
 
-:::caution[Ovo traži vola sliku sa popravkom]
-Vola 1.0.0 šalje polje koje memento odbija, pa se sa tom slikom ovi događaji gube: `docker compose logs vola-worker` javlja `memento answered 422`, a end-to-end test pada. Popravka je stavka „The audit trail reaches memento" u [changelogu vole](/packages/changelog/). Ako je poslednje izdanje još nema, u `.env` postavite `VOLA_IMAGE=ghcr.io/digital-cube/jsvola:edge` pre nego što pokrenete `make setup`.
+:::caution[Ovo traži volu 1.0.0 ili noviju]
+Starija slika vole (`edge` od pre izdanja) šalje polje koje memento odbija, pa se sa njom ovi događaji gube: `docker compose logs vola-worker` javlja `memento answered 422`, a end-to-end test pada. Popravka je stavka „The audit trail reaches memento" u [changelogu vole](/packages/changelog/). Ako je takva slika još na vašoj mašini kao `latest`, pokrenite `docker compose pull vola` pre `make setup`.
 :::
 
 <TutorialRun step={7} name="1-setup" />
@@ -486,7 +486,7 @@ Program namerno mnogo toga izostavlja. Nema pravu prijavu: ko god otvori stranic
 Odavde možete dalje:
 
 - **Enkripcija.** Fajlovi zapečaćeni na disku, svaki posebno: [kako radi](/concepts/encryption/) i [živi primer](/examples/encrypted/).
-- **Keyring i PIN.** Ključevi koje samo korisnik može da otključa, sa `VolaPinGate` iz `@vola/react`: [referenca za enkripciju](/reference/crypto/).
+- **Keyring i PIN.** Ključevi koje samo korisnik može da otključa, sa `VolaPinGate` iz `@vol-a/react`: [referenca za enkripciju](/reference/crypto/).
 - **Deljenje.** Lozinke, rok i ograničenje preuzimanja na linku za deljenje: [živi primer](/examples/share/).
 - **Filter DSL.** Upiti nad događajima u mementu po polju, umesto čitanja najnovijih, preko `POST /memento/events/query`: [API mementa](https://github.com/digital-cube/jsmemento/blob/main/docs/API.md).
 - **Drugi tenant.** Pokrenite `create-tenant` i `create-key` ponovo, sa drugim imenom, u oba servisa. Ključ vidi svog tenanta i ništa drugo. Jedan memento ključ prima audit cele vola instalacije, sa imenom vola tenanta u `payload.tenant`.
