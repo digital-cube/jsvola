@@ -60,8 +60,8 @@ whole stack with the seeder.
 instance: breadcrumbs and folders, the `files` UDC data view (search, filters, infinite rows),
 `VolaThumb` in the thumbnail column, the row menu (download, rename, move, delete, versions,
 share, visibility), the whole surface a drop zone. One WebSocket to `/udc/subscribe` keeps it
-live — open the page twice and watch. The seeded files answer `403` to a rename or delete;
-what a visitor uploads is theirs for 24 h.
+live — open the page twice and watch. The seeded files and other visitors' files answer `403` to a rename or
+delete; what a visitor uploads is theirs for 24 h.
 
 ### Upload
 

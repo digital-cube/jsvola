@@ -1,0 +1,26 @@
+--- a/scripts/setup.sh
++++ b/scripts/setup.sh
+@@ -1,6 +1,7 @@
+ #!/bin/sh
+ # Makes a tenant called `desk` in vola and in memento, and the API keys the desk needs, and writes
+-# them to .env. Safe to run again: a key .env already has is kept.
++# them to .env; then gives memento the sentences of the desk's events. Safe to run again: a key
++# .env already has is kept.
+ set -eu
+ cd "$(dirname "$0")/.."
+ [ -f .env ] || cp .env.example .env
+@@ -39,6 +40,14 @@ missing VOLA_BROWSER_KEY \
+     --scopes files:read,files:write,folders:read,folders:write,shares:write \
+   | save_key VOLA_BROWSER_KEY
+ 
++echo "Templates…"
++# templates/<EVENT_TYPE>.<locale>.hbs: the sentence memento renders for an event, in that language.
++for file in templates/*.hbs; do
++  name=$(basename "$file" .hbs)
++  memento create-template --tenant desk --event-type "${name%.*}" --locale "${name##*.}" \
++    --body "$(cat "$file")" --replace > /dev/null
++done
++
+ echo "Restarting with the keys…"
+ docker compose up -d
+ 

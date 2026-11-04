@@ -1,0 +1,27 @@
+{
+  "name": "ticket-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A small help desk on vola (the files) and memento (who did what, when): the program the vola + memento tutorial is written from.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/server/main.ts",
+    "start": "node src/server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^24",
+    "typescript": "^5.9.3"
+  }
+}

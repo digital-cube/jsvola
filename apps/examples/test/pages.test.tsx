@@ -163,6 +163,34 @@ describe("Share", () => {
     expect(
       within(last).getByRole("link", { name: "Open in a new tab" }).getAttribute("target"),
     ).toBe("_blank");
+    expect(last.textContent).not.toContain("X-Share-Secret");
+    expect(within(last).queryByTestId("share-open-secret")).toBeNull();
+  });
+
+  it("opens an encrypted file's link with X-Share-Secret, and the curl sends it too", async () => {
+    open("/examples/share", { shareUrlSuffix: "#s3cret" });
+    const sent = vi.fn(async () => new Response("the bytes", { status: 200 }));
+    vi.stubGlobal("fetch", sent);
+    const tab = { location: { href: "" }, close: vi.fn() };
+    const opened = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    URL.createObjectURL = vi.fn(() => "blob:the-file");
+    URL.revokeObjectURL = vi.fn();
+    const page = await screen.findByTestId("share");
+    fireEvent.click(within(page).getByTestId("share-open"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Create link/i }));
+    const last = await screen.findByTestId("share-last");
+    expect(within(last).queryByRole("link", { name: "Open in a new tab" })).toBeNull();
+    expect(last.textContent).toContain('-H "X-Share-Secret: s3cret"');
+    expect(last.textContent).toContain("share_secret_required");
+    fireEvent.click(within(last).getByTestId("share-open-secret"));
+    await waitFor(() => expect(tab.location.href).toBe("blob:the-file"));
+    expect(opened).toHaveBeenCalledOnce();
+    expect(sent).toHaveBeenCalledWith("http://localhost:3000/vola/s/tok1", {
+      headers: { "x-share-secret": "s3cret" },
+    });
+    opened.mockRestore();
+    vi.unstubAllGlobals();
   });
 });
 

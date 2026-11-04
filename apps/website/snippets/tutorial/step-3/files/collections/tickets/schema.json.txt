@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "core_fields": [],
+  "fields": {
+    "board_id": { "type": "relation", "ref": "boards", "label_field": "name", "required": true },
+    "status": {
+      "type": "enum",
+      "values": ["new", "in_progress", "done"],
+      "required": true,
+      "index": true
+    },
+    "order": { "type": "integer", "index": true },
+    "title": { "type": "string", "length": 200, "required": true, "index": true },
+    "body": { "type": "text" },
+    "assignees": { "type": "string_array" }
+  }
+}

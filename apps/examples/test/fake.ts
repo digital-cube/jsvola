@@ -180,6 +180,8 @@ export interface FakeOptions {
   generating?: boolean;
   /** `GET /keyrings/me/status` through the proxy: a status, or 503. */
   keyring?: { has_pin: boolean } | null;
+  /** What ends a share's `url`: `#<secret>` for an encrypted file's link. */
+  shareUrlSuffix?: string;
 }
 
 export interface FakeVola {
@@ -401,7 +403,7 @@ export function fakeVola(options: FakeOptions = {}): FakeVola {
         {
           ...share,
           token: `tok${shares.length}`,
-          url: `http://localhost:3000/vola/s/tok${shares.length}`,
+          url: `http://localhost:3000/vola/s/tok${shares.length}${options.shareUrlSuffix ?? ""}`,
         },
         201,
       );

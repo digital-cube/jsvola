@@ -236,10 +236,10 @@ vola tenant-set --slug acme --default-encryption tenant
 | Dump | Sees | Does not see |
 |---|---|---|
 | **Database** (`vola_file`) | the structure: tenant, instance, folder, slug, version chain, `size` (plaintext length), `created_at`, who uploaded, `encryption` / `enc_format`, that a file is encrypted, which key line wrapped it (`kid`); `fk_ct` and `meta_ct` as ciphertext | the name, the MIME type, the caller's metadata, FK, any key line; without `VOLA_KEY_FILE` nothing opens |
-| **Disk** (`<storage>/blobs`) | `JSV` headers (segment size, nonce prefix, sometimes the plaintext length), ciphertext sizes (≈ plaintext + 16 B per segment), when blobs were written; no derived files — the worker never touches an encrypted file | contents, names, types; which tenant a blob belongs to (that is a database fact) |
+| **Disk** (`<storage>/blobs`) | `JSV` headers (segment size, nonce prefix, sometimes the plaintext length), ciphertext sizes (≈ plaintext + 16 B per segment), when blobs were written; sealed derivatives next to a blob and the sealed part files of an upload in flight (below), never a byte of plaintext | contents, names, types; which tenant a blob belongs to (that is a database fact) |
 | **Database + disk**, no key file | the above, joined | the same: `fk_ct` is under a KEK nobody can derive |
 | **Database + disk + key file** | everything of `tenant` mode | — for `tenant` files (this is the operator); a **`keyring`** file still needs its owner's PIN or recovery key: `fk_ct` is under the master key, the master key under Argon2id(PIN, pepper) — without `VOLA_PEPPER_FILE` not even a brute force over the 10⁶ PINs can start, with it each try costs 64 MiB and ~0.1 s (§ 8.7) |
-| **Redis** | `vola:unlock:<token>` → `{tenant_id, principal, keyring_id, mk}` for every keyring unlocked RIGHT NOW (TTL ≤ `VOLA_UNLOCK_TTL_S`), the index sets, the attempt mutexes; file events and job payloads (ids only) | the master key: `mk` is wrapped under the key file (`wrapForStore`, HKDF salt `vola-unlock-kek`, bound to the token). **Redis + the key file** = the master key of every principal unlocked at that moment — the one live-server scenario the model does not cover |
+| **Redis** | `vola:unlock:<token>` → `{tenant_id, principal, keyring_id, mk}` for every keyring unlocked RIGHT NOW (TTL ≤ `VOLA_UNLOCK_TTL_S`), the index sets, the attempt mutexes; file events and job payloads (ids only) | the master key: `mk` is wrapped under the key file (`wrapForStore`, HKDF salt `vola-unlock-kek`, bound to the token). **Redis + the key file** = the master key of every principal unlocked at that moment, and with the database and the disk, their files — the one live-server scenario the model does not cover (§ 8.7) |
 | **Logs, memento audit, UDC events** | file ids, sizes, `encryption`, `application/octet-stream` as the MIME of an encrypted file, counts; keyring ids, attempt counters, token fingerprints (16 hex of SHA-256) | the real name or type of an encrypted file (`fileAuditPayload` leaves `filename` out; the server never logs a decrypted name), FK, `fk_ct`, key lines, a PIN, a recovery key, an unlock token, a master key |
 
 What is **not** authenticated: the row's structural columns (`folder_id`, `slug`, `size`,
@@ -259,7 +259,7 @@ backups, not a live server that is compromised while it holds the key.
 | `Content-Disposition` | `inline` for images, video, audio, PDF | `inline` ONLY for a PNG / JPEG / GIF / WebP the **bytes** identified; everything else `attachment; filename*=` with the decrypted name |
 | `Range` | `206`, `Content-Range` in file bytes | the same, in **plaintext** coordinates; the blob is read in whole segments |
 | `/public/:fileId`, `is_global_public` | — | never: `409 encrypted_not_public`, the public route answers `404` |
-| `/thumb/:size` | `200` / `202` | `200` decrypted from the sealed sibling, `no-store`, `ETag` of the file id; `202` only for a `tenant` file the worker is rendering; `404 no_thumbnail` for a `client` file or one above `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` (§ 11) |
+| `/thumb/:size` | `200` / `202` | `200` decrypted from the sealed sibling, `no-store`, `ETag` of `"<file id>.thumb-<size>-<crop>.webp"`; `202` only for a `tenant` file the worker is rendering; `404 no_thumbnail` for a `client` file or one above `VOLA_ENC_INLINE_DERIVE_MAX_BYTES` (§ 11) |
 | share link | — | a share GRANT: the `url` ends in `#<secret>`, the download needs `X-Share-Secret` (§ 12); `409 encrypted_share_requires_grant` for `caller` without `fk_share_ct` and for `client` |
 | `X-Vola-Encryption` on a download | — | the mode (`client`: the body is the `JSV` blob itself) |
 | UDC `files` row | real values | real `filename`, `mime_type`, `extension`, `kind` when the server holds the key; `<encrypted>` / null otherwise; filters, sorts and cursors always see the mask |
@@ -479,9 +479,10 @@ file rows, the blobs or Redis is the master key, a file key, the PIN or the reco
 every column, the blob and the Redis entry for them, raw, base64 and hex. Without the pepper
 file a brute force over the 10⁶ PINs cannot even start (the pepper is the Argon2 `secret`); with
 it each guess costs 64 MiB and ~0.1 s; the recovery wrap is under 160 bits. The window the model
-does not cover: Redis + the key file + the database, together, while a principal is unlocked —
-that is the master key of that principal for at most `VOLA_UNLOCK_TTL_S` after their last
-request.
+does not cover: Redis + the key file, together, while a principal is unlocked — that is the
+master key of that principal for at most `VOLA_UNLOCK_TTL_S` after their last request (the entry
+holds what its wrap is bound to, the token and the tenant id, § 8.2). With the database (`fk_ct`)
+and the disk it opens that principal's files too.
 
 ### 8.8 Operations
 

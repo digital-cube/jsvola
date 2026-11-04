@@ -26,17 +26,19 @@ A visitor's write goes to `/vola/examples/write/<route>` without a key. The serv
 | --- | --- | --- |
 | Upload | `POST files/demo/<id>` | `Content-Length` up to 5 MiB plus 64 KiB of multipart, else `413`. After the upload the type must be on the list, else the file is purged and the answer is `415 demo_mime_not_allowed` |
 | Resumable upload | `POST uploads`, then `HEAD`, `PATCH` and `DELETE` on `uploads/:id` | `Upload-Length` up to 5 MiB and the demo instance in the metadata. `Location` is rewritten to the proxy. The type is checked when the last `PATCH` completes |
-| Change a file or folder | `PATCH` and `DELETE` on `files/…/:fileId`, `POST`, `PATCH` and `DELETE` on `folders/…` | A seeded file or folder is `403`, so the demo pack stays as it is for everyone |
-| Shares | `POST` and `GET` on `shares`, `GET` and `DELETE` on `shares/:id` | The file must be in the demo instance. `expires_at` is capped at `VOLA_DEMO_TTL_HOURS` |
+| Change a file or folder | `PATCH` and `DELETE` on `files/…/:fileId`, `POST`, `PATCH` and `DELETE` on `folders/…` | `created_by` must equal the request's `X-User-Id`, so a seeded row or another visitor's is `403 demo_forbidden`. So is an own folder holding someone else's file or subfolder |
+| Shares | `POST` and `GET` on `shares`, `GET` and `DELETE` on `shares/:id` | The file must be in the demo instance. `expires_at` is capped at `VOLA_DEMO_TTL_HOURS`. The list shows the visitor's own shares, and another visitor's share is `403` |
 | The visitor's keyring | `keyrings/me/*` | The visitor's own principal |
 
-The type list is images, PDF, mp4 and webm video, mp3, mp4, ogg and wav audio, and plain text.
+The type list is images, PDF, mp4 and webm video, mp3, mp4, ogg and wav audio, plain text and Markdown. An upload naming a `parent_id`, or a resumable one naming a `slug`, is `403` when that would add to or replace a file the visitor did not make.
 
 ## The visitor id
 
 Every proxied request must carry `X-User-Id: demo-` followed by 6 to 32 lowercase letters or digits. The site makes one per browser session and keeps it in `sessionStorage`. Without it, the answer is `400 demo_user_required`.
 
-This id is the `created_by` of everything the visitor makes, which is what the purge selects on. It is also the principal of their keyring. **Settings** on the site has a "New identity" button.
+This id is the `created_by` of everything the visitor makes, which is what the purge selects on. It is also the principal of their keyring. **Settings** on the site has a "New identity" button. A new identity, or a second tab, is another visitor and cannot change what the first one made.
+
+The ownership check stops accidents and casual edits, not an attacker. `X-User-Id` is self-declared and `created_by` is in every file's answer, so anyone reading the demo can send another visitor's id.
 
 ## Rate limit
 
@@ -50,7 +52,7 @@ Every `VOLA_DEMO_PURGE_INTERVAL_MIN` (15) minutes, and once at start, the server
 2. Their **files** in the demo instance: every version, soft-deleted rows too. A blob no other row cites is removed from disk.
 3. Their **folders**.
 
-The seeder's files are never selected. Shares end with their capped expiry. An admin key can run the purge at once with `POST /vola/examples/purge`.
+The seeder's files are never selected. Shares end with their capped expiry. Each row goes by its own creation time, with one exception: a folder past its age is deleted recursively, so a younger file in it is soft-deleted with it. An admin key can run the purge at once with `POST /vola/examples/purge`.
 
 ## How the site talks to the server
 

@@ -1,0 +1,19 @@
+--- a/test/helpers.ts
++++ b/test/helpers.ts
+@@ -12,7 +12,7 @@ export const FILE = {
+ };
+ 
+ /** The backend with the tickets in memory and a list for memento: nothing to start. */
+-export async function testApp() {
++export async function testApp(browserKeys = { memento: "mk_browser", vola: "vola_browser" }) {
+   const events: DeskEvent[] = [];
+   const registry = loadRegistry(COLLECTIONS, (asset, reg) =>
+     asset.name === "tickets"
+@@ -28,6 +28,7 @@ export async function testApp() {
+       if (fileId !== FILE.id) throw new Error("not on this ticket");
+       return FILE;
+     },
++    browserKeys,
+   });
+   return Object.assign(app, { events });
+ }

@@ -1,0 +1,11 @@
+--- a/docker-compose.yaml
++++ b/docker-compose.yaml
+@@ -96,6 +96,8 @@ services:
+     environment:
+       PORT: 8080
+       DATABASE_URL: postgresql://desk:desk@postgres:5432/desk
++      MEMENTO_URL: http://memento:3000/memento
++      VOLA_URL: http://vola:8300/vola
+       # `make setup` writes these to .env.
+       MEMENTO_SERVER_KEY: ${MEMENTO_SERVER_KEY:-}
+       MEMENTO_BROWSER_KEY: ${MEMENTO_BROWSER_KEY:-}

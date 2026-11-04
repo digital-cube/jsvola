@@ -15,7 +15,7 @@ is the developer's.
 | `/examples/upload` | Upload | one multipart `POST` under 1 MiB, the resumable protocol above it with progress, cancel and resume; the demo's limits |
 | `/examples/thumbnails` | Thumbnails | every size (64–512) × every crop (`cover`, `fit`, `attention`) of a file, each tile's state; **Regenerate** drops the renditions so the `202 → 200` sequence can be watched again |
 | `/examples/streaming` | Range & streaming | `<video>` and `<audio>` on `GET /public/:id`; a Range probe that shows the `206`, `Content-Range` and `Accept-Ranges` the page itself got |
-| `/examples/share` | Share | `VolaShareDialog`: password, expiry (capped at the demo TTL), most downloads, the link once, list, revoke; the last link opens in a new tab |
+| `/examples/share` | Share | `VolaShareDialog`: password, expiry (capped at the demo TTL), most downloads, the link once, list, revoke; the last link opens in a new tab, an encrypted file's with `X-Share-Secret` sent by the page (a plain tab would answer `401 share_secret_required`) |
 | `/examples/encrypted` | Encrypted files | `tenant` mode on seeded files (transparent); `keyring` mode behind `VolaPinGate` over the visitor's private folder, the unlock token counting down, a lock that empties the view |
 | `/examples/api` | API | the routes behind the pages and `curl` examples with the demo key |
 | `/udc/:collection` | Collections | any collection the server lists (`files`, `menu`) as a plain `UdcDataView` |
@@ -50,10 +50,11 @@ what a visitor may do, **on the demo instance only**:
 
 | what | route | guard |
 |---|---|---|
-| upload | `POST files/demo/<id>` | `Content-Length` ≤ 5 MiB (+ 64 KiB of multipart) else `413`; after the upload the type must be on the list (images, PDF, mp4/webm, mp3/mp4/ogg/wav audio, plain text) else the file is purged again and the answer is `415 demo_mime_not_allowed` |
-| resumable | `POST uploads`, `HEAD/PATCH/DELETE uploads/:id` | `Upload-Length` ≤ 5 MiB, the metadata's instance is the demo's; `Location` is rewritten to the proxy; the type is checked when the last `PATCH` completes |
-| a visitor's own file / folder | `PATCH/DELETE files/…/:fileId[/purge]`, `POST/PATCH/DELETE folders/…` | a **seeded** file or folder (`created_by = seeder`) is `403`: the pack stays as it is for everyone |
-| shares | `POST/GET shares`, `GET/DELETE shares/:id` | the file must be in the demo instance; `expires_at` is capped at `VOLA_DEMO_TTL_HOURS` |
+| upload | `POST files/demo/<id>` | `Content-Length` ≤ 5 MiB (+ 64 KiB of multipart) else `413`; after the upload the type must be on the list (images, PDF, mp4/webm, mp3/mp4/ogg/wav audio, plain text, Markdown) else the file is purged again and the answer is `415 demo_mime_not_allowed` |
+| new version | `parent_id` of an upload (multipart field or tus metadata) | the parent must be the visitor's own, else `403`: a purge takes a file's whole version chain |
+| resumable | `POST uploads`, `HEAD/PATCH/DELETE uploads/:id` | `Upload-Length` ≤ 5 MiB, the metadata's instance is the demo's; `Location` is rewritten to the proxy; the type is checked when the last `PATCH` completes; another visitor's upload is `403`, and so is a `slug` a seeded or another visitor's live file holds, since completing the upload would replace that file |
+| a visitor's own file / folder | `PATCH/DELETE files/…/:fileId[/purge]`, `POST/PATCH/DELETE folders/…` | `created_by` must equal the request's `X-User-Id`: a **seeded** row (`created_by = seeder`) or another visitor's is `403 demo_forbidden`. A visitor's own folder holding someone else's file or subfolder is `403` too, on `PATCH` and `DELETE`: the move or the delete would take that row along |
+| shares | `POST/GET shares`, `GET/DELETE shares/:id` | the file must be in the demo instance (a seeded file can be shared); `expires_at` is capped at `VOLA_DEMO_TTL_HOURS`; `GET shares` lists the visitor's own, another visitor's share is `403` |
 | the visitor's keyring | `GET/POST/PUT/DELETE keyrings/me/*` | the visitor's own principal |
 
 Every proxied request must carry **`X-User-Id: demo-<6–32 lowercase letters or digits>`** —
@@ -64,6 +65,13 @@ minutes, `429` with `Retry-After` beyond that (`VOLA_TRUST_PROXY=true` behind ng
 address is the visitor's, not the proxy's). Anything else — keys, admin, stats, another
 instance, another tenant's file — is `403 demo_forbidden`.
 
+**The ownership check stops accidents and casual edits, not an attacker.** `X-User-Id` is
+self-declared: the site generates it, nothing proves it, and `created_by` is in every file's
+answer, so anyone who reads the demo instance can read a visitor's id and send it. What is in
+the demo is public and gone within `VOLA_DEMO_TTL_HOURS`; a real deployment authenticates its
+users. The id is also per tab, since `sessionStorage` is: a second tab, or **New identity** in
+Settings, is another visitor, and cannot change what the first one made.
+
 `POST /vola/examples/regenerate/:fileId` drops a demo file's thumbnail renditions
 (`storage.removeDerived`), so the next `/thumb` answers `202` and queues the worker again:
 the Thumbnails page's button. `POST /vola/examples/purge` (an admin key) runs the purge now.
@@ -71,11 +79,13 @@ the Thumbnails page's button. `POST /vola/examples/purge` (an admin key) runs th
 ### The purge (`purge.ts`)
 
 Every `VOLA_DEMO_PURGE_INTERVAL_MIN` (15) minutes, and once at start, everything a visitor
-left more than `VOLA_DEMO_TTL_HOURS` (24) ago goes: their **keyrings** (a crypto-shred, as
+made more than `VOLA_DEMO_TTL_HOURS` (24) ago goes, each row going by its own `created_at` (not
+by the visitor's first upload or last visit), with one exception below: their **keyrings** (a crypto-shred, as
 `POST /keyrings/me/reset` — the files under them go first), their **files** in the demo
 instance (every version, soft-deleted rows too; a blob no other row cites is removed from
 disk), then their **folders**. The seeder's files are never selected. Shares die with their
-capped expiry.
+capped expiry. The exception: a folder past its age is deleted recursively, so a younger file in
+it is soft-deleted with it, and goes for good when its own time comes.
 
 ### The site (`apps/examples`)
 

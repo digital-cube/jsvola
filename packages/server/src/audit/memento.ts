@@ -47,7 +47,7 @@ export type AuditInstanceType = (typeof AUDIT_INSTANCE_TYPES)[number];
 export const AUDIT_ACTOR_TYPES = ["user", "api_key", "cli"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
-/** The body of `POST /events` as memento takes it (`EventCreate`). */
+/** One audit event, as it is queued. `toMementoBody` makes the body of `POST /events` of it. */
 export interface AuditEvent {
   event_type: AuditEventType;
   instance_type: AuditInstanceType;
@@ -131,7 +131,7 @@ export class MementoSink implements AuditSink {
           "content-type": "application/json",
           accept: "application/json",
         },
-        body: JSON.stringify(event),
+        body: JSON.stringify(toMementoBody(event)),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
@@ -149,6 +149,15 @@ export class MementoSink implements AuditSink {
       retryable,
     );
   }
+}
+
+/**
+ * The body of `POST /events`, memento's `EventCreate`. That schema is strict and has no
+ * `actor_type` (an unknown field is a `422`, which is final), so the kind of actor travels in the
+ * payload.
+ */
+export function toMementoBody({ actor_type, ...event }: AuditEvent) {
+  return actor_type ? { ...event, payload: { ...event.payload, actor_type } } : event;
 }
 
 // --- payloads ----------------------------------------------------------------------------

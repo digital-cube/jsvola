@@ -1,0 +1,117 @@
+# The whole stack: vola, its worker, memento, PostgreSQL, Redis and the desk.
+#   docker compose up -d --build
+# Only the desk has a port: the browser reaches vola and memento through it (same origin).
+name: ticket-desk
+
+services:
+  vola:
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment: &vola-env
+      VOLA_DATABASE_URL: postgresql://desk:desk@postgres:5432/vola
+      VOLA_REDIS_URL: redis://redis:6379/0
+      VOLA_PORT: 8300
+      VOLA_PREFIX: /vola
+      VOLA_STORAGE_PATH: /data/storage
+      VOLA_OCR_ENABLED: "0"
+      # Share links are built on this origin, the one the browser knows.
+      VOLA_PUBLIC_URL: http://localhost:${DESK_PORT:-8080}
+      # The whole integration with memento: vola pushes its own events, and no code of ours runs.
+      # Both or neither, so there is no URL until `make setup` has made the key. With Redis the
+      # worker does the pushing: it reads this same block.
+      VOLA_MEMENTO_URL: ${MEMENTO_AUDIT_KEY:+http://memento:3000/memento}
+      VOLA_MEMENTO_API_KEY: ${MEMENTO_AUDIT_KEY:-}
+    volumes:
+      - vola-data:/data
+    healthcheck:
+      test: ["CMD", "vola-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+
+  # The same image: makes the thumbnails, on the same /data.
+  vola-worker:
+    image: ${VOLA_IMAGE:-ghcr.io/digital-cube/jsvola:latest}
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    depends_on:
+      vola: { condition: service_healthy }
+    environment: *vola-env
+    volumes:
+      - vola-data:/data
+    healthcheck:
+      disable: true
+
+  memento:
+    image: ${MEMENTO_IMAGE:-ghcr.io/digital-cube/jsmemento:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://desk:desk@postgres:5432/memento
+      REDIS_URL: redis://redis:6379/1
+      PORT: 3000
+      MEMENTO_DEFAULT_LOCALE: en
+    volumes:
+      - memento-data:/data
+    healthcheck:
+      test: ["CMD", "memento-healthcheck"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+
+  postgres:
+    image: docker.io/library/postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: desk
+      POSTGRES_PASSWORD: desk
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U desk -d desk"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  # The program this tutorial writes.
+  desk:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      vola: { condition: service_healthy }
+      memento: { condition: service_healthy }
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgresql://desk:desk@postgres:5432/desk
+      MEMENTO_URL: http://memento:3000/memento
+      VOLA_URL: http://vola:8300/vola
+      # `make setup` writes these to .env.
+      MEMENTO_SERVER_KEY: ${MEMENTO_SERVER_KEY:-}
+      MEMENTO_BROWSER_KEY: ${MEMENTO_BROWSER_KEY:-}
+      VOLA_SERVER_KEY: ${VOLA_SERVER_KEY:-}
+      VOLA_BROWSER_KEY: ${VOLA_BROWSER_KEY:-}
+    ports:
+      - "${DESK_PORT:-8080}:8080"
+
+volumes:
+  vola-data:
+  memento-data:
+  postgres-data:

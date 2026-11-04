@@ -7,28 +7,7 @@ share one version.
 
 ## [Unreleased]
 
-### Added
-
-- **`apps/website` (`@vola/website`, private): the website and documentation, for vol-a.com.**
-  Astro with Starlight under the docs and Pagefind search; a home page of its own, dark first, in
-  Archivo and JetBrains Mono, drawn from the product: a thumbnail going from 202 to 200, a byte
-  ruler over a recorded `206`, a contact sheet of real renditions, the JSV v1 segment diagram.
-  Every request and answer it shows is recorded (`scripts/capture.mjs`), every command was run,
-  every program compiles against the workspace (`scripts/check-snippets.mjs`, part of
-  `typecheck`). The Reference section and the changelog page are generated from `docs/` and
-  `CHANGELOG.md`, and a broken link fails the build. Not part of the Docker image.
-- `deploy/website/stage.sh` and `deploy/website/nginx/stage.vol-a.com.conf`: build-and-swap of the
-  website at `https://stage.vol-a.com/`; `deploy/examples/nginx/examples.stage.vol-a.com.conf`:
-  the examples stack's vhost, now in the repository and answering its own name only.
-
-### Changed
-
-- The examples stack moved to `/home/digital/sites/examples.stage.vol-a.com` and is reached only
-  at `https://examples.stage.vol-a.com/`; `docs/EXAMPLES-SITE.md` has the real stage procedure,
-  including `COMPOSE_PROJECT_NAME` on a shared machine and what rootless podman needs, and
-  `docs/DEPLOYMENT.md` has a chapter on the website.
-
-## [1.0.0] - 2026-11-02
+## [1.0.0] - 2026-11-04
 
 The first release: the TypeScript port of vola-spp, complete per [docs/PLAN.md](docs/PLAN.md)
 — content-addressable, multi-tenant file storage with folders, versions, slugs, resumable
@@ -59,6 +38,21 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
 
 ### Added
 
+- **A tutorial on vol-a.com: a ticket desk on vola and memento, from an empty folder.** Seven steps,
+  in English and Serbian, written from the history of `apps/tutorial/ticket-desk`; every command on
+  the page was run as written (`apps/website/scripts/tutorial.mjs`). Code blocks of the site now keep
+  their tabs, so a copied Makefile works.
+- **`apps/website` (`@vola/website`, private): the website and documentation, for vol-a.com.**
+  Astro with Starlight under the docs and Pagefind search; a home page of its own, dark first, in
+  Archivo and JetBrains Mono, drawn from the product: a thumbnail going from 202 to 200, a byte
+  ruler over a recorded `206`, a contact sheet of real renditions, the JSV v1 segment diagram.
+  Every request and answer it shows is recorded (`scripts/capture.mjs`), every command was run,
+  every program compiles against the workspace (`scripts/check-snippets.mjs`, part of
+  `typecheck`). The Reference section and the changelog page are generated from `docs/` and
+  `CHANGELOG.md`, and a broken link fails the build. Not part of the Docker image.
+- `deploy/website/stage.sh` and `deploy/website/nginx/stage.vol-a.com.conf`: build-and-swap of the
+  website at `https://stage.vol-a.com/`; `deploy/examples/nginx/examples.stage.vol-a.com.conf`:
+  the examples stack's vhost, now in the repository and answering its own name only.
 - **Documentation and release** (plan 8.2): `README.md` rewritten as the front page (what vola
   is, the quick start against `docker-compose.yaml` with `curl`, the packages, the documents);
   `docs/API.md` — every route with method, path, scope, body, answers and error codes, the
@@ -600,11 +594,39 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
 
 ### Changed
 
+- The examples stack moved to `/home/digital/sites/examples.stage.vol-a.com` and is reached only
+  at `https://examples.stage.vol-a.com/`; `docs/EXAMPLES-SITE.md` has the real stage procedure,
+  including `COMPOSE_PROJECT_NAME` on a shared machine and what rootless podman needs, and
+  `docs/DEPLOYMENT.md` has a chapter on the website.
 - `409 encrypted_share_requires_grant` now only for `caller` (without `fk_share_ct`) and
   `client` files; `/thumb` no longer answers `404` for encrypted files the request can open;
   `isOcrEligible` and `thumbnailable` are true for `tenant` files; `TENANT_DEFAULT_ENCRYPTIONS`
   includes `caller`; `TenantContext` gained `contentKey` and `browserOrigin`; `parseMode` takes
   `{client}`; `EncryptedStage.fk` is nullable (`client`).
+
+### Fixed
+
+- **The audit trail reaches memento.** `POST <VOLA_MEMENTO_URL>/events` carried a top-level
+  `actor_type`, a field memento's strict `EventCreate` refuses with a `422`, so every audit event
+  was dropped after one try with a WARN line. The kind of actor now travels as
+  `payload.actor_type`. `docs/AUDIT.md`: its template lines are Handlebars now; memento refused
+  the old syntax with a parse error.
+- **Examples write proxy: a visitor can only change what that visitor made.** It only refused
+  seeded rows, so any `X-User-Id: demo-…` could rename, delete or purge another visitor's file or
+  folder, and list, read or revoke their shares. `created_by` must now equal `X-User-Id`, else
+  `403 demo_forbidden`; `GET shares` lists the visitor's own. The same goes for the ways round it:
+  an upload's `parent_id` (a planted version let a purge take a seeded file's whole chain), a
+  resumable upload's `slug` (completing it replaced the file of that slug, the pack's are public),
+  another visitor's resumable upload, and an own folder holding someone else's rows. `X-User-Id`
+  is self-declared, so this stops accidents and casual edits, not an attacker
+  (`docs/EXAMPLES-SITE.md`).
+- The examples site's Share page: **Open in a new tab** and the `curl` of an encrypted file's link
+  answered `401 share_secret_required`, since a tab never sends the part after `#`. Both now send
+  `X-Share-Secret`, and the page says what a recipient needs.
+- Docs that disagreed with themselves or the code: the examples routes' auth, the disk and Redis
+  rows of `CRYPTO.md` § 5 and § 8.7, an encrypted thumbnail's `ETag`, which files get OCR, the job
+  timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
+  The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
 [Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0

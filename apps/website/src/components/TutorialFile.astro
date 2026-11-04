@@ -1,0 +1,35 @@
+---
+/*
+ * One file of a chapter of the tutorial: snippets/tutorial/step-<n>/files/<path>.txt when the step
+ * adds it, <path>.diff.txt when the step changes it. Those are written from the program's
+ * `step N: …` commits by scripts/tutorial.mjs, and a path that is not there fails the build.
+ */
+import { Code } from "@astrojs/starlight/components";
+import { langOf } from "../tutorial-lang.mjs";
+
+interface Props {
+  step: number;
+  path: string;
+}
+
+const { step, path } = Astro.props;
+const files = import.meta.glob<string>("../../snippets/tutorial/*/files/**/*.txt", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+  // `.gitignore` and the other dotfiles of the program: a plain glob skips them.
+  exhaustive: true,
+});
+const base = `../../snippets/tutorial/step-${step}/files/${path}`;
+const diff = files[`${base}.diff.txt`];
+const whole = files[`${base}.txt`];
+if (diff === undefined && whole === undefined) throw new Error(`no snippet for step ${step}: ${path}`);
+---
+
+{
+  diff !== undefined ? (
+    <Code code={diff} lang="diff" title={path} />
+  ) : (
+    <Code code={whole as string} lang={langOf(path)} title={path} />
+  )
+}

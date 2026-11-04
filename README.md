@@ -61,8 +61,8 @@ CLI inside the container.
 
 ```sh
 git clone https://github.com/digital-cube/jsvola.git && cd jsvola
-docker compose -f docker-compose.yaml up -d --wait          # server :8300 + worker + PostgreSQL + Redis
-curl localhost:8300/vola/health/ready                       # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
+docker compose -f docker-compose.yaml up -d                 # server :8300 + worker + PostgreSQL + Redis
+until curl -sf localhost:8300/vola/health/ready; do sleep 2; done   # {"status":"ok","checks":{"database":"ok","redis":"ok"}}
 
 docker compose -f docker-compose.yaml exec vola vola create-tenant --slug acme --name "Acme Inc"
 docker compose -f docker-compose.yaml exec vola vola create-key --tenant acme --name backend --env live \

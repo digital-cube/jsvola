@@ -6,7 +6,7 @@ import {
   folderSegmentError,
   parseFolderPath,
 } from "@vola/core";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
@@ -133,6 +133,39 @@ export async function findFolder(
   const row = await selectLive(deps.db, scope, path);
   if (!row) throw folderNotFound(path);
   return row;
+}
+
+/**
+ * Whether a live folder or file in the subtree of `path` (the folder itself included) was made
+ * by someone other than `userId`. A row with no `created_by` counts as someone else's.
+ */
+export async function subtreeHasOtherOwner(
+  deps: FoldersDeps,
+  scope: InstanceScope,
+  path: string,
+  userId: string,
+): Promise<boolean> {
+  const subtree = await deps.db
+    .select({ id: folders.id, createdBy: folders.createdBy })
+    .from(folders)
+    .where(subtreeWhere(scope, path));
+  if (subtree.some((row) => row.createdBy !== userId)) return true;
+  if (subtree.length === 0) return false;
+  const [foreign] = await deps.db
+    .select({ id: files.id })
+    .from(files)
+    .where(
+      and(
+        inArray(
+          files.folderId,
+          subtree.map((row) => row.id),
+        ),
+        isNull(files.deletedAt),
+        or(isNull(files.createdBy), ne(files.createdBy, userId)),
+      ),
+    )
+    .limit(1);
+  return foreign !== undefined;
 }
 
 /** The live folder `folderId` of the instance; `404 folder_not_found` otherwise. */

@@ -1,0 +1,1 @@
+{{actor_id}} deleted {{payload.filename}}

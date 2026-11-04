@@ -1,0 +1,37 @@
+# The tickets, as a kanban board. Everything the board does is read from `kanban_options`:
+# the columns are the rows of `buckets`, a card is in the column its `status` names, and a drag
+# writes `status` and `order` through UDC's `mutate`.
+default_renderer: kanban
+available_renderers: [kanban]
+pagination: infinite
+page_size_default: 100
+
+kanban_options:
+  bucket_collection: buckets
+  bucket_filter_field: board_id
+  bucket_order_field: order
+  bucket_label_field: name
+  bucket_color_field: color
+  ticket_board_field: board_id
+  ticket_bucket_field: status
+  ticket_order_field: order
+  card:
+    title_field: title
+    body_field: body
+    assignees_field: assignees
+  buckets:
+    show_add_ticket_button: false
+    min_width_px: 240
+  board:
+    extendable_with_buckets: false
+    buckets_sortable: false
+
+columns:
+  - { field: title }
+  - { field: status }
+  - { field: assignees }
+
+search:
+  fields: [title, body]
+  placeholder: Search tickets
+  case_insensitive: true

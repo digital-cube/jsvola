@@ -16,14 +16,14 @@ import LiveExample from "../../../components/LiveExample.astro";
 
 A share link gives anyone with its token access to one file or one folder, with no API key and no tenant. This page shares a file. The link has the form `/vola/s/<token>`. vola stores only the token's SHA-256, so the link is shown once.
 
-The dialog sets a password, an expiry and a maximum number of downloads, then lists the file's links and lets you revoke them. The demo caps the expiry at 24 hours. After you create a link, the page shows it with an **Open in a new tab** button and a `curl` command.
+The dialog sets a password, an expiry and a maximum number of downloads, then lists the file's links and lets you revoke them. The demo caps the expiry at 24 hours. After you create a link, the page shows it with an **Open in a new tab** button and a `curl` command. The button is left out for a `tenant` file's link with a password, which needs both headers.
 
 ## What to try
 
 - Make a link with a password and open it. The first `GET` answers `401`, and the recipient has to send `X-Share-Password`.
 - Set the maximum downloads to 1 and download twice. The second start is `410`. Only a request that starts a download counts, so `HEAD` and a resumed `Range` do not.
 - Revoke a link, then open it again. The answer is `410`.
-- Pick a file marked `tenant`. The dialog warns that the recipient gets plaintext, and the link ends in `#` and a secret. A browser never sends that fragment to a server, so the client has to send it as `X-Share-Secret`. Without that header the answer is `401 share_secret_required`. [Encryption](/concepts/encryption/) explains these grants.
+- Pick a file marked `tenant`. The dialog warns that the recipient gets plaintext, and the link ends in `#` and a secret. A browser never sends that fragment to a server, so the client has to send it as `X-Share-Secret`. Without that header the answer is `401 share_secret_required`, which is what the link answers when pasted into an address bar. The page's button and `curl` send it. [Encryption](/concepts/encryption/) explains these grants.
 
 ## Routes
 

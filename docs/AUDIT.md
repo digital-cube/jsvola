@@ -25,9 +25,8 @@ memento `EventCreate` body:
   "event_type": "VOLA_FILE_DELETED",
   "instance_type": "vola_file",
   "instance_id": "<file id>",
-  "actor_type": "user",
   "actor_id": "u-42",
-  "payload": { "tenant": "acme", "file_id": "…", "filename": "report.pdf", "size": 12345, "mime_type": "application/pdf", "kind": "document", "…": "…" },
+  "payload": { "actor_type": "user", "tenant": "acme", "file_id": "…", "filename": "report.pdf", "size": 12345, "mime_type": "application/pdf", "kind": "document", "…": "…" },
   "occurred_at": "2026-11-01T12:00:00.000Z"
 }
 ```
@@ -53,7 +52,10 @@ tenants is out of scope.
 
 ## The actor
 
-| situation | `actor_type` | `actor_id` |
+`actor_type` is in the payload: memento's `EventCreate` has no such field and refuses a body
+with one.
+
+| situation | `payload.actor_type` | `actor_id` |
 |---|---|---|
 | request with `X-User-Id` | `user` | the header's value (the host application's principal) |
 | request without it | `api_key` | `key:<prefix>…<last4>`, e.g. `key:vola_live…k3Qz` |
@@ -62,7 +64,7 @@ tenants is out of scope.
 ## Events
 
 `instance_type` is what the event happened to; `instance_id` its id. Every payload carries
-`tenant` (the vola tenant slug) and the ids it is about. What a payload **never** carries: a
+`tenant` (the vola tenant slug), `actor_type` when the actor is known, and the ids it is about. What a payload **never** carries: a
 share token, a password (or its hash), an API key (plaintext or hash), a file key — and the
 `filename` of an encrypted file (`encryption != none`; the name of such a file is protected
 content, plan 6).
@@ -111,14 +113,14 @@ Suggested template lines (EN / SR), one per event type, in memento's template sy
 
 | event | en | sr |
 |---|---|---|
-| `VOLA_FILE_DELETED` | `{{ actor_id }} deleted file {{ payload.filename \| default("(encrypted)") }} ({{ payload.size }} B) in {{ payload.tenant }}` | `{{ actor_id }} je obrisao fajl {{ payload.filename \| default("(šifrovan)") }} ({{ payload.size }} B) u {{ payload.tenant }}` |
-| `VOLA_FILE_PURGED` | `{{ actor_id }} purged file {{ payload.filename \| default("(encrypted)") }}: {{ payload.files }} row(s), {{ payload.blobs }} blob(s)` | `{{ actor_id }} je trajno obrisao fajl {{ payload.filename \| default("(šifrovan)") }}: {{ payload.files }} red(ova), {{ payload.blobs }} blob(ova)` |
-| `VOLA_FILE_VISIBILITY_CHANGED` | `{{ actor_id }} set public={{ payload.is_public }} global={{ payload.is_global_public }} on {{ payload.filename \| default("(encrypted)") }}` | `{{ actor_id }} je postavio public={{ payload.is_public }} global={{ payload.is_global_public }} na {{ payload.filename \| default("(šifrovan)") }}` |
-| `VOLA_SHARE_CREATED` | `{{ actor_id }} created share {{ instance_id }} (password: {{ payload.has_password }}, max downloads: {{ payload.max_downloads }})` | `{{ actor_id }} je napravio share {{ instance_id }} (lozinka: {{ payload.has_password }}, max preuzimanja: {{ payload.max_downloads }})` |
-| `VOLA_SHARE_REVOKED` | `{{ actor_id }} revoked share {{ instance_id }} after {{ payload.download_count }} download(s)` | `{{ actor_id }} je povukao share {{ instance_id }} posle {{ payload.download_count }} preuzimanja` |
-| `VOLA_KEY_CREATED` | `{{ actor_id }} created API key {{ payload.prefix }}…{{ payload.last4 }} "{{ payload.name }}" ({{ payload.scopes \| join(", ") }})` | `{{ actor_id }} je napravio API ključ {{ payload.prefix }}…{{ payload.last4 }} "{{ payload.name }}" ({{ payload.scopes \| join(", ") }})` |
-| `VOLA_KEY_REVOKED` | `{{ actor_id }} revoked API key {{ payload.prefix }}…{{ payload.last4 }} "{{ payload.name }}"` | `{{ actor_id }} je povukao API ključ {{ payload.prefix }}…{{ payload.last4 }} "{{ payload.name }}"` |
-| `VOLA_INSTANCES_TRANSFERRED` | `{{ actor_id }} moved {{ payload.instances \| length }} instance(s), {{ payload.files }} file(s) from {{ payload.from_tenant }} to {{ payload.to_tenant }}` | `{{ actor_id }} je premestio {{ payload.instances \| length }} instanc(e/i), {{ payload.files }} fajl(ova) iz {{ payload.from_tenant }} u {{ payload.to_tenant }}` |
+| `VOLA_FILE_DELETED` | `{{actor_id}} deleted file {{default payload.filename "(encrypted)"}} ({{payload.size}} B) in {{payload.tenant}}` | `{{actor_id}} je obrisao fajl {{default payload.filename "(šifrovan)"}} ({{payload.size}} B) u {{payload.tenant}}` |
+| `VOLA_FILE_PURGED` | `{{actor_id}} purged file {{default payload.filename "(encrypted)"}}: {{payload.files}} row(s), {{payload.blobs}} blob(s)` | `{{actor_id}} je trajno obrisao fajl {{default payload.filename "(šifrovan)"}}: {{payload.files}} red(ova), {{payload.blobs}} blob(ova)` |
+| `VOLA_FILE_VISIBILITY_CHANGED` | `{{actor_id}} set public={{payload.is_public}} global={{payload.is_global_public}} on {{default payload.filename "(encrypted)"}}` | `{{actor_id}} je postavio public={{payload.is_public}} global={{payload.is_global_public}} na {{default payload.filename "(šifrovan)"}}` |
+| `VOLA_SHARE_CREATED` | `{{actor_id}} created share {{instance_id}} (password: {{payload.has_password}}, max downloads: {{payload.max_downloads}})` | `{{actor_id}} je napravio share {{instance_id}} (lozinka: {{payload.has_password}}, max preuzimanja: {{payload.max_downloads}})` |
+| `VOLA_SHARE_REVOKED` | `{{actor_id}} revoked share {{instance_id}} after {{payload.download_count}} download(s)` | `{{actor_id}} je povukao share {{instance_id}} posle {{payload.download_count}} preuzimanja` |
+| `VOLA_KEY_CREATED` | `{{actor_id}} created API key {{payload.prefix}}…{{payload.last4}} "{{payload.name}}" ({{join payload.scopes ", "}})` | `{{actor_id}} je napravio API ključ {{payload.prefix}}…{{payload.last4}} "{{payload.name}}" ({{join payload.scopes ", "}})` |
+| `VOLA_KEY_REVOKED` | `{{actor_id}} revoked API key {{payload.prefix}}…{{payload.last4}} "{{payload.name}}"` | `{{actor_id}} je povukao API ključ {{payload.prefix}}…{{payload.last4}} "{{payload.name}}"` |
+| `VOLA_INSTANCES_TRANSFERRED` | `{{actor_id}} moved {{payload.instances.length}} instance(s), {{payload.files}} file(s) from {{payload.from_tenant}} to {{payload.to_tenant}}` | `{{actor_id}} je premestio {{payload.instances.length}} instanc(e/i), {{payload.files}} fajl(ova) iz {{payload.from_tenant}} u {{payload.to_tenant}}` |
 
 ## Code
 

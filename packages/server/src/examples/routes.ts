@@ -1,14 +1,19 @@
 import type { IncomingHttpHeaders } from "node:http";
 import { Readable } from "node:stream";
+import { Busboy, type BusboyInstance } from "@fastify/busboy";
 import {
   decodeTusMetadata,
   type FileInfo,
+  INCLUDE_REVOKED_QUERY,
+  type ShareList,
   UPLOAD_LENGTH_HEADER,
   UPLOAD_META_KEYS,
   UPLOAD_METADATA_HEADER,
+  UPLOAD_PARENT_ID_FIELD,
   USER_ID_HEADER,
   VOLA_FILE_ID_HEADER,
 } from "@vola/core";
+import { and, eq } from "drizzle-orm";
 import type {
   FastifyBaseLogger,
   FastifyPluginAsync,
@@ -21,12 +26,26 @@ import { requestUserId } from "../auth.js";
 import type { ExamplesConfig } from "../config.js";
 import type { KeyFile } from "../crypto/index.js";
 import type { Database } from "../db/index.js";
+import { uploads } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import type { JobsMode } from "../jobs/availability.js";
-import { type FilesDeps, findFile, parseInstance } from "../services/files.js";
-import { type FoldersDeps, findFolder } from "../services/folders.js";
+import { flag } from "../routes/send-file.js";
+import {
+  type FilesDeps,
+  findFile,
+  findFileBySlug,
+  parseInstance,
+  parseSlug,
+} from "../services/files.js";
+import {
+  type FoldersDeps,
+  findFolder,
+  parsePath,
+  subtreeHasOtherOwner,
+} from "../services/folders.js";
 import type { KeyringsDeps } from "../services/keyrings.js";
+import { findShare, listShares } from "../services/shares.js";
 import type { StorageBackend } from "../storage/index.js";
 import { type DemoTenant, ensureDemoTenant, SEEDER_USER } from "./demo.js";
 import { RateLimiter } from "./limiter.js";
@@ -128,6 +147,31 @@ const DROPPED_RESPONSE_HEADERS = new Set([
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Every value of the text field `field` in a multipart body. Parsed with the library
+ * `@fastify/multipart` parses with, so what the real route would see is seen here. A body it
+ * cannot parse has none: the real route answers that one.
+ */
+function multipartValues(body: Buffer, contentType: string, field: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const values: string[] = [];
+    let parser: BusboyInstance;
+    try {
+      parser = new Busboy({ headers: { "content-type": contentType } });
+    } catch {
+      resolve(values);
+      return;
+    }
+    parser.on("field", (name: string, value: string) => {
+      if (name === field) values.push(value);
+    });
+    parser.on("file", (_name: string, file: Readable) => file.resume());
+    parser.on("finish", () => resolve(values));
+    parser.on("error", () => resolve(values));
+    parser.end(body);
+  });
+}
+
 function forbidden(message: string, details?: Record<string, unknown>): VolaError {
   return new VolaError("demo_forbidden", 403, message, details);
 }
@@ -146,7 +190,9 @@ function headerOf(headers: IncomingHttpHeaders, name: string): string | undefine
  *   `<prefix>/<route>` under the server's write key, after the policy (`demoAction`) said
  *   the visitor may make it, the per-IP rate limit let it through, the body is small
  *   enough, and — for an upload — its type is on the list (an upload of another type is
- *   purged again at once and answered `415`). A seeded file or folder is never written to.
+ *   purged again at once and answered `415`). A visitor writes only what that visitor made
+ *   (`created_by` = `X-User-Id`): a seeded row or another visitor's is `403 demo_forbidden`.
+ *   That stops accidents and casual edits, not someone who sends another visitor's id.
  * - `POST /examples/regenerate/:fileId` — drops a file's thumbnails so the next `/thumb`
  *   renders them again (`202` → `200` with a worker: the Thumbnails page's button);
  * - the purge: every `config.purgeIntervalMin` minutes (and once at start) everything a
@@ -246,44 +292,108 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
     }
   }
 
-  /** `403` when `fileId` is a seeded file (the pack every visitor sees); a missing file is the real route's 404. */
-  async function refuseSeededFile(fileId: string): Promise<void> {
+  /** The `403` of a row the visitor did not make; the seeded pack says so, it is not a visitor's. */
+  function notYours(
+    what: string,
+    createdBy: string | null,
+    details: Record<string, unknown>,
+  ): VolaError {
+    return forbidden(
+      createdBy === SEEDER_USER
+        ? `this is one of the demo's seeded ${what}s: it stays as it is for every visitor`
+        : `this ${what} belongs to another visitor`,
+      details,
+    );
+  }
+
+  /** Runs an ownership check; a row that is not there (or gone) is the real route's answer. */
+  async function unlessMissing(check: () => Promise<void>): Promise<void> {
     try {
-      const row = await findFile(filesDeps, scope, fileId, { includeDeleted: true });
-      if (row.createdBy === SEEDER_USER) {
-        throw forbidden(
-          "this is one of the demo's seeded files: it stays as it is for every visitor",
-          {
-            file_id: row.id,
-          },
-        );
-      }
+      await check();
     } catch (error) {
-      if (error instanceof VolaError && error.status === 404) return;
+      if (error instanceof VolaError && error.status !== 403) return;
       throw error;
     }
   }
 
-  async function refuseSeededFolder(path: string): Promise<void> {
-    try {
-      const row = await findFolder(folderDeps, scope, decodeURIComponent(path));
-      if (row.createdBy === SEEDER_USER) {
-        throw forbidden(
-          "this is one of the demo's seeded folders: it stays as it is for every visitor",
-          {
-            path: row.path,
-          },
-        );
+  async function refuseForeignFile(fileId: string, visitor: string): Promise<void> {
+    await unlessMissing(async () => {
+      const row = await findFile(filesDeps, scope, fileId, { includeDeleted: true });
+      if (row.createdBy !== visitor) {
+        throw notYours("file", row.createdBy, { file_id: row.id });
       }
-    } catch (error) {
-      if (error instanceof VolaError && error.status === 404) return;
+    });
+  }
+
+  /**
+   * A folder is the visitor's when they made it and nothing under it is someone else's: moving
+   * or deleting it would take the other rows along. The path is normalised as the real route
+   * normalises it (`a//b` is `a/b`).
+   */
+  async function refuseForeignFolder(path: string, visitor: string): Promise<void> {
+    await unlessMissing(async () => {
+      const normal = parsePath(decodeURIComponent(path));
+      const row = await findFolder(folderDeps, scope, normal);
+      if (row.createdBy !== visitor) {
+        throw notYours("folder", row.createdBy, { path: row.path });
+      }
+      if (await subtreeHasOtherOwner(folderDeps, scope, normal, visitor)) {
+        throw forbidden("this folder holds another visitor's or a seeded file or folder", {
+          path: row.path,
+        });
+      }
+    }).catch((error: unknown) => {
       if (error instanceof URIError) return;
       throw error;
+    });
+  }
+
+  async function refuseForeignUpload(uploadId: string, visitor: string): Promise<void> {
+    const [row] = await deps.db
+      .select({ id: uploads.id, createdBy: uploads.createdBy })
+      .from(uploads)
+      .where(and(eq(uploads.tenantId, tenant.tenantId), eq(uploads.id, uploadId.toLowerCase())))
+      .limit(1);
+    if (row && row.createdBy !== visitor) {
+      throw notYours("upload", row.createdBy, { upload_id: row.id });
     }
+  }
+
+  async function refuseForeignShare(shareId: string, visitor: string): Promise<void> {
+    await unlessMissing(async () => {
+      const row = await findShare({ db: deps.db }, tenant.tenantId, shareId);
+      if (row.createdBy !== visitor) throw notYours("share", row.createdBy, { share_id: row.id });
+    });
+  }
+
+  /**
+   * An upload naming `parent_id` adds a version to that file's chain, and a purge takes the
+   * whole chain: the parent has to be the visitor's own. A UUID check first: another value is
+   * the real route's `422`.
+   */
+  async function refuseForeignParents(
+    parentIds: readonly string[],
+    visitor: string,
+  ): Promise<void> {
+    for (const parentId of parentIds) {
+      if (UUID_RE.test(parentId)) await refuseForeignFile(parentId, visitor);
+    }
+  }
+
+  /** A resumable upload naming a `slug` soft-deletes the live file of that slug when it completes. */
+  async function refuseForeignSlug(slug: string, visitor: string): Promise<void> {
+    await unlessMissing(async () => {
+      const row = await findFileBySlug(filesDeps, scope, parseSlug(slug));
+      if (row.createdBy !== visitor) throw notYours("file", row.createdBy, { slug });
+    });
   }
 
   /** Before the request is replayed: the checks that need no answer from the real route. */
-  async function preCheck(request: FastifyRequest, action: DemoAction): Promise<unknown> {
+  async function preCheck(
+    request: FastifyRequest,
+    action: DemoAction,
+    visitor: string,
+  ): Promise<unknown> {
     const headers = request.headers;
     switch (action.kind) {
       case "upload": {
@@ -295,8 +405,18 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
             "Content-Length is required for a demo upload",
           );
         }
-        if (length > config.maxUploadBytes + MULTIPART_SLACK_BYTES) throw tooLarge();
-        return request.body;
+        const limit = config.maxUploadBytes + MULTIPART_SLACK_BYTES;
+        if (length > limit) throw tooLarge();
+        // Only a multipart body arrives as a stream, whatever the case of its type.
+        if (!(request.body instanceof Readable)) return request.body;
+        const type = headerOf(headers, "content-type") ?? "";
+        // The fields are read as the real route reads them, so the buffered body goes on as it came.
+        const body = await readAtMost(request.body, limit);
+        await refuseForeignParents(
+          await multipartValues(body, type, UPLOAD_PARENT_ID_FIELD),
+          visitor,
+        );
+        return body;
       }
       case "upload-create": {
         const length = Number(headerOf(headers, UPLOAD_LENGTH_HEADER) ?? Number.NaN);
@@ -310,16 +430,25 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
             `a demo upload goes to the instance ${config.instanceType}/${config.instanceId}`,
           );
         }
+        const parent = meta[UPLOAD_META_KEYS.parentId];
+        if (parent) await refuseForeignParents([parent], visitor);
+        const slug = meta[UPLOAD_META_KEYS.slug];
+        if (slug) await refuseForeignSlug(slug, visitor);
         return request.body;
       }
+      case "upload-continue":
+        await refuseForeignUpload(action.uploadId, visitor);
+        return request.body;
       case "file-write":
-        await refuseSeededFile(action.fileId);
+        await refuseForeignFile(action.fileId, visitor);
         return request.body;
       case "folder-write":
-        await refuseSeededFolder(action.path);
+        await refuseForeignFolder(action.path, visitor);
         return request.body;
-      case "share": {
-        if (!action.create) return request.body;
+      case "share-item":
+        await refuseForeignShare(action.shareId, visitor);
+        return request.body;
+      case "share-create": {
         const body = request.body;
         if (!body || typeof body !== "object" || Array.isArray(body)) return body;
         const share = body as Record<string, unknown>;
@@ -348,6 +477,31 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
       }
       throw error;
     }
+  }
+
+  /** `GET /shares` of one visitor: selected in the query, so the list's limit counts their rows only. */
+  async function ownShares(request: FastifyRequest, visitor: string): Promise<ShareList> {
+    const query = request.query as Record<string, string | undefined>;
+    return {
+      shares: await listShares({ db: deps.db, logger: log }, tenant.tenantId, {
+        fileId: query.file_id,
+        folderId: query.folder_id,
+        includeRevoked: flag(query[INCLUDE_REVOKED_QUERY]),
+        createdBy: visitor,
+      }),
+    };
+  }
+
+  /** The bytes of `stream`, `413` past `limit`: a body with a false length stops here too. */
+  async function readAtMost(stream: Readable, limit: number): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of stream) {
+      total += (chunk as Buffer).length;
+      if (total > limit) throw tooLarge();
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
   }
 
   function tooLarge(): VolaError {
@@ -441,7 +595,7 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
     return new VolaError(
       "demo_mime_not_allowed",
       415,
-      `the demo keeps images, PDF, short video and audio and plain text; not ${bareMime(mime) || "this type"}`,
+      `the demo keeps images, PDF, short video and audio, plain text and Markdown; not ${bareMime(mime) || "this type"}`,
       { mime_type: bareMime(mime), allowed: DEMO_MIME_TYPES },
     );
   }
@@ -461,9 +615,12 @@ export const examplesRoutes: FastifyPluginAsync<ExamplesRoutesDeps> = async (app
           `the demo does not allow ${request.method} /${path}: uploads, folders, shares and the visitor's own keyring, on the demo instance only`,
         );
       }
-      visitorOf(request);
+      const visitor = visitorOf(request);
       if (isCountedWrite(request.method, action)) brake(request, reply);
-      const body = await preCheck(request, action);
+      if (action.kind === "share-list") {
+        return reply.send(await ownShares(request, visitor));
+      }
+      const body = await preCheck(request, action, visitor);
       const response = await replay(request, tail, body);
 
       if (action.kind === "upload" && response.statusCode === 201) {

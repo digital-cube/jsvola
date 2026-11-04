@@ -16,6 +16,7 @@ import {
   fileAuditPayload,
   MementoSink,
   NoopSink,
+  toMementoBody,
 } from "../src/audit/memento.js";
 import { ConfigError, loadConfig } from "../src/config.js";
 import { files } from "../src/db/schema.js";
@@ -161,9 +162,9 @@ describe("audit → memento (direct mode)", () => {
       event_type: "VOLA_FILE_DELETED",
       instance_type: "vola_file",
       instance_id: info.id,
-      actor_type: "user",
       actor_id: "alice",
       payload: {
+        actor_type: "user",
         tenant: "acme",
         file_id: info.id,
         instance_type: TYPE,
@@ -191,8 +192,8 @@ describe("audit → memento (direct mode)", () => {
     await http.del(`/vola/files/${TYPE}/${instanceId}/${info.id}`);
     const [event] = await memento.events("VOLA_FILE_DELETED");
     expect(event).toMatchObject({
-      actor_type: "api_key",
       actor_id: `key:${fx.full.apiKey.prefix}…${fx.full.apiKey.last4}`,
+      payload: { actor_type: "api_key" },
     });
     expect(event?.actor_id).not.toContain(fx.full.key);
   });
@@ -504,6 +505,30 @@ describe("audit building blocks", () => {
       url: "http://m.test/memento",
       apiKey: "k",
     });
+  });
+
+  it("sends only the fields memento's strict EventCreate takes", () => {
+    const event: AuditEvent = {
+      event_type: "VOLA_KEY_REVOKED",
+      instance_type: "vola_key",
+      instance_id: "k1",
+      actor_type: "cli",
+      actor_id: "cli:igor",
+      payload: { tenant: "acme" },
+      occurred_at: "2026-11-03T12:00:00.000Z",
+    };
+    const body = toMementoBody(event);
+    // Anything else here is a 422 from memento, and a 422 is final: the event is lost.
+    expect(Object.keys(body).sort()).toEqual([
+      "actor_id",
+      "event_type",
+      "instance_id",
+      "instance_type",
+      "occurred_at",
+      "payload",
+    ]);
+    expect(body.payload).toEqual({ tenant: "acme", actor_type: "cli" });
+    expect(toMementoBody({ ...event, actor_type: null }).payload).toEqual({ tenant: "acme" });
   });
 
   it("MementoSink tells a retryable failure from a final one and times out", async () => {

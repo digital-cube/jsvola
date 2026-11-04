@@ -46,6 +46,7 @@ themes. Run it when you change a colour.
 | section | pages | source |
 |---|---|---|
 | Get started | `src/content/docs/get-started/*.mdx` | hand-written; the code from `snippets/` |
+| Tutorials | `src/content/docs/tutorials/*.mdx`, one page per language (`-sr` is Serbian) | hand-written; the code from `snippets/tutorial/`, written from the program's `step N: …` commits (below) |
 | Concepts | `src/content/docs/concepts/*.mdx` | hand-written from `docs/` (ARCHITECTURE, CRYPTO, REALTIME, EXAMPLES-SITE, MIGRATION-FROM-VOLA-SPP) |
 | Reference | `src/content/docs/reference/*.md`, **generated, not in git** | `scripts/gen-reference.mjs`: `docs/API.md`, `docs/CRYPTO.md`, `docs/REALTIME.md`, `docs/CLI.md`, the environment-variable tables of `docs/DEPLOYMENT.md` |
 | Examples | `src/content/docs/examples/*.mdx` | hand-written from `docs/EXAMPLES-SITE.md` and the pages' code, one per `menu.yaml` example; `<ExampleShot>` shows `src/assets/examples/<page>-light.webp` |
@@ -116,6 +117,27 @@ upload, and a shot of whatever a stranger uploaded must not end up on the site.
 script takes the light theme only, and `<ExampleShot>` shows the light shot in both of the site's
 themes, a little dimmed in dark. Add `"dark"` to `THEMES` once `apps/examples` has one, and
 `ExampleShot.astro` picks up `<page>-dark.webp` by itself.
+
+### `scripts/tutorial.mjs`: the tutorial and the history it is written from
+
+The tutorial builds `apps/tutorial/ticket-desk` from an empty folder, a chapter per `step N: …`
+commit. The site has no locales, because Starlight's would add an English `/sr/` copy of every other
+page, so Serbian is one more page: `route.lang` comes from the `-sr` in its name (`src/routeData.ts`),
+and both pages take their code from the same files, through `<TutorialFile>` and `<TutorialRun>`.
+
+```sh
+node scripts/tutorial.mjs snippets     # snippets/tutorial/step-N/files/ from the commits
+node scripts/tutorial.mjs md <dir>     # each page as plain markdown: tutorial.md, tutorial.sr.md
+node scripts/tutorial.mjs check        # each chapter on a clean checkout of the step before == that step
+node scripts/tutorial.mjs run <n>      # chapter n's commands, as written, against a real stack
+```
+
+`snippets/tutorial/step-N/run/` is written by hand: the commands of a chapter, and in `*.out.txt` the
+lines each one printed. `run` holds a command to its lines, leaves out ids, times and durations, and
+brings the program's Docker stack up on this machine, dropping its data first. Set `VOLA_IMAGE` for
+step 7 until a release has the audit fix. A mistake in a step's commit is fixed on top and listed in
+`CORRECTED`, so the chapter shows the good file. `public/tutorials/ticket-desk/vendor/` holds the
+tarballs chapter 1 downloads, the same ones as the program's `vendor/`, until the packages are on npm.
 
 ### `pnpm run check:snippets` (part of `typecheck`)
 
