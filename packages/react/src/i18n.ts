@@ -1,7 +1,7 @@
 import { type Messages, useI18n, type Vars } from "@jsudc/react";
 import { useCallback } from "react";
 
-/** The i18n section every `@vola/react` string lives in (`t("VOLA", "UPLOAD")`). */
+/** The i18n section every `@vol-a/react` string lives in (`t("VOLA", "UPLOAD")`). */
 export const VOLA_SECTION = "VOLA";
 
 /**

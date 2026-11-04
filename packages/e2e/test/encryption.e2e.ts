@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { FileInfoSchema } from "@vola/core";
+import { FileInfoSchema } from "@vol-a/core";
 import {
   connect,
   createApiKey,
@@ -8,7 +8,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 

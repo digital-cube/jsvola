@@ -92,7 +92,7 @@ Events are dispatched one after another per tenant, so every client sees them in
 
 ## How a list stays live
 
-`VolaFileBrowser` from `@vola/react` opens one WebSocket with the same instance and folder filter its lists carry.
+`VolaFileBrowser` from `@vol-a/react` opens one WebSocket with the same instance and folder filter its lists carry.
 
 - An upsert of a row a cached page holds is patched into the cache in place, so a rename, a move or a new `processing_status` shows without a request.
 - A row the cache does not have (a new upload), or a remove, makes the lists refetch.

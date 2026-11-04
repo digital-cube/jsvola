@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { FileInfoSchema, FileListSchema, TransferResultSchema } from "@vola/core";
+import { FileInfoSchema, FileListSchema, TransferResultSchema } from "@vol-a/core";
 import {
   connect,
   createApiKey,
@@ -7,7 +7,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 

@@ -1,4 +1,4 @@
-# @vola/server
+# @vol-a/server
 
 The JSVola server: self-hosted, multi-tenant, content-addressable file storage as a **Fastify 5
 plugin** and as a **standalone server**, with its worker process, the Drizzle/PostgreSQL schema
@@ -11,12 +11,12 @@ This package is for running it from Node directly or embedding it in your own Fa
 application.
 
 ```sh
-pnpm add @vola/server @vola/core
+pnpm add @vol-a/server @vol-a/core
 ```
 
 ```ts
-// standalone, from Node (the same as `node node_modules/@vola/server/dist/server.js`)
-import { buildApp, connect, loadConfig, runMigrations } from "@vola/server";
+// standalone, from Node (the same as `node node_modules/@vol-a/server/dist/server.js`)
+import { buildApp, connect, loadConfig, runMigrations } from "@vol-a/server";
 
 const config = loadConfig();                       // every VOLA_* variable, validated
 const db = connect(config.databaseUrl);
@@ -28,7 +28,7 @@ await app.listen({ host: config.host, port: config.port });
 ```ts
 // embedded in a host application
 import Fastify from "fastify";
-import { volaPlugin, loadConfig, connect } from "@vola/server";
+import { volaPlugin, loadConfig, connect } from "@vol-a/server";
 
 const app = Fastify({ logger: true });
 const config = loadConfig();
@@ -40,7 +40,7 @@ await app.register(volaPlugin, {
 });
 ```
 
-The worker is `node node_modules/@vola/server/dist/worker.js` with the same environment
+The worker is `node node_modules/@vol-a/server/dist/worker.js` with the same environment
 (`VOLA_REDIS_URL`, the same `VOLA_STORAGE_PATH`, the key file for encrypted derivatives). It
 needs `pdftoppm` (poppler-utils) and `tesseract` on the machine for PDF thumbnails and OCR.
 

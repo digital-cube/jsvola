@@ -1,1 +1,1 @@
-pnpm add @vola/client
+pnpm add @vol-a/client

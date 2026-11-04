@@ -7,8 +7,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { seedDemo } from "@vola/cli";
-import { FileInfoSchema, FileListSchema, ShareCreatedSchema } from "@vola/core";
+import { seedDemo } from "@vol-a/cli";
+import { FileInfoSchema, FileListSchema, ShareCreatedSchema } from "@vol-a/core";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { startServer, stop } from "./spawn.js";

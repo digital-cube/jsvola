@@ -7,7 +7,7 @@ import {
   ReadyResponseSchema,
 } from "../src/index.js";
 
-describe("@vola/core schemas", () => {
+describe("@vol-a/core schemas", () => {
   it("builds and validates the error envelope", () => {
     const body = errorResponse("not_found", "route GET /x not found");
     expect(ErrorResponseSchema.parse(body)).toEqual({

@@ -9,7 +9,7 @@ import {
   INTEGRITY_ERROR_MESSAGE,
   ShareCreatedSchema,
   THUMBNAIL_SIZES,
-} from "@vola/core";
+} from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";

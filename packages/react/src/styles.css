@@ -1,5 +1,5 @@
 /*
- * @vola/react default styles. Import once: `import "@vola/react/styles.css";` — after
+ * @vol-a/react default styles. Import once: `import "@vol-a/react/styles.css";` — after
  * `@jsudc/react/styles.css`, whose tokens (`--background`, `--foreground`, `--border`,
  * `--primary`, `--sem-*`, light and `.dark`) this sheet reads, with a fallback for a page
  * without them. Every class starts with `vola-`; theme by redefining the tokens.

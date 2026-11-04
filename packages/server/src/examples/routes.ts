@@ -12,7 +12,7 @@ import {
   UPLOAD_PARENT_ID_FIELD,
   USER_ID_HEADER,
   VOLA_FILE_ID_HEADER,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq } from "drizzle-orm";
 import type {
   FastifyBaseLogger,

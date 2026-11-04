@@ -1,4 +1,4 @@
-import { SHARE_PASSWORD_MAX_FAILURES, SHARE_PASSWORD_WINDOW_S } from "@vola/core";
+import { SHARE_PASSWORD_MAX_FAILURES, SHARE_PASSWORD_WINDOW_S } from "@vol-a/core";
 import argon2 from "argon2";
 import type { FastifyBaseLogger } from "fastify";
 

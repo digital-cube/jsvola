@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { InstanceTypesResponseSchema, LookupsResponseSchema } from "@vola/core";
+import { InstanceTypesResponseSchema, LookupsResponseSchema } from "@vol-a/core";
 import {
   connect,
   createApiKey,
@@ -7,7 +7,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 const server = inject("server");

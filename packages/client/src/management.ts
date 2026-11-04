@@ -13,7 +13,7 @@ import {
   TenantStatsSchema,
   type TransferResult,
   TransferResultSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { CallOptions, VolaClient } from "./client.js";
 
 export interface StatsOptions extends CallOptions {

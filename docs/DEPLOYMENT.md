@@ -268,7 +268,7 @@ To turn it off everywhere: `VOLA_OCR_ENABLED=0` on the server (no job is created
   `Upgrade` / `Connection` headers; a read timeout above the heartbeat, 30 s by default).
 - Raise the proxy's body limit to at least `VOLA_MAX_UPLOAD_BYTES` (512 MiB) for multipart
   uploads, or point large uploads at the resumable protocol (`/uploads`), whose chunks are as
-  small as the client makes them (`@vola/react` uses 8 MiB).
+  small as the client makes them (`@vol-a/react` uses 8 MiB).
 - Do not buffer responses on download routes (`proxy_buffering off` for `<prefix>/files`,
   `<prefix>/s`, `<prefix>/public`): `Range` and streaming media depend on it.
 - Pass `Authorization`, `X-Api-Key`, `X-Tenant-Slug`, `X-User-Id`, `X-Vola-Unlock`,
@@ -306,7 +306,7 @@ and the worker. Check with `vola keys-status` / `vola pepper-status` (no `NO LIN
 
 ## Upgrades and migrations
 
-All `@vola/*` packages and the image share one version; the changelog is [CHANGELOG.md](../CHANGELOG.md).
+All `@vol-a/*` packages and the image share one version; the changelog is [CHANGELOG.md](../CHANGELOG.md).
 
 1. Read the release notes for the version you are jumping to (a migration, a changed default,
    a new variable).
@@ -321,7 +321,7 @@ All `@vola/*` packages and the image share one version; the changelog is [CHANGE
 Rolling back means restoring the backup of step 2: the schema has no down migrations. For a
 larger deployment run the migration explicitly before the new servers start —
 `docker compose -f docker-compose.yaml run --rm --no-deps vola vola migrate` — and then roll
-the processes. `@vola/client` and `@vola/react` follow semantic versioning against the server's
+the processes. `@vol-a/client` and `@vol-a/react` follow semantic versioning against the server's
 API; a `1.x` client speaks to any `1.y` server.
 
 ## Scaling
@@ -360,7 +360,7 @@ quick start does. Rootless podman also needs
 
 ## The website
 
-`https://stage.vol-a.com/` is `apps/website` (`@vola/website`): vola's own website, Astro +
+`https://stage.vol-a.com/` is `apps/website` (`@vol-a/website`): vola's own website, Astro +
 Starlight, static files served by nginx on the stage VM. It is **not part of the image** (the
 Dockerfile's turbo filters leave it out) and has no server: one build, swapped in under a symlink.
 The examples stack is separate and lives at `https://examples.stage.vol-a.com/`
@@ -386,8 +386,8 @@ REPO_URL=/home/digital/work/jsvola deploy/website/stage.sh --branch main   # com
 ```
 
 It clones or fetches the repository into `/home/digital/sites/stage.vol-a.com/src`, checks out
-`origin/<branch>`, installs `@vola/website` and its dependencies only (`pnpm install
---frozen-lockfile --filter @vola/website...`, pnpm from `packageManager` through corepack, Node 24
+`origin/<branch>`, installs `@vol-a/website` and its dependencies only (`pnpm install
+--frozen-lockfile --filter @vol-a/website...`, pnpm from `packageManager` through corepack, Node 24
 from nvm), builds with the stage variables, copies `apps/website/dist` to `releases/<short sha>/`,
 repoints `current` atomically, keeps three releases, and fails unless `/` answers 200 and a missing
 page the site's 404 through nginx on 127.0.0.1, and `/` answers this build through the edge. The

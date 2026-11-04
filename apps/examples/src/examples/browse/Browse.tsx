@@ -1,5 +1,5 @@
 import { useI18n } from "@jsudc/react";
-import { VolaFileBrowser } from "@vola/react";
+import { VolaFileBrowser } from "@vol-a/react";
 import { useSearchParams } from "react-router";
 import { useSettings } from "../../connection.js";
 import { Connected } from "../../shell/AppShell.js";

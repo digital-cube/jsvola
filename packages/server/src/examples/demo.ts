@@ -1,4 +1,4 @@
-import { parseApiKey, type Scope } from "@vola/core";
+import { parseApiKey, type Scope } from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { hashApiKey } from "../apikey.js";

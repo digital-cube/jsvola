@@ -1,4 +1,4 @@
-import type { ThumbnailCrop, ThumbnailSize } from "@vola/core";
+import type { ThumbnailCrop, ThumbnailSize } from "@vol-a/core";
 import { type JobsOptions, Queue } from "bullmq";
 import type { FastifyBaseLogger } from "fastify";
 import { Redis } from "ioredis";

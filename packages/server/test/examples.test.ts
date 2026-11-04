@@ -13,7 +13,7 @@ import {
   FileInfoSchema,
   ShareCreatedSchema,
   thumbnailDerivedName,
-} from "@vola/core";
+} from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

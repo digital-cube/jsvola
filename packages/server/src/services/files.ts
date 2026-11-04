@@ -13,7 +13,7 @@ import {
   InstanceTypeSchema,
   type ProcessingStatus,
   type PurgeResult,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";

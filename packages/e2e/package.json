@@ -1,6 +1,6 @@
 {
-  "name": "@vola/e2e",
-  "version": "1.0.0",
+  "name": "@vol-a/e2e",
+  "version": "1.0.1",
   "private": true,
   "description": "JSVola end-to-end tests: the built server against real PostgreSQL + Redis, over HTTP.",
   "license": "MIT",
@@ -10,13 +10,13 @@
     "test:e2e": "vitest run"
   },
   "dependencies": {
-    "@vola/client": "workspace:*",
-    "@vola/core": "workspace:*",
-    "@vola/server": "workspace:*"
+    "@vol-a/client": "workspace:*",
+    "@vol-a/core": "workspace:*",
+    "@vol-a/server": "workspace:*"
   },
   "devDependencies": {
-    "@vola/cli": "workspace:*",
-    "@vola/examples": "workspace:*",
+    "@vol-a/cli": "workspace:*",
+    "@vol-a/examples": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "ioredis": "^6.0.0",
     "sharp": "^0.35.5",

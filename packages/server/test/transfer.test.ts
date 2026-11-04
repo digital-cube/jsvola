@@ -14,7 +14,7 @@ import {
   type TransferRequest,
   type TransferResult,
   TransferResultSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { FastifyInstance } from "fastify";

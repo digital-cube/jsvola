@@ -1,6 +1,6 @@
 /**
  * Compile-time assertions (run by `tsc -p tsconfig.json`, not by vitest): every answer of the
- * SDK is typed by the `@vola/core` schema of its route. A method whose type drifted from the
+ * SDK is typed by the `@vol-a/core` schema of its route. A method whose type drifted from the
  * protocol fails the typecheck here.
  */
 
@@ -34,7 +34,7 @@ import type {
   TenantStats,
   TransferResult,
   Unlocked,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { ResumableResult, ThumbnailResult, VolaClient } from "../src/index.js";
 
 type Equals<A, B> =

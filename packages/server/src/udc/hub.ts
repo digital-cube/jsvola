@@ -10,7 +10,7 @@ import {
   SUBSCRIBE_CLOSE_CODES,
   SUBSCRIBE_PROTOCOL_VERSION,
   SubscribePayloadSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, runWithTenant } from "../context.js";
 import { isSubscribable, type RowSink, type Subscription } from "./subscribable.js";

@@ -11,8 +11,8 @@ import {
   TransferRequestSchema,
   type TransferResult,
   UserIdSchema,
-} from "@vola/core";
-import { LookupCompileError, promoteCandidates, validateTranslationsCsv } from "@vola/lookups";
+} from "@vol-a/core";
+import { LookupCompileError, promoteCandidates, validateTranslationsCsv } from "@vol-a/lookups";
 import {
   AuditLog,
   type Config,
@@ -47,12 +47,12 @@ import {
   tenantKeyUsage,
   transferInstances,
   VolaError,
-} from "@vola/server";
+} from "@vol-a/server";
 import { Command, InvalidArgumentError, Option } from "commander";
 import { eq } from "drizzle-orm";
 import { seedDemo } from "./seed.js";
 
-export const CLI_VERSION = "1.0.0";
+export const CLI_VERSION = "1.0.1";
 
 export interface CliIo {
   out: (line: string) => void;

@@ -38,7 +38,7 @@ There are also new things: resumable uploads, live lists over WebSocket, OCR, en
 
 ## Main routes
 
-`:type/:id` is `instance_type/instance_id`. The [full table](https://github.com/digital-cube/jsvola/blob/main/docs/MIGRATION-FROM-VOLA-SPP.md) has every route and its `@vola/client` method.
+`:type/:id` is `instance_type/instance_id`. The [full table](https://github.com/digital-cube/jsvola/blob/main/docs/MIGRATION-FROM-VOLA-SPP.md) has every route and its `@vol-a/client` method.
 
 | vola-spp | Now |
 | --- | --- |
@@ -92,13 +92,13 @@ Share tokens are not carried over. Links sent out under vola-spp stay valid agai
 ## Checklist for a consumer
 
 1. **Keys.** Create the tenants and new keys on the new server (`vola create-tenant`, `vola create-key`, `create-admin-key`) with the scopes the project needs. A backend that acts for several tenants keeps using an admin key and `X-Tenant-Slug`. See the [CLI reference](/reference/cli/).
-2. **Base URL and prefix.** `https://files.example.com/vola` replaces the old host plus `/api/v1`. Replace a vola client module with [`@vola/client`](/get-started/client/) in TypeScript, or rewrite its route table in another language. The `/udc/*` calls move under the prefix.
+2. **Base URL and prefix.** `https://files.example.com/vola` replaces the old host plus `/api/v1`. Replace a vola client module with [`@vol-a/client`](/get-started/client/) in TypeScript, or rewrite its route table in another language. The `/udc/*` calls move under the prefix.
 3. **Uploads.** Drop `/id/` from the path. The field names (`file`, `folder_path`, `folder_id`, `parent_id`) are unchanged and `metadata` is new. The answer is the file info itself. Above a few MiB from a browser, switch to `vola.uploads.resumable()` or `VolaUploadButton`.
 4. **Downloads and `info`.** Drop `/id/`, and read the hash from `ETag` instead of `X-File-Hash`.
 5. **Thumbnails.** The path changes. Keep the `202` handling, or adopt `files.thumb()` or `VolaThumb`. Check that the project's cache layer does not key a `202` body by hash.
 6. **Visibility and move.** Two routes become one `PATCH` with `{is_public}`, `{is_global_public}` or `{folder_path}`.
 7. **Shares.** `POST /vola/shares` with a JSON body. The link is `url` from the answer, so set `VOLA_PUBLIC_URL` on the server. `/share/token/…` URLs in templates become `/vola/s/<token>`. For an encrypted file the `url` has a `#fragment` the recipient's client must send as `X-Share-Secret`, which `VolaClient.openShare` does.
-8. **UDC.** `POST /vola/udc/list`, `describe` and `read` take the same filter language. Rows gain `kind`, `encryption`, `processing_status` and `ocr`. A UI moves to `@jsudc/react` and `@vola/react`'s `VolaFileBrowser`.
+8. **UDC.** `POST /vola/udc/list`, `describe` and `read` take the same filter language. Rows gain `kind`, `encryption`, `processing_status` and `ocr`. A UI moves to `@jsudc/react` and `@vol-a/react`'s `VolaFileBrowser`.
 9. **Stats, instance types, lookups.** Only the paths change.
 10. **Errors.** Map `{error: {code}}` instead of `{detail}`. Codes to branch on include `423 vola_locked`, `409 vola_integrity` and `503 encryption_unavailable` if the project adopts encryption. They are all in the [API reference](/reference/api/).
 11. **Transfer.** `POST /vola/admin/transfer` takes the same body. Create the destination tenant first, and try `dry_run: true`.

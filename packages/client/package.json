@@ -1,7 +1,7 @@
 {
-  "name": "@vola/client",
-  "version": "1.0.0",
-  "description": "JSVola client SDK: a fetch-based, dependency-light client for the @vola/server API — files, folders, resumable uploads, shares, keyrings, stats — for Node 24+ and browsers.",
+  "name": "@vol-a/client",
+  "version": "1.0.1",
+  "description": "JSVola client SDK: a fetch-based, dependency-light client for the @vol-a/server API — files, folders, resumable uploads, shares, keyrings, stats — for Node 24+ and browsers.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@vola/source": "./src/index.ts",
+      "@vol-a/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@jsudc/core": "0.2.0",
-    "@vola/core": "workspace:*"
+    "@vol-a/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

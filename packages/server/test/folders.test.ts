@@ -8,7 +8,7 @@ import {
   FolderDeleteResultSchema,
   FolderInfoSchema,
   FolderListingSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

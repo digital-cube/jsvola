@@ -14,7 +14,7 @@
  * SHOTS_BASE     the examples site to shoot (default EXAMPLE_URL from src/site.mjs)
  * SHOTS_SCALE    device pixel ratio (default 2)
  * SHOTS_CHANNEL  a browser Playwright did not download, e.g. `chrome` (default: Playwright's own
- *                Chromium, `pnpm --filter @vola/website exec playwright install chromium` once)
+ *                Chromium, `pnpm --filter @vol-a/website exec playwright install chromium` once)
  */
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";

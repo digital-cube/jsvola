@@ -9,7 +9,7 @@ import {
   type OcrLanguage,
   parseApiKey,
   parseOcrLangs,
-} from "@vola/core";
+} from "@vol-a/core";
 import { z } from "zod";
 import { DEFAULT_PEPPER_FILE } from "./crypto/keyring.js";
 import { DEFAULT_KEY_FILE } from "./crypto/tenant.js";
@@ -222,7 +222,7 @@ export interface Config {
   maxUploadBytes: number;
   /** Hours a resumable upload may sit unfinished before it is swept. Default 24. */
   uploadTtlHours: number;
-  /** The controlled vocabulary (`@vola/lookups`). */
+  /** The controlled vocabulary (`@vol-a/lookups`). */
   lookups: LookupsConfig;
   /** The menu YAML served as the `menu` UDC collection (`VOLA_MENU_PATH`). */
   menuPath: string;

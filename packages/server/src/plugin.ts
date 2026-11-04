@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import fastifyWebsocket from "@fastify/websocket";
 import type { CollectionRegistry } from "@jsudc/server";
-import { errorResponse, REQUEST_ID_HEADER } from "@vola/core";
+import { errorResponse, REQUEST_ID_HEADER } from "@vol-a/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";

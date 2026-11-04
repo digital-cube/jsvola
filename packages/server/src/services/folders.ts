@@ -5,7 +5,7 @@ import {
   type FolderListing,
   folderSegmentError,
   parseFolderPath,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";

@@ -13,7 +13,7 @@
  * The derivatives go with the blob (`storage.remove` drops every `<blob>.*`, and an
  * encrypted blob is never shared) and with the key: the crypto-shred of the row covers them.
  */
-import type { ThumbnailCrop, ThumbnailSize } from "@vola/core";
+import type { ThumbnailCrop, ThumbnailSize } from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import {
   createDecryptStream,

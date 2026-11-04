@@ -13,7 +13,7 @@ import {
   UdcError,
 } from "@jsudc/core";
 import type { SourceListRequest } from "@jsudc/server";
-import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vola/core";
+import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vol-a/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant, runWithTenant } from "../context.js";

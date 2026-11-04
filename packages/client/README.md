@@ -1,15 +1,15 @@
-# @vola/client
+# @vol-a/client
 
-The JSVola SDK: a `fetch`-based client for the `@vola/server` API. Runs in **Node 24+ and in
-browsers**, depends on `@vola/core` (the protocol: Zod schemas and types) and `@jsudc/core`
+The JSVola SDK: a `fetch`-based client for the `@vol-a/server` API. Runs in **Node 24+ and in
+browsers**, depends on `@vol-a/core` (the protocol: Zod schemas and types) and `@jsudc/core`
 (the UDC client behind `vola.udc`) and on nothing else. `fetch` can be injected.
 
 ```bash
-pnpm add @vola/client
+pnpm add @vol-a/client
 ```
 
 ```ts
-import { VolaClient } from "@vola/client";
+import { VolaClient } from "@vol-a/client";
 
 const vola = new VolaClient({
   baseUrl: "https://files.example.com/vola", // the mount prefix included
@@ -17,11 +17,11 @@ const vola = new VolaClient({
   userId: "user-42",                          // `X-User-Id`: attribution, and the keyring owner
   // tenantSlug: "acme",                      // `X-Tenant-Slug`, for an ADMIN key
   // fetch: myFetch,                          // tests, retries, a proxy
-  // validate: true,                          // check every answer against its @vola/core schema
+  // validate: true,                          // check every answer against its @vol-a/core schema
 });
 ```
 
-Every answer is typed by the `@vola/core` schema of its route (`FileInfo`, `FolderListing`,
+Every answer is typed by the `@vol-a/core` schema of its route (`FileInfo`, `FolderListing`,
 `ShareCreated`, `KeyringStatus`, …). `validate: true` also parses it (a mismatch is a
 `VolaError` with code `invalid_response`); off by default.
 
@@ -30,7 +30,7 @@ Every answer is typed by the `@vola/core` schema of its route (`FileInfo`, `Fold
 A non-2xx answer throws a `VolaError` carrying the server's envelope:
 
 ```ts
-import { VolaError, VolaLockedError, VolaIntegrityError } from "@vola/client";
+import { VolaError, VolaLockedError, VolaIntegrityError } from "@vol-a/client";
 
 try {
   await vola.files.info("tickets", id, fileId);
@@ -217,7 +217,7 @@ group is built on — for a route this version of the SDK does not wrap yet.
 
 The API is new and not compatible with vola-spp (plan decision 1). Old route → SDK method:
 
-| vola-spp | `@vola/client` |
+| vola-spp | `@vol-a/client` |
 |---|---|
 | `POST /api/v1/files/{type}/id/{id}` (multipart, `folder_path` / `folder_id` / `parent_id`) | `vola.files.upload(type, id, source, { folderPath, folderId, parentId })` |
 | `PUT /api/v1/files/{type}/id/{id}/slug/{slug}` | `vola.files.putSlug(type, id, slug, source)` |

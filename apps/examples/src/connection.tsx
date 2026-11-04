@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import type { Settings } from "./settings.js";
 
-/** What `GET <baseUrl>/examples/config` answers (`@vola/server`'s `ExamplesConfigResponse`). */
+/** What `GET <baseUrl>/examples/config` answers (`@vol-a/server`'s `ExamplesConfigResponse`). */
 export interface ExamplesConfig {
   api_key: string;
   tenant: string;

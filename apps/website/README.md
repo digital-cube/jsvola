@@ -1,4 +1,4 @@
-# @vola/website
+# @vol-a/website
 
 The website of vola: **vol-a.com** (stage: <https://stage.vol-a.com>). Astro, with Starlight under
 the documentation only; the home page and the 404 are the site's own pages. MDX content under
@@ -11,11 +11,11 @@ From the repository root (Node 24, pnpm from `packageManager`):
 
 ```sh
 pnpm install
-pnpm --filter @vola/website gen         # the generated pages (below); dev, build and typecheck run it first
-pnpm --filter @vola/website dev         # http://localhost:4321
-pnpm --filter @vola/website build       # apps/website/dist; fails on a broken internal link
-pnpm --filter @vola/website preview     # serves dist/
-pnpm --filter @vola/website typecheck   # gen + astro check + check:snippets (also in the root `pnpm typecheck`)
+pnpm --filter @vol-a/website gen         # the generated pages (below); dev, build and typecheck run it first
+pnpm --filter @vol-a/website dev         # http://localhost:4321
+pnpm --filter @vol-a/website build       # apps/website/dist; fails on a broken internal link
+pnpm --filter @vol-a/website preview     # serves dist/
+pnpm --filter @vol-a/website typecheck   # gen + astro check + check:snippets (also in the root `pnpm typecheck`)
 ```
 
 `.astro` and `.mdx` files are not linted by Biome (the root `biome.json` skips them); the rest of
@@ -86,7 +86,7 @@ examples. A `*.out.txt` is what the step printed then, with the key taken out of
 ### `pnpm run capture`: the recorded requests and answers
 
 ```sh
-VOLA_DEMO_WRITE_KEY=vola_live_… pnpm --filter @vola/website capture
+VOLA_DEMO_WRITE_KEY=vola_live_… pnpm --filter @vol-a/website capture
 ```
 
 `scripts/capture.mjs` uploads the demo pack's `aurora.jpg` with a few bytes appended, so the
@@ -101,8 +101,8 @@ files.
 ### `pnpm run shots`: the examples site's screenshots
 
 ```sh
-pnpm --filter @vola/website exec playwright install chromium   # once
-pnpm --filter @vola/website shots                              # or: shots -- browse share
+pnpm --filter @vol-a/website exec playwright install chromium   # once
+pnpm --filter @vol-a/website shots                              # or: shots -- browse share
 ```
 
 `scripts/shots.mjs` (Playwright + sharp) opens each page of `src/examples.mjs` on `EXAMPLE_URL`
@@ -146,8 +146,8 @@ hand-written page, on code typed into a home section, on a `snippets/wire` reque
 recorded answer (or the other way round), on an API key in anything under `snippets/`, on a route of
 `src/routes.mjs` that `docs/API.md` does not name, on a `menu.yaml` example without its page, and
 runs `tsc -p snippets`: `server.ts`, `read.ts` and `App.tsx` compile against the workspace's
-`@vola/server`, `@vola/core`, `@vola/client` and `@vola/react`, from their sources (the
-`@vola/source` condition), so a renamed option breaks the check, not the reader.
+`@vol-a/server`, `@vol-a/core`, `@vol-a/client` and `@vol-a/react`, from their sources (the
+`@vol-a/source` condition), so a renamed option breaks the check, not the reader.
 
 ## Build variables
 

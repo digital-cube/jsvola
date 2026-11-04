@@ -1,8 +1,8 @@
 # vola examples
 
-Every capability of vola behind one sidebar: a Vite + React 19 app on **`@vola/react`** and
+Every capability of vola behind one sidebar: a Vite + React 19 app on **`@vol-a/react`** and
 **`@jsudc/react`**, one page per capability, over a **demo instance** with the server's
-**read-only visitor key** — served by `@vola/server` itself at `/` and `/en/`
+**read-only visitor key** — served by `@vol-a/server` itself at `/` and `/en/`
 (`VOLA_UI_DIR`). The design, the write proxy and the stage deploy are in
 [`docs/EXAMPLES-SITE.md`](../../docs/EXAMPLES-SITE.md); the demo pack in [`ASSETS.md`](ASSETS.md).
 
@@ -47,7 +47,7 @@ The page opens Browse already connected: with no key of its own it asks
 a key (Settings). `VOLA_SERVER=http://localhost:8310 pnpm dev` points the proxy elsewhere;
 `.env.example` lists `VITE_VOLA_BASE_URL` and `VITE_VOLA_API_KEY` for development.
 
-Or skip Vite: `pnpm --filter @vola/examples build` and start the server with
+Or skip Vite: `pnpm --filter @vol-a/examples build` and start the server with
 `VOLA_UI_DIR=apps/examples/dist` — the site at `http://localhost:8300/`. The Docker image does
 exactly that (`/app/ui`); `docker compose -f docker-compose.yaml --profile demo up -d` is the
 whole stack with the seeder.
@@ -117,7 +117,7 @@ with the demo key (`403`). Copy buttons.
 
 ```
 src/
-  main.tsx                 styles (@jsudc/react, @vola/react, app.css) and <App />
+  main.tsx                 styles (@jsudc/react, @vol-a/react, app.css) and <App />
   App.tsx                  settings → connection → VolaClient(demoFetch) → VolaProvider → routes
   connection.tsx           GET /examples/config, Connection, needsProxy, demoFetch, SettingsProvider
   settings.ts              localStorage settings, the visitor id (sessionStorage), formatBytes

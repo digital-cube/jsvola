@@ -17,7 +17,7 @@ import {
   UPLOAD_METADATA_HEADER,
   UPLOAD_OFFSET_HEADER,
   VOLA_FILE_ID_HEADER,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";

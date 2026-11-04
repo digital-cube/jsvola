@@ -3,7 +3,7 @@ import {
   SHARE_PASSWORD_QUERY,
   SHARE_SECRET_HEADER,
   type SharedFolderListing,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Database } from "../db/index.js";
 import type { FileRow, ShareLinkRow } from "../db/schema.js";

@@ -1,8 +1,8 @@
-import type { FileEventKind } from "@vola/core";
+import type { FileEventKind } from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import { Redis } from "ioredis";
 
-export type { FileEventKind } from "@vola/core";
+export type { FileEventKind } from "@vol-a/core";
 
 /**
  * One change of one file, as every writer announces it AFTER its transaction committed.

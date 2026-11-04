@@ -19,7 +19,7 @@
  * provider does not exist.
  */
 import { randomBytes } from "node:crypto";
-import { DEFAULT_UNLOCK_TTL_S } from "@vola/core";
+import { DEFAULT_UNLOCK_TTL_S } from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import type { Redis } from "ioredis";
 import {

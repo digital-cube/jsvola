@@ -14,7 +14,7 @@ import {
   type ThumbnailSize,
   thumbnailDerivedName,
   thumbnailSupported,
-} from "@vola/core";
+} from "@vol-a/core";
 import sharp, { type ResizeOptions } from "sharp";
 import { VolaError } from "../errors.js";
 import { BlobNotFoundError, type BlobStat, type StorageBackend } from "../storage/index.js";

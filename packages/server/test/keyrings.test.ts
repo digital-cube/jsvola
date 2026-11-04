@@ -20,7 +20,7 @@ import {
   KeyringStatusSchema,
   RecoveredSchema,
   UnlockedSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { Redis } from "ioredis";

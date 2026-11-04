@@ -1,7 +1,7 @@
 import type { Messages } from "@jsudc/react";
 
 /**
- * The site's strings, layered over `@vola/react`'s (`VOLA_MESSAGES`) and `@jsudc/react`'s:
+ * The site's strings, layered over `@vol-a/react`'s (`VOLA_MESSAGES`) and `@jsudc/react`'s:
  * `APP` (the shell), `MENU` (the labels of menu.yaml's `translation_key`s, `MENU_BROWSE` →
  * `MENU.BROWSE`), one section per page, and `COLLECTIONS` (the `udc:collections` leaves).
  */

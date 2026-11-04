@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { UPLOAD_OFFSET_HEADER, VOLA_FILE_ID_HEADER } from "@vola/core";
+import { UPLOAD_OFFSET_HEADER, VOLA_FILE_ID_HEADER } from "@vol-a/core";
 import { describe, expect, it } from "vitest";
 import { useVolaUpload, VolaUploadButton, type VolaUploads } from "../src/index.js";
 import { FakeServer, fileInfo, INSTANCE, json, keyringStatus, renderVola } from "./fake.js";

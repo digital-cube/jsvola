@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { encodeTusMetadata, FileInfoSchema } from "@vola/core";
+import { encodeTusMetadata, FileInfoSchema } from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

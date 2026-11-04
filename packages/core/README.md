@@ -1,16 +1,16 @@
-# @vola/core
+# @vol-a/core
 
 The JSVola protocol as code: the Zod schemas and inferred TypeScript types of every request body
-and answer of [`@vola/server`](https://github.com/digital-cube/jsvola/tree/main/packages/server),
+and answer of [`@vol-a/server`](https://github.com/digital-cube/jsvola/tree/main/packages/server),
 the header, query-parameter and error-code constants both sides agree on, the scopes, and the
 helpers the server, the CLI and the clients share. No Node-only API — it runs in browsers too.
 
 ```sh
-pnpm add @vola/core
+pnpm add @vol-a/core
 ```
 
 ```ts
-import { FileInfoSchema, type FileInfo, ShareCreateSchema, UNLOCK_HEADER, LOCKED_CODE, SCOPES } from "@vola/core";
+import { FileInfoSchema, type FileInfo, ShareCreateSchema, UNLOCK_HEADER, LOCKED_CODE, SCOPES } from "@vol-a/core";
 
 const info: FileInfo = FileInfoSchema.parse(await response.json());
 ShareCreateSchema.parse({ file_id: info.id, max_downloads: 3 });
@@ -30,6 +30,6 @@ ShareCreateSchema.parse({ file_id: info.id, max_downloads: 3 });
 
 The route reference that these schemas describe:
 [docs/API.md](https://github.com/digital-cube/jsvola/blob/main/docs/API.md). A ready-made client
-over them: [`@vola/client`](https://www.npmjs.com/package/@vola/client).
+over them: [`@vol-a/client`](https://www.npmjs.com/package/@vol-a/client).
 
 MIT.

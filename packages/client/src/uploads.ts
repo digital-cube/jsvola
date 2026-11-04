@@ -14,7 +14,7 @@ import {
   UPLOAD_METADATA_HEADER,
   UPLOAD_OFFSET_HEADER,
   VOLA_FILE_ID_HEADER,
-} from "@vola/core";
+} from "@vol-a/core";
 import { type ByteSource, isStreamSource, nameOf, sizeOf, sliceOf, typeOf } from "./body.js";
 import type { CallOptions, VolaClient } from "./client.js";
 import { isBrowser } from "./env.js";

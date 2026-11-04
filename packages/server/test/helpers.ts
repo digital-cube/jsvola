@@ -1,4 +1,4 @@
-import type { ApiKey, KeyEnv } from "@vola/core";
+import type { ApiKey, KeyEnv } from "@vol-a/core";
 import type { FastifyInstance } from "fastify";
 import { type BuildAppOptions, buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";

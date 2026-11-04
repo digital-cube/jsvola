@@ -13,7 +13,7 @@ byte by byte is [CRYPTO.md](CRYPTO.md); the plan and the decisions behind it are
 jsvola/
 ├── pnpm-workspace.yaml        # packages/* and apps/*
 ├── turbo.json                 # build / typecheck / test / test:cov / test:e2e pipelines
-├── tsconfig.base.json         # strict TS, NodeNext, the custom condition "@vola/source"
+├── tsconfig.base.json         # strict TS, NodeNext, the custom condition "@vol-a/source"
 ├── biome.json                 # lint + format
 ├── compose.yaml               # development infrastructure: PostgreSQL 16 + Redis 7 (+ vola_test)
 ├── docker-compose.yaml        # the production-like stack: vola + vola-worker + postgres + redis (+ seeder)
@@ -22,29 +22,29 @@ jsvola/
 ├── lookups.yaml  i18n/        # the controlled vocabulary and its labels
 ├── menu.yaml                  # the examples site's sidebar, served as the `menu` UDC collection
 ├── packages/
-│   ├── core/     @vola/core     Zod schemas, types, header/query/error constants, key helpers (dep: zod)
-│   ├── lookups/  @vola/lookups  YAML vocabulary, CSV translations, candidates, promotion (dep: yaml)
-│   ├── server/   @vola/server   Fastify plugin + server.ts + worker.ts, Drizzle schema + drizzle/ migrations,
+│   ├── core/     @vol-a/core     Zod schemas, types, header/query/error constants, key helpers (dep: zod)
+│   ├── lookups/  @vol-a/lookups  YAML vocabulary, CSV translations, candidates, promotion (dep: yaml)
+│   ├── server/   @vol-a/server   Fastify plugin + server.ts + worker.ts, Drizzle schema + drizzle/ migrations,
 │   │                            CAS storage, services, crypto, jobs, events, UDC collections, udc/files/view.yaml
-│   ├── cli/      @vola/cli      the `vola` command (Commander) over @vola/server's services
-│   ├── client/   @vola/client   the fetch SDK (deps: @vola/core, @jsudc/core)
-│   ├── react/    @vola/react    React 19 components over @vola/client and @jsudc/react
-│   └── e2e/      @vola/e2e      end-to-end tests against the built server (private)
+│   ├── cli/      @vol-a/cli      the `vola` command (Commander) over @vol-a/server's services
+│   ├── client/   @vol-a/client   the fetch SDK (deps: @vol-a/core, @jsudc/core)
+│   ├── react/    @vol-a/react    React 19 components over @vol-a/client and @jsudc/react
+│   └── e2e/      @vol-a/e2e      end-to-end tests against the built server (private)
 └── apps/
-    └── examples/ @vola/examples the examples site, Vite + React (private)
+    └── examples/ @vol-a/examples the examples site, Vite + React (private)
 ```
 
 Dependency direction: `cli → server → core, lookups`; `client → core`; `react → client, core`;
 `examples → react, client, core`. `core` has no Node-only API (it hashes with Web Crypto), so
 the same package serves the browser, React and Node.
 
-Every package exports `dist/` to consumers plus a `@vola/source` export condition that points
-at `src/`: `tsx --conditions=@vola/source` (the dev server, the CLI in development) and
+Every package exports `dist/` to consumers plus a `@vol-a/source` export condition that points
+at `src/`: `tsx --conditions=@vol-a/source` (the dev server, the CLI in development) and
 `tsc --noEmit` resolve workspace packages from source, so no build step is needed while
 developing. Vitest resolves the same way. The condition is harmless in the published packages
 (only `dist/` ships; nobody passes the condition).
 
-## 2. `@vola/core` — the protocol
+## 2. `@vol-a/core` — the protocol
 
 One Zod schema per body and answer, named `<Thing>Schema` with its inferred type `<Thing>`
 (`FileInfoSchema` / `FileInfo`, `ShareCreateSchema`, `KeyringStatusSchema`, …), grouped by area
@@ -56,7 +56,7 @@ query parameters, error codes (`LOCKED_CODE`, `INTEGRITY_ERROR_CODE`, …), the 
 limits (`FILE_LIST_MAX_LIMIT`, `TRANSFER_MAX_INSTANCES`, `PIN_LENGTH`) — and the helpers the
 server and the CLI share: `parseApiKey` / `displayApiKey`, `missingScopes`, `parseOcrLangs`,
 `isOcrEligible`, `callerGrantAad`. The server validates request bodies with these schemas
-(`safeParse` in the handler); `@vola/client` types its answers with them and can validate them
+(`safeParse` in the handler); `@vol-a/client` types its answers with them and can validate them
 (`validate: true`).
 
 ## 3. Database schema (PostgreSQL + Drizzle)
@@ -83,7 +83,7 @@ Ids are UUIDv7 (`db/uuid.ts`), so `created_at desc, id desc` is a stable cursor.
 soft everywhere a user can reach (`deleted_at`, `deleted_by`); purge is the only hard delete of
 a file, and it is the moment a blob may leave the disk.
 
-## 4. `@vola/server`
+## 4. `@vol-a/server`
 
 ```
 src/
@@ -108,7 +108,7 @@ src/
 ├── udc/               the UDC collections (files, menu), the files view, SQL filter compiler, the subscribe hub + route
 ├── audit/             AuditLog → memento (AuditSink), the event payloads
 ├── examples/          the examples site's demo routes (VOLA_EXAMPLES)
-├── lookups.ts         the vocabulary (@vola/lookups) and GET /lookups
+├── lookups.ts         the vocabulary (@vol-a/lookups) and GET /lookups
 ├── ui.ts              VOLA_UI_DIR: the built SPA at / and /en/ with an index.html fallback
 └── db/                Drizzle schema, connect(), uuid
 ```
@@ -122,7 +122,7 @@ src/
    — tenant id and slug, scopes, the principal from `X-User-Id`, the unlock token, the content
    key, whether the request came from a browser (`Origin`) — kept in an `AsyncLocalStorage`
    so services call `requireTenant()` instead of threading it through.
-2. **The handler** parses params and body with the `@vola/core` schema (`422 validation_error`
+2. **The handler** parses params and body with the `@vol-a/core` schema (`422 validation_error`
    with the Zod issues) and calls a service.
 3. **Services** are plain async functions over `FilesDeps` / `UploadsDeps` / … (`db`, `storage`,
    `events`, `crypto`, `dispatcher`, `audit`, `now`), so tests exercise them with a real
@@ -245,7 +245,7 @@ of the tenant the hub re-reads the row through the same `files` collection sourc
 subscription's own context, so masking and decryption are those of the subscriber, not of the
 uploader — decides whether it matches the filter, and pushes `udc.row.upsert` or
 `udc.row.remove`. Heartbeat, slow-consumer close (`4008`), the limits and the message schemas
-are in [REALTIME.md](REALTIME.md). `@vola/react`'s file browser is built on this
+are in [REALTIME.md](REALTIME.md). `@vol-a/react`'s file browser is built on this
 (`useFilesLive`: a cached row is patched in place, anything else refetches).
 
 ## 8. UDC collections
@@ -294,22 +294,22 @@ shared. Afterwards both tenants' statistics are recomputed and `purged` / `creat
 out on both channels so live lists of both tenants update. Idempotent; `dry_run` runs the same
 statements and rolls back. Reached through `POST /admin/transfer` and `vola transfer`.
 
-## 11. `@vola/cli`
+## 11. `@vol-a/cli`
 
-`packages/cli/src/program.ts` builds one Commander tree over `@vola/server`'s services and
+`packages/cli/src/program.ts` builds one Commander tree over `@vol-a/server`'s services and
 database (`connect`, `runMigrations`, `createTenant`, `createApiKey`, `transferInstances`,
-`KeyFile`, …) — no HTTP except `demo-seed`, which drives the API with `@vola/client`. The
+`KeyFile`, …) — no HTTP except `demo-seed`, which drives the API with `@vol-a/client`. The
 database is opened lazily, so `--help` and usage errors never connect; `--json` switches every
 command to machine-readable output; key and transfer commands write audit events when memento is
 configured. Every command: [CLI.md](CLI.md).
 
-## 12. `@vola/client` and `@vola/react`
+## 12. `@vol-a/client` and `@vol-a/react`
 
-`@vola/client` is a thin, typed layer over `fetch`: one method per route grouped like the API
+`@vol-a/client` is a thin, typed layer over `fetch`: one method per route grouped like the API
 (`files`, `folders`, `uploads`, `shares`, `keyrings`, `stats`, `keys`, `admin`, `udc`), errors
 as `VolaError` / `VolaLockedError` / `VolaIntegrityError`, the resumable protocol with a
 fingerprint store, the unlock token held in memory and never in a URL, the share-grant fragment
-turned into the header, and `contentKey` refused in a browser. `@vola/react` puts components
+turned into the header, and `contentKey` refused in a browser. `@vol-a/react` puts components
 over it on `@jsudc/react`'s `UdcDataView` and `/udc/subscribe` ([REACT.md](REACT.md)).
 
 ## 13. Testing

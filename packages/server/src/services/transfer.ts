@@ -54,7 +54,7 @@
  *   before anything is written). `keyring` and `caller` files are still refused with
  *   `409 encrypted_transfer_unsupported` until phases 6.2 / 6.3 define their move.
  */
-import type { TransferInstance, TransferRequest, TransferResult } from "@vola/core";
+import type { TransferInstance, TransferRequest, TransferResult } from "@vol-a/core";
 import {
   and,
   eq,

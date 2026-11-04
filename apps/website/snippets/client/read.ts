@@ -1,4 +1,4 @@
-import { VolaClient } from "@vola/client";
+import { VolaClient } from "@vol-a/client";
 
 // The examples instance's read-only key, the one its site hands to every visitor.
 const baseUrl = "https://examples.stage.vol-a.com/vola";

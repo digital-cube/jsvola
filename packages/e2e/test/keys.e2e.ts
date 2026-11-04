@@ -1,4 +1,4 @@
-import { ApiKeyCreatedSchema, ApiKeyListSchema, ErrorResponseSchema } from "@vola/core";
+import { ApiKeyCreatedSchema, ApiKeyListSchema, ErrorResponseSchema } from "@vol-a/core";
 import {
   connect,
   createApiKey,
@@ -6,7 +6,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 const server = inject("server");

@@ -1,5 +1,5 @@
 import { CollectionRegistry } from "@jsudc/server";
-import { MAX_SUBSCRIPTIONS_PER_CONNECTION } from "@vola/core";
+import { MAX_SUBSCRIPTIONS_PER_CONNECTION } from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BoundTenantContext } from "../src/context.js";

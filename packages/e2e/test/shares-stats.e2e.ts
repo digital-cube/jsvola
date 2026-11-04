@@ -5,7 +5,7 @@ import {
   SharedFolderListingSchema,
   StorageStatsSchema,
   TenantStatsSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import {
   connect,
   createApiKey,
@@ -13,7 +13,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 

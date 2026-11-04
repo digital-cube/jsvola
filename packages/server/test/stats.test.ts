@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileInfoSchema, StorageStatsSchema, TenantStatsSchema } from "@vola/core";
+import { FileInfoSchema, StorageStatsSchema, TenantStatsSchema } from "@vol-a/core";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

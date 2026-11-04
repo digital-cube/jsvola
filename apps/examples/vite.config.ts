@@ -9,8 +9,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     // Use the workspace packages' TypeScript sources: no build step before `pnpm dev`.
-    resolve: { conditions: ["@vola/source", ...defaultClientConditions] },
-    // Production bundle (served by @vola/server from VOLA_UI_DIR): no source maps.
+    resolve: { conditions: ["@vol-a/source", ...defaultClientConditions] },
+    // Production bundle (served by @vol-a/server from VOLA_UI_DIR): no source maps.
     build: { outDir: "dist", sourcemap: false },
     server: { port: 5174, proxy },
     preview: { proxy },

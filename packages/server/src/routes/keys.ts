@@ -1,4 +1,9 @@
-import { type ApiKeyCreated, ApiKeyCreateSchema, type ApiKeyList, missingScopes } from "@vola/core";
+import {
+  type ApiKeyCreated,
+  ApiKeyCreateSchema,
+  type ApiKeyList,
+  missingScopes,
+} from "@vol-a/core";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";

@@ -7,9 +7,9 @@ export default defineConfig({
   // Test workspace packages from source, without a build step.
   resolve: {
     alias: [
-      { find: /^@vola\/core$/, replacement: src("../../packages/core/src/index.ts") },
-      { find: /^@vola\/client$/, replacement: src("../../packages/client/src/index.ts") },
-      { find: /^@vola\/react$/, replacement: src("../../packages/react/src/index.ts") },
+      { find: /^@vol-a\/core$/, replacement: src("../../packages/core/src/index.ts") },
+      { find: /^@vol-a\/client$/, replacement: src("../../packages/client/src/index.ts") },
+      { find: /^@vol-a\/react$/, replacement: src("../../packages/react/src/index.ts") },
     ],
   },
   test: {

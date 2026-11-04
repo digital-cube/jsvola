@@ -6,7 +6,7 @@ import {
   VolaError,
   VolaIntegrityError,
   VolaLockedError,
-} from "@vola/client";
+} from "@vol-a/client";
 import {
   connect,
   createApiKey,
@@ -14,20 +14,20 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
 const server = inject("server");
 
 /**
- * `@vola/client` (the BUILT package) against the built server: every group of the SDK over
+ * `@vol-a/client` (the BUILT package) against the built server: every group of the SDK over
  * real HTTP — upload and download, `Range`, the resumable upload with an abort in the middle
  * of a PATCH and the resume, the keyring flow, a share grant followed through its fragment
  * URL, and the `caller` mode from Node. Needs that server's database (skipped for an
  * external `VOLA_E2E_URL`).
  */
-describe.skipIf(Boolean(process.env.VOLA_E2E_URL))("@vola/client (built server)", () => {
+describe.skipIf(Boolean(process.env.VOLA_E2E_URL))("@vol-a/client (built server)", () => {
   let handle: DatabaseHandle;
   let tenantId: string;
   let vola: VolaClient;

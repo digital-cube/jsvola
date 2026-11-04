@@ -1,6 +1,6 @@
 import { useI18n } from "@jsudc/react";
-import type { FileInfo } from "@vola/core";
-import { useVola } from "@vola/react";
+import type { FileInfo } from "@vol-a/core";
+import { useVola } from "@vol-a/react";
 import { useEffect, useState } from "react";
 import { useSettings } from "../../connection.js";
 import { Connected } from "../../shell/AppShell.js";

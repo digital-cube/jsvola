@@ -17,6 +17,6 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "customConditions": ["@vola/source"]
+    "customConditions": ["@vol-a/source"]
   }
 }

@@ -38,6 +38,6 @@ Below the player, a probe makes the same request from the page and shows what ca
 
 The authenticated download route, `GET /vola/files/:type/:id/:fileId`, follows the same `Range` rules. On an encrypted file they work in plaintext coordinates. The [API reference](/reference/api/) has the details.
 
-## `@vola/react` pieces
+## `@vol-a/react` pieces
 
 Almost none, and that is the point: the players are ordinary HTML elements with a URL. The page uses `useVola` to get the client, whose `files.publicUrl()` builds that URL, and `useFilesLive` to keep the file list current.

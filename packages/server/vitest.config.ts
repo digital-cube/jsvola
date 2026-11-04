@@ -5,8 +5,8 @@ export default defineConfig({
   // Test workspace packages from source, without a build step.
   resolve: {
     alias: {
-      "@vola/core": fileURLToPath(new URL("../core/src/index.ts", import.meta.url)),
-      "@vola/lookups": fileURLToPath(new URL("../lookups/src/index.ts", import.meta.url)),
+      "@vol-a/core": fileURLToPath(new URL("../core/src/index.ts", import.meta.url)),
+      "@vol-a/lookups": fileURLToPath(new URL("../lookups/src/index.ts", import.meta.url)),
     },
   },
   test: {

@@ -13,7 +13,7 @@ import {
   StaticKeys,
   schema,
   TenantWrapProvider,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProgram, keyStatusLines, runCli } from "../src/index.js";

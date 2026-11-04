@@ -16,11 +16,11 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 # …and the examples site (apps/examples, a Vite build) the server serves at / and /en/
 # (VOLA_UI_DIR=/app/ui), with its demo pack for `vola demo-seed` (/app/demo-assets).
-RUN pnpm turbo run build --filter=@vola/server... --filter=@vola/cli... --filter=@vola/examples
-# Standalone copies of @vola/server and @vola/cli with their production dependencies; the
-# workspace packages they use (@vola/core, …) are copied in, not symlinked.
-RUN pnpm --config.inject-workspace-packages=true --filter @vola/server deploy --prod /out/app \
- && pnpm --config.inject-workspace-packages=true --filter @vola/cli deploy --prod /out/cli \
+RUN pnpm turbo run build --filter=@vol-a/server... --filter=@vol-a/cli... --filter=@vol-a/examples
+# Standalone copies of @vol-a/server and @vol-a/cli with their production dependencies; the
+# workspace packages they use (@vol-a/core, …) are copied in, not symlinked.
+RUN pnpm --config.inject-workspace-packages=true --filter @vol-a/server deploy --prod /out/app \
+ && pnpm --config.inject-workspace-packages=true --filter @vol-a/cli deploy --prod /out/cli \
  && cp -r apps/examples/dist /out/app/ui \
  && cp -r apps/examples/assets /out/app/demo-assets \
  && printf '#!/bin/sh\nexec node /opt/vola-cli/dist/main.js "$@"\n' > /out/vola \

@@ -3,7 +3,7 @@
 # the way jsmemento's deploy/website/stage.sh deploys stage.memento-service.org:
 #   clone or fetch digital-cube/jsvola into $ROOT/src -> check out origin/<branch>
 #   (default main) -> pnpm (the repo's packageManager, through corepack) install of
-#   @vola/website and its dependencies only -> build with
+#   @vol-a/website and its dependencies only -> build with
 #   SITE_URL=https://stage.vol-a.com and EXAMPLE_URL=https://examples.stage.vol-a.com
 #   -> apps/website/dist to releases/<short sha> -> atomically repoint `current`
 #   -> keep the last three releases -> 200 through nginx and through the edge.
@@ -148,11 +148,11 @@ main() {
     echo "==> build: releases/$sha already has $sha for these variables, not rebuilding"
   else
     # pnpm is the version the repository pins in package.json's packageManager.
-    echo "==> pnpm install (@vola/website and its dependencies)"
-    (cd "$SRC" && timeout 600 corepack pnpm install --frozen-lockfile --filter "@vola/website...")
+    echo "==> pnpm install (@vol-a/website and its dependencies)"
+    (cd "$SRC" && timeout 600 corepack pnpm install --frozen-lockfile --filter "@vol-a/website...")
     echo "==> build (SITE_URL=$SITE_URL EXAMPLE_URL=$EXAMPLE_URL)"
     (cd "$SRC" && SITE_URL="$SITE_URL" EXAMPLE_URL="$EXAMPLE_URL" \
-      timeout 600 corepack pnpm --filter @vola/website build)
+      timeout 600 corepack pnpm --filter @vol-a/website build)
     [[ -f "$SRC/$APP/dist/index.html" ]] || { echo "stage.sh: the build left no $APP/dist/index.html" >&2; exit 1; }
 
     local next="$release.new"

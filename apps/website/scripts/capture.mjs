@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- *   VOLA_DEMO_WRITE_KEY=vola_live_… pnpm --filter @vola/website capture
+ *   VOLA_DEMO_WRITE_KEY=vola_live_… pnpm --filter @vol-a/website capture
  *
  * The home page's "One file, every way to read it" and "The API": one upload to the examples
  * instance and the answers to it, recorded. It uploads the demo pack's aurora.jpg with a few

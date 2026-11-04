@@ -1,4 +1,4 @@
-import { BEARER_SUBPROTOCOL_PREFIX, SUBSCRIBE_PATH, VOLA_SUBPROTOCOL } from "@vola/core";
+import { BEARER_SUBPROTOCOL_PREFIX, SUBSCRIBE_PATH, VOLA_SUBPROTOCOL } from "@vol-a/core";
 import type { FastifyPluginAsync } from "fastify";
 import type { BoundTenantContext } from "../context.js";
 import { VolaError } from "../errors.js";

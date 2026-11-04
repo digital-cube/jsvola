@@ -26,7 +26,7 @@ import {
   TOO_MANY_ATTEMPTS_CODE,
   type Unlocked,
   USER_REQUIRED_CODE,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";

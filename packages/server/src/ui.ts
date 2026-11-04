@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
-import { errorResponse } from "@vola/core";
+import { errorResponse } from "@vol-a/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 export interface UiOptions {

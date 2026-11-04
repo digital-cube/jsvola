@@ -16,8 +16,8 @@
  *      that the document does not name fails here;
  *   5. every page of menu.yaml has its page under examples/, and the other way round;
  *   6. `tsc -p snippets`: the embedded server, the client program and the React app compile against
- *      the workspace's @vola/server, @vola/core, @vola/client and @vola/react (their sources,
- *      through the `@vola/source` condition), so a renamed option fails here.
+ *      the workspace's @vol-a/server, @vol-a/core, @vol-a/client and @vol-a/react (their sources,
+ *      through the `@vol-a/source` condition), so a renamed option fails here.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";

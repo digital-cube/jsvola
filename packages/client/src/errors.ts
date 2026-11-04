@@ -1,4 +1,4 @@
-import { ErrorResponseSchema, INTEGRITY_ERROR_CODE, REQUEST_ID_HEADER } from "@vola/core";
+import { ErrorResponseSchema, INTEGRITY_ERROR_CODE, REQUEST_ID_HEADER } from "@vol-a/core";
 
 export interface VolaErrorInit {
   /** The HTTP status; `0` for an error raised by the SDK itself (before any request went out). */

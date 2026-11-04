@@ -1,4 +1,4 @@
-import { type VolaClient, type VolaError, VolaLockedError } from "@vola/client";
+import { type VolaClient, type VolaError, VolaLockedError } from "@vol-a/client";
 import type {
   KeyringCreated,
   KeyringDeletePreview,
@@ -6,7 +6,7 @@ import type {
   KeyringStatus,
   Recovered,
   Unlocked,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { BlobCache } from "./blobs.js";
 import type { LockPhase } from "./lockPolicy.js";
 

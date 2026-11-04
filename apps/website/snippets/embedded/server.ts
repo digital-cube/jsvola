@@ -1,8 +1,8 @@
-import { connect, loadConfig, runMigrations, volaPlugin } from "@vola/server";
+import { connect, loadConfig, runMigrations, volaPlugin } from "@vol-a/server";
 import Fastify from "fastify";
 
 // vola inside the Fastify application you already have, under /vola. Every VOLA_* variable is read
-// by loadConfig(); the worker is a separate process, `node node_modules/@vola/server/dist/worker.js`.
+// by loadConfig(); the worker is a separate process, `node node_modules/@vol-a/server/dist/worker.js`.
 const app = Fastify({ logger: true });
 const config = loadConfig();
 const { db } = connect(config.databaseUrl);

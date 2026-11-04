@@ -1,4 +1,4 @@
-import { decodeTusMetadata } from "@vola/core";
+import { decodeTusMetadata } from "@vol-a/core";
 import { describe, expect, it } from "vitest";
 import { MemoryFingerprintStore, storageFingerprintStore, VolaError } from "../src/index.js";
 import { errorResponse, type Handler, makeClient, type RecordedCall } from "./fake.js";

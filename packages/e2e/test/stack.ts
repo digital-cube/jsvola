@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateApiKey, generateKeyLine, loadConfig } from "@vola/server";
+import { generateApiKey, generateKeyLine, loadConfig } from "@vol-a/server";
 import { Redis } from "ioredis";
 import type { TestProject } from "vitest/node";
 import { spawnProcess, startServer, stop, UI_DIR, WORKER_ENTRY } from "./spawn.js";

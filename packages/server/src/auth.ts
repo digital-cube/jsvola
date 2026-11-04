@@ -9,7 +9,7 @@ import {
   UNLOCK_HEADER,
   USER_ID_HEADER,
   UserIdSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { hasTenant, runWithTenant, type TenantContext, tenantRequired } from "./context.js";
 import { parseContentKey } from "./crypto/caller.js";

@@ -1,7 +1,7 @@
 import {
   DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES as DEFAULT_ENC_DERIVE_MAX,
   type ProcessingStatus,
-} from "@vola/core";
+} from "@vol-a/core";
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
@@ -125,7 +125,7 @@ export interface ProcessingWorkerOptions {
 const SKIP_NO_KEY = "encrypted under a key the worker does not hold";
 const SKIP_TOO_LARGE = "encrypted file above VOLA_ENC_INLINE_DERIVE_MAX_BYTES";
 
-/** The second process of `@vola/server`: consumes `vola-processing` and records every outcome. */
+/** The second process of `@vol-a/server`: consumes `vola-processing` and records every outcome. */
 export class ProcessingWorker {
   readonly worker: Worker<ProcessingJobData>;
   private readonly connection: Redis;

@@ -1,7 +1,7 @@
 {
-  "name": "@vola/cli",
-  "version": "1.0.0",
-  "description": "JSVola CLI: tenants, API keys, migrations and the lookups vocabulary for @vola/server.",
+  "name": "@vol-a/cli",
+  "version": "1.0.1",
+  "description": "JSVola CLI: tenants, API keys, migrations and the lookups vocabulary for @vol-a/server.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -19,7 +19,7 @@
   },
   "exports": {
     ".": {
-      "@vola/source": "./src/index.ts",
+      "@vol-a/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -30,15 +30,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "tsx --conditions=@vola/source src/main.ts",
+    "start": "tsx --conditions=@vol-a/source src/main.ts",
     "test": "vitest run",
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
-    "@vola/client": "workspace:*",
-    "@vola/core": "workspace:*",
-    "@vola/lookups": "workspace:*",
-    "@vola/server": "workspace:*",
+    "@vol-a/client": "workspace:*",
+    "@vol-a/core": "workspace:*",
+    "@vol-a/lookups": "workspace:*",
+    "@vol-a/server": "workspace:*",
     "commander": "^15.0.0",
     "drizzle-orm": "^0.45.4"
   },

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Scope } from "@vola/core";
+import type { Scope } from "@vol-a/core";
 import { VolaError } from "./errors.js";
 
 /**

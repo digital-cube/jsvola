@@ -288,7 +288,7 @@ export const uploads = pgTable(
  * refreshes the row instead of adding one. `status` walks PENDING → RUNNING → DONE | FAILED
  * (after `attempts` tries); `SKIPPED` is reserved for a job that was deliberately not run.
  * `error` is a short reason without the file name. The aggregate of a file's rows is its
- * `processing_status` (`aggregateProcessingStatus` in `@vola/core`). Rows go with the file.
+ * `processing_status` (`aggregateProcessingStatus` in `@vol-a/core`). Rows go with the file.
  */
 export const processingJobs = pgTable(
   "vola_processing_job",

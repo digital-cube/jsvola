@@ -16,7 +16,7 @@ import {
   TENANT_SLUG_HEADER,
   UNLOCK_HEADER,
   USER_ID_HEADER,
-} from "@vola/core";
+} from "@vol-a/core";
 import { bytesToBase64, isBrowser } from "./env.js";
 import { errorFromResponse, VolaError } from "./errors.js";
 import { FilesApi } from "./files.js";
@@ -40,7 +40,7 @@ export interface VolaClientOptions {
   userId?: string | undefined;
   /** `X-Tenant-Slug`: the tenant an ADMIN key acts on (a tenant key already has one). */
   tenantSlug?: string | undefined;
-  /** Validate every JSON answer against its `@vola/core` schema (`invalid_response` on a mismatch). Default `false`: the types are trusted. */
+  /** Validate every JSON answer against its `@vol-a/core` schema (`invalid_response` on a mismatch). Default `false`: the types are trusted. */
   validate?: boolean | undefined;
   /** An unlock token to start with (`withUnlock` sets it). Held in memory only. */
   unlock?: string | undefined;
@@ -87,8 +87,8 @@ export interface LockOnUnloadOptions {
 }
 
 /**
- * What `json()` needs of a schema: the `safeParse` of a `@vola/core` Zod schema. Declared
- * structurally so the SDK depends on `@vola/core` alone (Zod comes with it).
+ * What `json()` needs of a schema: the `safeParse` of a `@vol-a/core` Zod schema. Declared
+ * structurally so the SDK depends on `@vol-a/core` alone (Zod comes with it).
  */
 export interface ResponseSchema<T> {
   safeParse(
@@ -270,7 +270,7 @@ export class VolaClient {
     return response;
   }
 
-  /** `request()` for a JSON answer, typed by (and, with `validate`, checked against) its `@vola/core` schema. */
+  /** `request()` for a JSON answer, typed by (and, with `validate`, checked against) its `@vol-a/core` schema. */
   async json<T>(path: string, schema: ResponseSchema<T>, options: RequestOptions = {}): Promise<T> {
     const response = await this.request(path, {
       ...options,

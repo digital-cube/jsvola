@@ -1,7 +1,7 @@
 import "@jsudc/react/styles.css";
-import "@vola/react/styles.css";
-import { VolaClient } from "@vola/client";
-import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vola/react";
+import "@vol-a/react/styles.css";
+import { VolaClient } from "@vol-a/client";
+import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vol-a/react";
 
 // The files of one ticket: folders, thumbnails, uploads, share links, kept live over a WebSocket.
 // `/vola` is your own origin, proxied to vola; the key needs `files:read`, the actions their scopes.

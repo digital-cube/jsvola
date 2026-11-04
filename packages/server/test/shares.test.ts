@@ -11,7 +11,7 @@ import {
   SharedFolderListingSchema,
   ShareInfoSchema,
   ShareListSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance, InjectOptions } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
