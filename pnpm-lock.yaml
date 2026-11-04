@@ -44,13 +44,13 @@ importers:
       '@tanstack/react-table':
         specifier: ^8.21.3
         version: 8.21.3(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@vola/client':
+      '@vol-a/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@vola/react':
+      '@vol-a/react':
         specifier: workspace:*
         version: link:../../packages/react
       lucide-react:
@@ -136,16 +136,16 @@ importers:
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
-      '@vola/client':
+      '@vol-a/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@vola/react':
+      '@vol-a/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@vola/server':
+      '@vol-a/server':
         specifier: workspace:*
         version: link:../../packages/server
       fastify:
@@ -169,16 +169,16 @@ importers:
 
   packages/cli:
     dependencies:
-      '@vola/client':
+      '@vol-a/client':
         specifier: workspace:*
         version: link:../client
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../core
-      '@vola/lookups':
+      '@vol-a/lookups':
         specifier: workspace:*
         version: link:../lookups
-      '@vola/server':
+      '@vol-a/server':
         specifier: workspace:*
         version: link:../server
       commander:
@@ -197,7 +197,7 @@ importers:
       '@jsudc/core':
         specifier: 0.2.0
         version: 0.2.0
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../core
 
@@ -209,20 +209,20 @@ importers:
 
   packages/e2e:
     dependencies:
-      '@vola/client':
+      '@vol-a/client':
         specifier: workspace:*
         version: link:../client
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../core
-      '@vola/server':
+      '@vol-a/server':
         specifier: workspace:*
         version: link:../server
     devDependencies:
-      '@vola/cli':
+      '@vol-a/cli':
         specifier: workspace:*
         version: link:../cli
-      '@vola/examples':
+      '@vol-a/examples':
         specifier: workspace:*
         version: link:../../apps/examples
       drizzle-orm:
@@ -246,10 +246,10 @@ importers:
 
   packages/react:
     dependencies:
-      '@vola/client':
+      '@vol-a/client':
         specifier: workspace:*
         version: link:../client
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -316,10 +316,10 @@ importers:
       '@jsudc/server':
         specifier: 0.2.1
         version: 0.2.1(@jsudc/core@0.2.0)(drizzle-orm@0.45.4(@types/pg@8.23.1)(pg@8.23.1))(fastify@5.12.7)(pg@8.23.1)(zod@4.6.7)
-      '@vola/core':
+      '@vol-a/core':
         specifier: workspace:*
         version: link:../core
-      '@vola/lookups':
+      '@vol-a/lookups':
         specifier: workspace:*
         version: link:../lookups
       argon2:

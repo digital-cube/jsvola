@@ -5,7 +5,7 @@ import {
   parseApiKey,
   parseScopes,
   type Scope,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { generateApiKey, hashApiKey, sameHash } from "../apikey.js";
 import type { Database } from "../db/index.js";

@@ -2,11 +2,11 @@
  * A `fetch` that plays a vola server with the examples on: `/examples/config`, the write
  * proxy, the UDC actions (`collections`, `describe`, `list` of `files` and `menu`), the file
  * routes the pages read, thumbnails, the public route with `Range`, shares and keyrings.
- * Built on `@vola/react`'s test fake (the same `files` describe and rows the components were
+ * Built on `@vol-a/react`'s test fake (the same `files` describe and rows the components were
  * tested with).
  */
 import type { Row } from "@jsudc/core";
-import type { FileInfo } from "@vola/core";
+import type { FileInfo } from "@vol-a/core";
 import {
   error,
   type FakeRequest,

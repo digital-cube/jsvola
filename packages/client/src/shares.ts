@@ -14,7 +14,7 @@ import {
   ShareInfoSchema,
   type ShareList,
   ShareListSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { CallOptions, VolaClient } from "./client.js";
 import { ok2xx } from "./client.js";
 import { bytesToBase64, bytesToBase64Url, encodePath, randomBytes } from "./env.js";

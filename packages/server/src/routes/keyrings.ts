@@ -13,7 +13,7 @@ import {
   type Unlocked,
   UnlockSchema,
   UserIdSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import { requireTenant } from "../context.js";

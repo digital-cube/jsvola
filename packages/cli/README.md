@@ -1,4 +1,4 @@
-# @vola/cli
+# @vol-a/cli
 
 The `vola` command line for a JSVola deployment: migrations, tenants, API keys, the encryption
 key file and the keyring pepper file, moving instances between tenants, the lookups vocabulary,
@@ -7,7 +7,7 @@ and the examples site's demo keys and seeder. It talks to PostgreSQL directly
 `/usr/local/bin/vola`.
 
 ```sh
-pnpm add -g @vola/cli          # or: npx @vola/cli --help
+pnpm add -g @vol-a/cli          # or: npx @vol-a/cli --help
 vola --help
 vola migrate
 vola create-tenant --slug acme --name "Acme Inc"

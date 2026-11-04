@@ -1,7 +1,7 @@
 import { UdcDataView } from "@jsudc/react";
 import { UdcReactRouterUrlState } from "@jsudc/react/react-router";
-import { VolaClient } from "@vola/client";
-import { VolaProvider } from "@vola/react";
+import { VolaClient } from "@vol-a/client";
+import { VolaProvider } from "@vol-a/react";
 import { useCallback, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router";
 import {

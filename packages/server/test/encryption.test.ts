@@ -10,7 +10,7 @@ import {
   FileVersionsSchema,
   INTEGRITY_ERROR_MESSAGE,
   TransferResultSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

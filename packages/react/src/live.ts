@@ -6,7 +6,7 @@ import {
   type FileEventKind,
   SUBSCRIBE_PATH,
   VOLA_SUBPROTOCOL,
-} from "@vola/core";
+} from "@vol-a/core";
 import { useEffect, useRef, useState } from "react";
 import { useVolaContext } from "./context.js";
 

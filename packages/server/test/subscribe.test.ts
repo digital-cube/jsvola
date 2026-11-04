@@ -10,7 +10,7 @@ import {
   ServerMessageSchema,
   SUBSCRIBE_CLOSE_CODES,
   VOLA_SUBPROTOCOL,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";

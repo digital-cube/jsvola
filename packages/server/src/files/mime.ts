@@ -1,4 +1,4 @@
-import type { FileKind } from "@vola/core";
+import type { FileKind } from "@vol-a/core";
 import { fileTypeFromBuffer } from "file-type";
 import { normalizeMime } from "./content-disposition.js";
 import { extensionOf } from "./filename.js";

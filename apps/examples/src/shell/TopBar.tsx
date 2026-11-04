@@ -20,7 +20,7 @@ export function TopBar({ children, end }: { children?: ReactNode; end?: ReactNod
   );
 }
 
-/** EN / SR: the strings of the site and of every `@vola/react` and `@jsudc/react` component. */
+/** EN / SR: the strings of the site and of every `@vol-a/react` and `@jsudc/react` component. */
 export function LocaleSwitch() {
   const { t, locale, locales, setLocale } = useI18n();
   return (

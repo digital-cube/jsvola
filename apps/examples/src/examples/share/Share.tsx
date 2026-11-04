@@ -1,6 +1,6 @@
 import { useI18n } from "@jsudc/react";
-import type { ShareCreated } from "@vola/core";
-import { VolaShareDialog } from "@vola/react";
+import type { ShareCreated } from "@vol-a/core";
+import { VolaShareDialog } from "@vol-a/react";
 import { useEffect, useState } from "react";
 import { useSettings } from "../../connection.js";
 import { Connected } from "../../shell/AppShell.js";

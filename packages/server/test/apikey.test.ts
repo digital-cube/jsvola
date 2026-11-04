@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { parseApiKey } from "@vola/core";
+import { parseApiKey } from "@vol-a/core";
 import { describe, expect, it } from "vitest";
 import { generateApiKey, hashApiKey, randomBase62, sameHash } from "../src/apikey.js";
 import { uuidv7 } from "../src/db/uuid.js";

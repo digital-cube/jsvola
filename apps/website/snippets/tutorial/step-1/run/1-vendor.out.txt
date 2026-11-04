@@ -1,5 +1,5 @@
 memento-core-1.0.0.tgz
 memento-react-1.0.0.tgz
-vola-client-1.0.0.tgz
-vola-core-1.0.0.tgz
-vola-react-1.0.0.tgz
+vol-a-client-1.0.1.tgz
+vol-a-core-1.0.1.tgz
+vol-a-react-1.0.1.tgz

@@ -56,7 +56,7 @@ The seeder's files are never selected. Shares end with their capped expiry. Each
 
 ## How the site talks to the server
 
-The site is Vite and React 19 on `@vola/react` and `@jsudc/react`. Its `VolaProvider` gets a `VolaClient` whose `fetch` is a small wrapper called `demoFetch`:
+The site is Vite and React 19 on `@vol-a/react` and `@jsudc/react`. Its `VolaProvider` gets a `VolaClient` whose `fetch` is a small wrapper called `demoFetch`:
 
 - A request that needs the proxy goes to the write proxy without the key. That means anything other than `GET` or `HEAD`, the whole `/uploads` protocol, `/shares`, and `/keyrings/me/*`. The unlock beacon, the UDC actions and the demo routes are exceptions and do not use the proxy.
 - Everything else goes straight to the API with the read-only key.

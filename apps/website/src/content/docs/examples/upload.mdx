@@ -14,7 +14,7 @@ import LiveExample from "../../../components/LiveExample.astro";
 
 ## What it shows
 
-The two ways bytes reach vola, chosen by size. A file under 1 MiB is one multipart `POST`. A file above it goes through the resumable protocol in 256 KiB chunks, with a progress bar. The site sets those numbers so the resumable path has room under the demo's cap. `@vola/react`'s own threshold is 8 MiB.
+The two ways bytes reach vola, chosen by size. A file under 1 MiB is one multipart `POST`. A file above it goes through the resumable protocol in 256 KiB chunks, with a progress bar. The site sets those numbers so the resumable path has room under the demo's cap. `@vol-a/react`'s own threshold is 8 MiB.
 
 Files land in the `uploads` folder. The demo's limits are listed on the page: 5 MiB per file, a list of allowed types, a purge after 24 hours and 60 writes per address per ten minutes. [Uploads and processing](/concepts/uploads-and-processing/) explains what happens after the bytes arrive.
 
@@ -32,6 +32,6 @@ Files land in the `uploads` folder. The demo's limits are listed on the page: 5 
 | `POST /vola/examples/write/uploads` | Creating a resumable upload |
 | `HEAD`, `PATCH`, `DELETE` on `/vola/examples/write/uploads/:id` | Checking, sending and cancelling it |
 
-## `@vola/react` pieces
+## `@vol-a/react` pieces
 
 `useVolaUpload` holds the upload state, `VolaUploadButton` picks the files, and `VolaUploadList` draws progress, cancel and resume. The drop zone around them is the page's own.

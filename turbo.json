@@ -34,13 +34,13 @@
       "outputs": [],
       "cache": false
     },
-    "@vola/cli#test": {
-      "dependsOn": ["^build", "@vola/server#test"],
+    "@vol-a/cli#test": {
+      "dependsOn": ["^build", "@vol-a/server#test"],
       "outputs": [],
       "cache": false
     },
-    "@vola/cli#test:cov": {
-      "dependsOn": ["^build", "@vola/server#test:cov"],
+    "@vol-a/cli#test:cov": {
+      "dependsOn": ["^build", "@vol-a/server#test:cov"],
       "outputs": ["coverage/**"],
       "cache": false
     }

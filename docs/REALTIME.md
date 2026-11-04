@@ -15,7 +15,7 @@ worker (4.1)        ─┘          (or in-process without Redis)      └─▶
 
 `@jsudc/server` 0.2 declares the `capabilities.subscribe` flag but ships no transport for
 it, and jsudc's own plan keeps live updates to polling. The transport here is vola's own
-(`SubscribableSource` in `@vola/server`), shaped so a future `@jsudc/*` one can replace it:
+(`SubscribableSource` in `@vol-a/server`), shaped so a future `@jsudc/*` one can replace it:
 a source gets `subscribe(filter, sink)` next to `list`, the sink receives `upsert(row)` /
 `remove(id)`, and the wire messages are UDC envelopes (`udc.row.upsert`, `udc.row.remove`).
 
@@ -28,7 +28,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 - **Auth.** Browsers cannot set headers on a WebSocket, so the API key goes in the
   subprotocol list as `bearer.<api_key>`; offer `vola.v1` next to it and the server selects
-  that one, so the key is not echoed back (`bearerSubprotocols(key)` in `@vola/core`).
+  that one, so the key is not echoed back (`bearerSubprotocols(key)` in `@vol-a/core`).
   Non-browser clients may send `Authorization: Bearer <key>` or `X-Api-Key` instead. The key
   needs `files:read`; an admin key selects the tenant with `X-Tenant-Slug`. The key is
   **never** read from the query string (the jsmemento rule: a URL is logged, a header is not).
@@ -41,7 +41,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ## Messages (JSON text frames)
 
-Schemas: `ClientMessageSchema`, `ServerMessageSchema` in `@vola/core` (`src/subscribe.ts`).
+Schemas: `ClientMessageSchema`, `ServerMessageSchema` in `@vol-a/core` (`src/subscribe.ts`).
 Every message is `{kind, id, payload}`; for a subscription `id` is the one the client chose in
 its `udc.subscribe`, so several views can share one connection.
 

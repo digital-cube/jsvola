@@ -7,7 +7,7 @@ import {
   type ThumbnailSize,
   thumbnailSupported,
   workerHoldsKey,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
 import type { FileRow } from "../db/schema.js";

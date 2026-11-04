@@ -1,4 +1,4 @@
-import { ErrorResponseSchema, LiveResponseSchema, ReadyResponseSchema } from "@vola/core";
+import { ErrorResponseSchema, LiveResponseSchema, ReadyResponseSchema } from "@vol-a/core";
 import { describe, expect, inject, it } from "vitest";
 
 const server = inject("server");

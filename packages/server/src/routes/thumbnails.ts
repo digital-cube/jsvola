@@ -7,7 +7,7 @@ import {
   type ThumbnailSize,
   type ThumbnailStatus,
   thumbnailSupported,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";

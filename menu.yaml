@@ -1,6 +1,6 @@
 # JSVola — the examples site's menu (apps/examples, plan 8.1). This file IS its sidebar.
 #
-# Served by @vola/server as the `menu` UDC collection (source `yaml_menu` of @jsudc/server,
+# Served by @vol-a/server as the `menu` UDC collection (source `yaml_menu` of @jsudc/server,
 # POST /vola/udc/list {collection: "menu"}), read again whenever the file changes. Path:
 # VOLA_MENU_PATH; default: menu.yaml at the repository root (the Docker image:
 # /app/config/menu.yaml). Without the file there is no `menu` collection, and the site draws

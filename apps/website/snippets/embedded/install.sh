@@ -1,1 +1,1 @@
-pnpm add @vola/server @vola/core fastify
+pnpm add @vol-a/server @vol-a/core fastify

@@ -1,5 +1,5 @@
-import { VolaError } from "@vola/client";
-import type { ThumbnailCrop, ThumbnailSize } from "@vola/core";
+import { VolaError } from "@vol-a/client";
+import type { ThumbnailCrop, ThumbnailSize } from "@vol-a/core";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useVolaContext } from "./context.js";
 import { useVolaT } from "./i18n.js";

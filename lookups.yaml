@@ -1,4 +1,4 @@
-# JSVola — controlled vocabulary (`@vola/lookups`, same format as `@memento/lookups`).
+# JSVola — controlled vocabulary (`@vol-a/lookups`, same format as `@memento/lookups`).
 #
 # Terms are UPPER_SNAKE_CASE. Wire values are lower case (`IMAGE` → `"image"`,
 # `TENANT` → `"tenant"`); the lookups API and the UDC `files` collection send the terms as

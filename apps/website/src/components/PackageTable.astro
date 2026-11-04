@@ -1,6 +1,6 @@
 ---
 /*
- * Every published package: name, what it is, version, licence and which @vola packages it uses,
+ * Every published package: name, what it is, version, licence and which @vol-a packages it uses,
  * read from packages/*\/package.json when the site is built (no network, no registry). Nothing
  * here names a version; bump the package and the page follows.
  */
@@ -37,7 +37,7 @@ const rows = (
   description: (pkg.description ?? "")
     .replace(/^JSVola[^:]*:\s*/, "")
     .replace(/^[a-z]/, (c) => c.toUpperCase()),
-  uses: Object.keys({ ...pkg.dependencies, ...pkg.peerDependencies }).filter((d) => d.startsWith("@vola/")),
+  uses: Object.keys({ ...pkg.dependencies, ...pkg.peerDependencies }).filter((d) => d.startsWith("@vol-a/")),
 }));
 const versions = [...new Set(rows.map((r) => r.version))];
 const licences = [...new Set(rows.map((r) => r.license))];

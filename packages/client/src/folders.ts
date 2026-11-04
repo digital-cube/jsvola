@@ -7,7 +7,7 @@ import {
   FolderListingSchema,
   type FolderPatch,
   RECURSIVE_QUERY,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { CallOptions, VolaClient } from "./client.js";
 import { encodePath } from "./env.js";
 import { instancePath } from "./files.js";

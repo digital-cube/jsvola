@@ -1,4 +1,4 @@
-import { ApiKeyCreatedSchema, ApiKeyListSchema } from "@vola/core";
+import { ApiKeyCreatedSchema, ApiKeyListSchema } from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

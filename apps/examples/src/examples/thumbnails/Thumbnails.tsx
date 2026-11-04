@@ -4,8 +4,8 @@ import {
   THUMBNAIL_SIZES,
   type ThumbnailCrop,
   type ThumbnailSize,
-} from "@vola/core";
-import { type ThumbState, useVola, useVolaContext, VolaThumb } from "@vola/react";
+} from "@vol-a/core";
+import { type ThumbState, useVola, useVolaContext, VolaThumb } from "@vol-a/react";
 import { useEffect, useState } from "react";
 import { useSettings } from "../../connection.js";
 import { Connected } from "../../shell/AppShell.js";

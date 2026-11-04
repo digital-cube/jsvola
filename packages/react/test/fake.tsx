@@ -1,7 +1,7 @@
 import type { DescribeResponse, Row } from "@jsudc/core";
 import { type RenderResult, render } from "@testing-library/react";
-import { VolaClient, type VolaClientOptions } from "@vola/client";
-import type { FileInfo, KeyringStatus } from "@vola/core";
+import { VolaClient, type VolaClientOptions } from "@vol-a/client";
+import type { FileInfo, KeyringStatus } from "@vol-a/core";
 import type { ReactNode } from "react";
 import {
   filesScope,

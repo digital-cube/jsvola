@@ -8,7 +8,7 @@ import { BUILTIN_MENU_ROWS } from "./menu.js";
 import { ConnectionForm, KeyBadge, SettingsPopover } from "./Settings.js";
 import { TopBar } from "./TopBar.js";
 
-/** The collection the sidebar is drawn from (`menu.yaml` served by `@vola/server`). */
+/** The collection the sidebar is drawn from (`menu.yaml` served by `@vol-a/server`). */
 export const MENU_COLLECTION = "menu";
 
 /** Header, sidebar (the menu collection), and the page of the route. */

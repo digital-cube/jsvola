@@ -36,6 +36,6 @@ A `202` body is a grey placeholder with a success status. Clients have to check 
 | `GET /vola/files/:type/:id` | The list behind the file picker |
 | `GET /vola/udc/subscribe` | Refreshes that list when files change |
 
-## `@vola/react` pieces
+## `@vol-a/react` pieces
 
 `VolaThumb` draws each tile. It fetches the rendition into a `blob:` URL, retries a `202` with backoff (1, 2, 4 seconds) and never caches one. Its `onState` callback is what fills in each tile's status. `useFilesLive` keeps the list current.

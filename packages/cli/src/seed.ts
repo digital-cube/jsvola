@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { VolaClient } from "@vola/client";
-import type { FileEncryption, FileInfo } from "@vola/core";
-import { SEEDER_USER, VolaError } from "@vola/server";
+import { VolaClient } from "@vol-a/client";
+import type { FileEncryption, FileInfo } from "@vol-a/core";
+import { SEEDER_USER, VolaError } from "@vol-a/server";
 
 /** One entry of `assets/manifest.json`. */
 export interface SeedEntry {

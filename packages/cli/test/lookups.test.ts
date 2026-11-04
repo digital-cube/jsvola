@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CandidateRecorder, compileLookups, LookupRegistry } from "@vola/lookups";
-import { DEFAULT_LOOKUPS_PATH } from "@vola/server";
+import { CandidateRecorder, compileLookups, LookupRegistry } from "@vol-a/lookups";
+import { DEFAULT_LOOKUPS_PATH } from "@vol-a/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProgram, runCli } from "../src/index.js";
 

@@ -10,7 +10,7 @@ import {
   type OcrInfo,
   ocrSupported,
   type ProcessingStatus,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { IntegrityError, type OcrRecord, openOcr, sealOcr } from "../crypto/index.js";
@@ -19,7 +19,7 @@ import { type FileMetadataRow, fileMetadata, processingJobs } from "../db/schema
 import { BlobNotFoundError, type StorageBackend } from "../storage/index.js";
 import { PdfPageError, pdfPageFromBuffer } from "./pdf-pages.js";
 
-export { isOcrEligible, ocrSupported } from "@vola/core";
+export { isOcrEligible, ocrSupported } from "@vol-a/core";
 
 /** The binaries, when not given: the ones on `PATH`. */
 export const DEFAULT_TESSERACT = "tesseract";

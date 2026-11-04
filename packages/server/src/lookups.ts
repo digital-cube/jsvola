@@ -7,8 +7,8 @@ import {
   LookupLocaleSchema,
   type LookupsResponse,
   lookupWireValue,
-} from "@vola/core";
-import { CandidateRecorder, type CsvIssue, LookupRegistry, loadLookups } from "@vola/lookups";
+} from "@vol-a/core";
+import { CandidateRecorder, type CsvIssue, LookupRegistry, loadLookups } from "@vol-a/lookups";
 
 /** `lookups.yaml` at the repository root (same depth from `src/` and `dist/`). */
 export const DEFAULT_LOOKUPS_PATH = fileURLToPath(

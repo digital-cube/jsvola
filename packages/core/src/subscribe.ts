@@ -11,7 +11,7 @@ import { z } from "zod";
 export const SUBSCRIBE_PATH = "/udc/subscribe";
 export const SUBSCRIBE_PROTOCOL_VERSION = "1";
 
-/** What changed, as the publisher saw it (`src/events/bus.ts` of `@vola/server`). */
+/** What changed, as the publisher saw it (`src/events/bus.ts` of `@vol-a/server`). */
 export const FILE_EVENT_KINDS = [
   "created",
   "updated",

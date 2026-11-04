@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseApiKey } from "@vola/core";
+import { parseApiKey } from "@vol-a/core";
 import {
   buildApp,
   connect,
@@ -16,7 +16,7 @@ import {
   generateKeyLine,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

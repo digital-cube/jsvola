@@ -4,7 +4,7 @@
    "dependencies": {
      "@jsudc/core": "^0.2.0",
      "@jsudc/server": "^0.2.1",
-+    "@vola/client": "file:vendor/vola-client-1.0.0.tgz",
++    "@vol-a/client": "file:vendor/vol-a-client-1.0.1.tgz",
      "drizzle-orm": "^0.45.4",
      "fastify": "^5.12.7",
      "pg": "^8.23.1",

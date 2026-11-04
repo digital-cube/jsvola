@@ -1,4 +1,4 @@
-import type { CheckStatus, ReadyResponse } from "@vola/core";
+import type { CheckStatus, ReadyResponse } from "@vol-a/core";
 import { sql } from "drizzle-orm";
 import type { FastifyPluginAsync } from "fastify";
 import type { Database } from "../db/index.js";

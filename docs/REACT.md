@@ -1,17 +1,17 @@
-# React UI — `@vola/react` (plan 7.2)
+# React UI — `@vol-a/react` (plan 7.2)
 
 The components an application embeds to get the whole vola surface: the file browser of an
 instance (live, on `@jsudc/react`'s data view), uploads with resumable progress, thumbnails,
 the keyring PIN gate with its auto-lock, and the share dialog. Everything goes through
-`@vola/client` ([CLIENT](../packages/client/README.md)), so no key, token or secret is ever in
+`@vol-a/client` ([CLIENT](../packages/client/README.md)), so no key, token or secret is ever in
 a URL. The package's own README — [`packages/react/README.md`](../packages/react/README.md) —
 is the reference (props, hooks, tests); this page is the map.
 
 ```tsx
 import "@jsudc/react/styles.css";
-import "@vola/react/styles.css";
-import { VolaClient } from "@vola/client";
-import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vola/react";
+import "@vol-a/react/styles.css";
+import { VolaClient } from "@vol-a/client";
+import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vol-a/react";
 
 const vola = new VolaClient({ baseUrl: "/vola", apiKey, userId: "user-42" });
 
@@ -58,7 +58,7 @@ component sees. An unlock makes every locked thumbnail ask again.
 
 ## Styling
 
-`@vola/react/styles.css` reads `@jsudc/react`'s design tokens (`--background`, `--foreground`,
+`@vol-a/react/styles.css` reads `@jsudc/react`'s design tokens (`--background`, `--foreground`,
 `--border`, `--primary`, `--sem-*`, light and `.dark`) with a fallback, so the components sit
 next to a UDC data view without a seam. Every class starts with `vola-`; no Tailwind in the
 package. Dialogs and menus are keyboard-complete and labelled (`role="dialog"`, `aria-modal`,

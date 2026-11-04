@@ -14,7 +14,7 @@ import {
   ShareSecretSchema,
   ShareTokenSchema,
   splitFilePath,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { FastifyBaseLogger } from "fastify";

@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual as nodeTimingSafeEqual, randomBytes } from "node:crypto";
-import { KEY_SECRET_LENGTH, type KeyEnv, type KeyPrefix, parseApiKey } from "@vola/core";
+import { KEY_SECRET_LENGTH, type KeyEnv, type KeyPrefix, parseApiKey } from "@vol-a/core";
 
 const BASE62 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 

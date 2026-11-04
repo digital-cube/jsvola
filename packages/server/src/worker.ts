@@ -1,5 +1,5 @@
 /**
- * The worker process of `@vola/server`: `node dist/worker.js` (`pnpm start:worker`). The same
+ * The worker process of `@vol-a/server`: `node dist/worker.js` (`pnpm start:worker`). The same
  * image and configuration as the server; it needs `VOLA_REDIS_URL` and the SAME storage
  * directory (thumbnails are written next to the blobs) and, for the derivatives of
  * `tenant`-encrypted files, the same `VOLA_KEY_FILE`. Migrations are the server's job: the

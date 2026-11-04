@@ -1,4 +1,4 @@
-import type { ShareCreated, ShareInfo } from "@vola/core";
+import type { ShareCreated, ShareInfo } from "@vol-a/core";
 import { useCallback, useEffect, useId, useState } from "react";
 import { useVolaContext } from "./context.js";
 import { useVolaT } from "./i18n.js";

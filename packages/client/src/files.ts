@@ -25,7 +25,7 @@ import {
   UPLOAD_FOLDER_PATH_FIELD,
   UPLOAD_METADATA_FIELD,
   UPLOAD_PARENT_ID_FIELD,
-} from "@vola/core";
+} from "@vol-a/core";
 import { multipartBody, nameOf, typeOf, type UploadSource } from "./body.js";
 import type { CallOptions, VolaClient } from "./client.js";
 import { ok2xx } from "./client.js";

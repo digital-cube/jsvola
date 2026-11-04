@@ -8,7 +8,7 @@ import {
 } from "@jsudc/react";
 import { Toaster, TooltipProvider } from "@jsudc/react/ui";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { VolaClient, type VolaClientOptions } from "@vola/client";
+import { VolaClient, type VolaClientOptions } from "@vol-a/client";
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BlobCache } from "./blobs.js";
 import {
@@ -50,7 +50,7 @@ export interface VolaProviderProps extends Partial<VolaClientOptions> {
 }
 
 /**
- * The root of every `@vola/react` component: the `VolaClient`, i18n (`en`, `sr`), the UDC
+ * The root of every `@vol-a/react` component: the `VolaClient`, i18n (`en`, `sr`), the UDC
  * provider the file browser draws with, the keyring store and its auto-lock, and the
  * in-memory cache of decrypted `blob:` URLs.
  */

@@ -4,7 +4,7 @@ import {
   type FolderListing,
   FolderPatchSchema,
   RECURSIVE_QUERY,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";

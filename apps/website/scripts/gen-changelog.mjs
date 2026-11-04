@@ -3,7 +3,7 @@
  *   node scripts/gen-changelog.mjs        (npm run gen; dev, build and typecheck run it first)
  *
  * Packages › Changelog: the repository's CHANGELOG.md as a page,
- * src/content/docs/packages/changelog.md (git-ignored). One changelog for every @vola
+ * src/content/docs/packages/changelog.md (git-ignored). One changelog for every @vol-a
  * package and the image: they share one version. Links into docs/ become the Reference pages
  * that hold them (scripts/gen-reference.mjs writes the same routes), the rest go to GitHub.
  * No network.

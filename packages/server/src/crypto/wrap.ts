@@ -16,7 +16,7 @@
  * moved to another file, another mode or another tenant: a transfer between tenants has to
  * re-wrap (`services/transfer.ts`).
  */
-import type { FileEncryption } from "@vola/core";
+import type { FileEncryption } from "@vol-a/core";
 
 /** What a provider needs to know about the request and the file; request-scoped material joins later. */
 export interface WrapContext {

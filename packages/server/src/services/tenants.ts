@@ -1,4 +1,4 @@
-import { SlugSchema, type Tenant } from "@vola/core";
+import { SlugSchema, type Tenant } from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { Database } from "../db/index.js";
 import { type TenantRow, tenants } from "../db/schema.js";

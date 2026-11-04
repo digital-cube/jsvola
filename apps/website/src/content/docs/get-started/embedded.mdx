@@ -18,6 +18,6 @@ If your application is already on Fastify, vola can live in the same process, wi
 
 ## Things to run beside it
 
-**The worker is a separate process.** Thumbnails and OCR are rendered off the request path, so without a worker `/thumb` keeps answering 202. Run `node node_modules/@vola/server/dist/worker.js` with the same environment. It needs `VOLA_REDIS_URL`, the same `VOLA_STORAGE_PATH` and, for encrypted files, the same key file. PDF thumbnails and OCR need `pdftoppm` and `tesseract` on the machine.
+**The worker is a separate process.** Thumbnails and OCR are rendered off the request path, so without a worker `/thumb` keeps answering 202. Run `node node_modules/@vol-a/server/dist/worker.js` with the same environment. It needs `VOLA_REDIS_URL`, the same `VOLA_STORAGE_PATH` and, for encrypted files, the same key file. PDF thumbnails and OCR need `pdftoppm` and `tesseract` on the machine.
 
 **Options you can pass.** Besides `prefix`, `config` and `db`, the plugin takes `redis`, `storage`, `events`, `audit`, `encryption`, `decorateRow` and `extend`. The [package README](https://github.com/digital-cube/jsvola/blob/main/packages/server/README.md) describes them.

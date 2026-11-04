@@ -9,11 +9,11 @@
 
 | # | tema | odluka |
 |---|---|---|
-| 1 | API | **nov API, bez kompatibilnosti** sa vola-spp; potrošači prelaze na `@vola/client` |
+| 1 | API | **nov API, bez kompatibilnosti** sa vola-spp; potrošači prelaze na `@vol-a/client` |
 | 2 | podaci | **čist start**, nema migracije iz vola-spp |
 | 3 | stack | jsmemento 1:1: Node 24+, TS 5.9+, pnpm + Turbo, Biome, Vitest, Fastify 5, Drizzle + pg, ioredis, @jsudc/core + @jsudc/server, Commander.js, npm public, MIT |
-| 4 | lookups | kopija u jsvola, `@vola/lookups`, isti format kao `@memento/lookups` |
-| 5 | poslovi | **BullMQ** (Redis); worker je drugi proces iz `@vola/server` (`worker.ts`), ista slika |
+| 4 | lookups | kopija u jsvola, `@vol-a/lookups`, isti format kao `@memento/lookups` |
+| 5 | poslovi | **BullMQ** (Redis); worker je drugi proces iz `@vol-a/server` (`worker.ts`), ista slika |
 | 6 | thumbnails | **sharp** → WebP 64/128/256/512 + crop režimi + **prva strana PDF-a** (pdftoppm); bez videa |
 | 7 | OCR | v1.0, spawn `tesseract` + `pdftoppm` (binari u slici) |
 | 8 | storage | samo lokalni FS, iza `StorageBackend` interfejsa |
@@ -23,7 +23,7 @@
 | 12 | real-time | UDC subscribe preko WebSocket-a u v1.0 |
 | 13 | audit | opciona memento integracija (`VOLA_MEMENTO_URL` + `VOLA_MEMENTO_API_KEY`) |
 | 14 | examples | `apps/examples` + stage sa read-only demo ključem; hostname traži NON-AI tiket |
-| 15 | paketi | `@vola/*` na npm; deploy ključ `github_jsvola` traži NON-AI tiket |
+| 15 | paketi | `@vol-a/*` na npm; deploy ključ `github_jsvola` traži NON-AI tiket |
 
 ## Šifrovanje: usvojeno iz `notes-crypto-for-vola.md` §6
 
@@ -72,7 +72,7 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 | 2.1 | TCK5HPYMY2 | CAS storage, streaming upload, download sa Range/HEAD, slug, soft delete, purge |
 | 2.2 | TCKM5DHJTH | Folderi, move, verzije, visibility, `/vola/public` |
 | 2.3 | TCKNPKC9XY | Resumable upload (`/vola/uploads`) |
-| 3.1 | TCKUHMFRRQ | `@vola/lookups`, UDC kolekcija `files`, instance-types |
+| 3.1 | TCKUHMFRRQ | `@vol-a/lookups`, UDC kolekcija `files`, instance-types |
 | 3.2 | TCKFQMCFDT | Real-time: UDC subscribe preko WebSocket-a |
 | 4.1 | TCKXQCJ2YY | BullMQ worker, processing jobs, thumbnails (slike + PDF) |
 | 4.2 | TCKPK3YTKR | OCR (tesseract + pdftoppm), `vola_file_metadata` |
@@ -81,13 +81,15 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 | 6.1 | TCKK5UTHJX | Šifrovanje I: format `JSV`, FK, `tenant` provider, šifrovan upload/download/Range |
 | 6.2 | TCKFT692JH | Šifrovanje II: keyring (PIN), unlock, brute-force, recovery, reset, šifrovani folderi |
 | 6.3 | TCKQ7JWCRJ | Šifrovanje III: `caller` provider, šifrovan resumable, šifrovani thumbnail/OCR, share grant |
-| 7.1 | TCKX7RMHKF | `@vola/client` SDK |
-| 7.2 | TCK9NUHWW6 | `@vola/react` |
+| 7.1 | TCKX7RMHKF | `@vol-a/client` SDK |
+| 7.2 | TCK9NUHWW6 | `@vol-a/react` |
 | 8.1 | TCKKR2PUDE | `apps/examples` + stage compose |
 | 8.2 | TCKT9JUU59 | Dokumentacija + npm release |
 | 9.1 | TCKQQ7PD5C | `apps/website`: prezentacioni sajt (Astro + Starlight) na `stage.vol-a.com`, `deploy/website/stage.sh`; examples samo na `examples.stage.vol-a.com` |
+| 10.1 | TCKPFK56W2 | Release `v1.0.0`: merge na `main`, CHANGELOG, tag, slika `ghcr.io/digital-cube/jsvola:1.0.0` i GitHub release (npm preskočen, nije bilo `NPM_TOKEN`) |
+| 10.3 | TCKRMHJ9HJ | npm scope `@vola` → `@vol-a` (organizacija `vol-a`; `vola` je zauzet), verzija `1.0.1`, tag `v1.0.1`, prva objava `@vol-a/*` na npm; tutorijal i video tiketi na novim imenima |
 
-NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `@vola`, `NPM_TOKEN`, tag `v1.0.0`).
+NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `vol-a` sa scope-om `@vol-a`, jer je `vola` zauzet; `NPM_TOKEN`; tag `v1.0.0`).
 
 ## Stage (2026-11-02)
 

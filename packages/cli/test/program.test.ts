@@ -1,4 +1,10 @@
-import { authenticateApiKey, connect, type DatabaseHandle, loadConfig, schema } from "@vola/server";
+import {
+  authenticateApiKey,
+  connect,
+  type DatabaseHandle,
+  loadConfig,
+  schema,
+} from "@vol-a/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProgram, CLI_VERSION, formatKeyLine, friendlyError, runCli } from "../src/index.js";
 

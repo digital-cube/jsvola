@@ -7,7 +7,7 @@ Self-hosted, multi-tenant, **content-addressable file storage** for applications
 application (a ticketing system, a CMS, a chat) hands its files to vola and gets back ids,
 downloads with `Range`, thumbnails, OCR text, share links, folders and versions — per tenant,
 per entity, with encryption at rest when asked. The TypeScript port of vola-spp: Fastify 5 +
-Drizzle/PostgreSQL + Redis, published as `@vola/*` packages on npm and as one Docker image.
+Drizzle/PostgreSQL + Redis, published as `@vol-a/*` packages on npm and as one Docker image.
 
 **What makes it vola**
 
@@ -35,12 +35,12 @@ Drizzle/PostgreSQL + Redis, published as `@vola/*` packages on npm and as one Do
 
 | package | what |
 |---|---|
-| [`@vola/core`](packages/core) | Zod schemas, inferred types, header and error constants shared by server, CLI and clients |
-| [`@vola/lookups`](packages/lookups) | the controlled vocabulary: `lookups.yaml` + CSV translations, candidates, promotion |
-| [`@vola/server`](packages/server) | Fastify plugin + standalone server, the worker, Drizzle schema and migrations, CAS storage, UDC collections |
-| [`@vola/cli`](packages/cli) | the `vola` command line: tenants, keys, key and pepper files, transfer, lookups, the demo seeder |
-| [`@vola/client`](packages/client) | the fetch SDK for every route — Node 24+ and browsers |
-| [`@vola/react`](packages/react) | React 19 components: file browser, uploads, thumbnails, PIN gate, share dialog |
+| [`@vol-a/core`](packages/core) | Zod schemas, inferred types, header and error constants shared by server, CLI and clients |
+| [`@vol-a/lookups`](packages/lookups) | the controlled vocabulary: `lookups.yaml` + CSV translations, candidates, promotion |
+| [`@vol-a/server`](packages/server) | Fastify plugin + standalone server, the worker, Drizzle schema and migrations, CAS storage, UDC collections |
+| [`@vol-a/cli`](packages/cli) | the `vola` command line: tenants, keys, key and pepper files, transfer, lookups, the demo seeder |
+| [`@vol-a/client`](packages/client) | the fetch SDK for every route — Node 24+ and browsers |
+| [`@vol-a/react`](packages/react) | React 19 components: file browser, uploads, thumbnails, PIN gate, share dialog |
 | [`apps/examples`](apps/examples) | the examples site: one page per capability over a demo instance, served by the server at `/` (private) |
 | [`apps/website`](apps/website) | vol-a.com: the website and documentation, Astro + Starlight, static files outside the image (private) |
 | [`packages/e2e`](packages/e2e) | end-to-end tests against the built server (private) |
@@ -48,9 +48,9 @@ Drizzle/PostgreSQL + Redis, published as `@vola/*` packages on npm and as one Do
 Every package and the image share one version. Install what you need:
 
 ```sh
-pnpm add @vola/client            # a backend or a browser talking to a vola server
-pnpm add @vola/react @vola/client @jsudc/react @jsudc/core @tanstack/react-query   # a React app
-pnpm add @vola/server @vola/core # embed the Fastify plugin in your own server
+pnpm add @vol-a/client            # a backend or a browser talking to a vola server
+pnpm add @vol-a/react @vol-a/client @jsudc/react @jsudc/core @tanstack/react-query   # a React app
+pnpm add @vol-a/server @vol-a/core # embed the Fastify plugin in your own server
 ```
 
 ## Quick start
@@ -123,7 +123,7 @@ Without them the server runs and serves plain files; anything encrypted answers
 From an application, the same through the SDK:
 
 ```ts
-import { VolaClient } from "@vola/client";
+import { VolaClient } from "@vol-a/client";
 const vola = new VolaClient({ baseUrl: "http://localhost:8300/vola", apiKey: process.env.VOLA_API_KEY, userId: "user-42" });
 const info = await vola.files.upload("tickets", ticketId, file, { folderPath: "docs/2026", encryption: "tenant" });
 const response = await vola.files.download("tickets", ticketId, info.id, { range: { start: 0, end: 1023 } });
@@ -169,7 +169,7 @@ the relative-link check of the documents, and builds the image and runs the E2E 
 - [docs/CLI.md](docs/CLI.md) — every `vola` command
 - [docs/MIGRATION-FROM-VOLA-SPP.md](docs/MIGRATION-FROM-VOLA-SPP.md) — for consumers of vola-spp: route table, auth, what stays the same, the checklist
 - [docs/REALTIME.md](docs/REALTIME.md) — the WebSocket protocol of `/udc/subscribe`
-- [docs/REACT.md](docs/REACT.md) — `@vola/react` components and hooks
+- [docs/REACT.md](docs/REACT.md) — `@vol-a/react` components and hooks
 - [docs/AUDIT.md](docs/AUDIT.md) — the optional audit trail in memento
 - [docs/EXAMPLES-SITE.md](docs/EXAMPLES-SITE.md) — the examples site and its stage deploy
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — dev setup, tests, commits, releasing

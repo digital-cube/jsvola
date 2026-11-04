@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { FolderInfo } from "@vola/core";
+import type { FolderInfo } from "@vol-a/core";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VolaFileBrowser } from "../src/index.js";

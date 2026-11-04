@@ -26,6 +26,6 @@ pnpm typecheck && pnpm lint
 ```
 
 vola's own events in the feed need an image with the fix "The audit trail reaches memento" from
-vola's changelog; step 7 of the tutorial says what to do until a release has it. `@vola/*` and
+vola's changelog; step 7 of the tutorial says what to do until a release has it. `@vol-a/*` and
 `@memento/*` are not on npm yet, so `vendor/` holds their client packages
 ([vendor/README.md](vendor/README.md)).

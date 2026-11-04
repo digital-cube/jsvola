@@ -19,7 +19,7 @@ import {
   hasScope,
   INTEGRITY_ERROR_CODE,
   LOCKED_CODE,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { currentContext } from "../context.js";

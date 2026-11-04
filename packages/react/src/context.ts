@@ -1,4 +1,4 @@
-import type { VolaClient } from "@vola/client";
+import type { VolaClient } from "@vol-a/client";
 import { createContext, useContext } from "react";
 import type { BlobCache } from "./blobs.js";
 import type { KeyringStore } from "./keyring.js";
@@ -6,7 +6,7 @@ import type { KeyringStore } from "./keyring.js";
 /** A `WebSocket` constructor (the global one, or a fake in tests). */
 export type WebSocketConstructor = new (url: string, protocols?: string | string[]) => WebSocket;
 
-/** What every `@vola/react` component finds in the nearest `VolaProvider`. */
+/** What every `@vol-a/react` component finds in the nearest `VolaProvider`. */
 export interface VolaContextValue {
   client: VolaClient;
   /** The locale the provider was given (`en`, `sr`), or `undefined` when `@jsudc/react` keeps it. */

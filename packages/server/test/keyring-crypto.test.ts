@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { PIN_LENGTH } from "@vola/core";
+import { PIN_LENGTH } from "@vol-a/core";
 import { describe, expect, it } from "vitest";
 import {
   ARGON2_ITERATIONS,

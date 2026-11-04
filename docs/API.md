@@ -1,10 +1,10 @@
 # JSVola HTTP API (v1.0)
 
-Every route of `@vola/server`: method, path, scope, body, answers and error codes. Base path:
+Every route of `@vol-a/server`: method, path, scope, body, answers and error codes. Base path:
 `/vola` (`VOLA_PREFIX`). Every example below assumes `localhost:8300` and `$KEY`, an API key of
 the tenant (see [Authentication](#authentication)). The Zod schemas of every body and answer
-live in [`@vola/core`](../packages/core/src) and are named in each section; a client that wants
-the same types without hand-written requests uses [`@vola/client`](../packages/client/README.md).
+live in [`@vol-a/core`](../packages/core/src) and are named in each section; a client that wants
+the same types without hand-written requests uses [`@vol-a/client`](../packages/client/README.md).
 
 How things fit together (packages, upload flow, CAS layout, worker, events):
 [ARCHITECTURE.md](ARCHITECTURE.md). Encryption byte by byte: [CRYPTO.md](CRYPTO.md). The
@@ -113,7 +113,7 @@ Codes are snake_case and stable; some answers add fields next to `code` and `mes
 
 ## Headers and query parameters
 
-The names are constants of `@vola/core` (`USER_ID_HEADER`, `UNLOCK_HEADER`, …).
+The names are constants of `@vol-a/core` (`USER_ID_HEADER`, `UNLOCK_HEADER`, …).
 
 | | direction | meaning |
 |---|---|---|
@@ -351,7 +351,7 @@ through `…/info`, **not** in the full-text search; `keyring` / `caller` files 
 `/uploads` speaks [tus 1.0](https://tus.io/protocols/resumable-upload) core with the
 `creation`, `termination` and `expiration` extensions, implemented natively (the encrypted
 variant cuts the byte stream into sealed segments as it arrives), so
-[`tus-js-client`](https://github.com/tus/tus-js-client) works unchanged and `@vola/client`'s
+[`tus-js-client`](https://github.com/tus/tus-js-client) works unchanged and `@vol-a/client`'s
 `uploads.resumable()` wraps it. An upload belongs to the tenant: any `files:write` key of it may
 resume one; another tenant's is `404`. Completion takes the SAME path as `POST /files` — hash,
 dedup, MIME, collision rename, folder, version, slug — and the last `PATCH` answers with
@@ -709,7 +709,7 @@ headers; `files:read`) takes `udc.subscribe` messages with a `list`-style filter
 files are uploaded, replaced, moved, renamed, deleted, purged and processed. A client that reads
 too slowly is closed with `4008` (`VOLA_WS_MAX_BUFFERED`), one that stops answering pings is
 terminated (`VOLA_WS_HEARTBEAT_MS`). The protocol, its message schemas (`ClientMessageSchema`,
-`ServerMessageSchema` in `@vola/core`) and the lifecycle are in [REALTIME.md](REALTIME.md).
+`ServerMessageSchema` in `@vol-a/core`) and the lifecycle are in [REALTIME.md](REALTIME.md).
 
 ```js
 const ws = new WebSocket("ws://localhost:8300/vola/udc/subscribe", ["vola.v1", `bearer.${key}`]);
@@ -738,12 +738,12 @@ Present only with `VOLA_EXAMPLES=true` ([EXAMPLES-SITE.md](EXAMPLES-SITE.md)); `
 ## OpenAPI
 
 There is no generated OpenAPI document in v1.0. The routes validate their bodies with the Zod
-schemas of `@vola/core` by hand (`safeParse` in the handler) rather than through Fastify's
+schemas of `@vol-a/core` by hand (`safeParse` in the handler) rather than through Fastify's
 `schema` option, so `@fastify/swagger` would see no schemas and produce an empty specification;
 wiring it in means registering every schema (Zod 4's `z.toJSONSchema`) and every route's
 params, query, headers and responses through a type provider — a day of work and a change to
 every route file, not a documentation task. The proposal is recorded in the ticket report of
 plan 8.2: `fastify-type-provider-zod` + `@fastify/swagger` + `@fastify/swagger-ui` at
 `/vola/docs`, the multipart and tus routes described by hand, the WebSocket left to
-[REALTIME.md](REALTIME.md). Until then this document is the contract, and `@vola/core` the
+[REALTIME.md](REALTIME.md). Until then this document is the contract, and `@vol-a/core` the
 machine-readable half of it.

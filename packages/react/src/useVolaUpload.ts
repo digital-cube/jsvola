@@ -1,5 +1,5 @@
-import type { FingerprintStore, UploadPlacement } from "@vola/client";
-import type { FileInfo } from "@vola/core";
+import type { FingerprintStore, UploadPlacement } from "@vol-a/client";
+import type { FileInfo } from "@vol-a/core";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useVolaContext } from "./context.js";
 

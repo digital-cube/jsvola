@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { Row } from "@jsudc/core";
-import { FileDetailSchema, OCR_PAGE_SEPARATOR } from "@vola/core";
+import { FileDetailSchema, OCR_PAGE_SEPARATOR } from "@vol-a/core";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import sharp from "sharp";

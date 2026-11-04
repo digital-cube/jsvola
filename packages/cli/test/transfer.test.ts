@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TransferResult } from "@vola/core";
+import type { TransferResult } from "@vol-a/core";
 import {
   type AuditEvent,
   AuditLog,
@@ -11,7 +11,7 @@ import {
   type DatabaseHandle,
   loadConfig,
   schema,
-} from "@vola/server";
+} from "@vol-a/server";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildProgram, readUserMap, runCli, transferLines } from "../src/index.js";

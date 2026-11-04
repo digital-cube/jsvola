@@ -1,21 +1,21 @@
-# @vola/react
+# @vol-a/react
 
 React components for a JSVola server: the file browser of an instance (live, on
 `@jsudc/react`'s data view), uploads with resumable progress, thumbnails, the keyring PIN gate
-with its auto-lock, and the share dialog. Built on [`@vola/client`](../client/README.md); every
+with its auto-lock, and the share dialog. Built on [`@vol-a/client`](../client/README.md); every
 request goes through its `VolaClient`, so an API key, an unlock token or a share secret is
 never in a URL.
 
 ```bash
-pnpm add @vola/react @vola/client @jsudc/react @jsudc/core @tanstack/react-query
+pnpm add @vol-a/react @vol-a/client @jsudc/react @jsudc/core @tanstack/react-query
 # the peers @jsudc/react needs for its table: radix-ui lucide-react @tanstack/react-table
 ```
 
 ```tsx
 import "@jsudc/react/styles.css";
-import "@vola/react/styles.css";
-import { VolaClient } from "@vola/client";
-import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vola/react";
+import "@vol-a/react/styles.css";
+import { VolaClient } from "@vol-a/client";
+import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vol-a/react";
 
 const vola = new VolaClient({ baseUrl: "/vola", apiKey, userId: "user-42" });
 
@@ -176,7 +176,7 @@ file are listed (created, downloads of max, expiry, password, encrypted) with Re
 
 ## Styling and accessibility
 
-`@vola/react/styles.css` is optional. Every class starts with `vola-`; the sheet reads
+`@vol-a/react/styles.css` is optional. Every class starts with `vola-`; the sheet reads
 `@jsudc/react`'s tokens (`--background`, `--foreground`, `--border`, `--primary`, `--sem-*`,
 light and `.dark`) with a fallback, so the components sit next to a UDC data view without a
 seam. No Tailwind in the package. Dialogs are `role="dialog"` / `alertdialog` with
@@ -191,7 +191,7 @@ add a locale through the provider's `messages`.
 
 ## Tests
 
-`pnpm --filter @vola/react test`: Vitest + jsdom + Testing Library against a fake `fetch`
+`pnpm --filter @vol-a/react test`: Vitest + jsdom + Testing Library against a fake `fetch`
 (`test/fake.tsx`: a route table that records every call) and a fake WebSocket:
 
 - the browser renders rows from a fake UDC `describe`/`list`, scoped to the instance and the

@@ -49,7 +49,7 @@ the blob.
 | mode | choose it when | the key material | the request carries | what it costs you |
 |---|---|---|---|---|
 | `tenant` | the host application has no per-user secret and wants dumps and backups to be useless without the server's key — the default choice | a key line in `VOLA_KEY_FILE`, HKDF per tenant | nothing | one file to generate, back up and rotate (§ 4); the worker needs it too |
-| `keyring` | a person's private files that even the operator must not open (thilo Notes) | a master key per `(tenant, principal)` behind a 6-digit PIN (Argon2id + pepper) and a recovery key | `X-Vola-Unlock`, a short-lived token (§ 8.2) | the pepper file as well; Redis; a PIN UI (`@vola/react`'s `VolaPinGate`) |
+| `keyring` | a person's private files that even the operator must not open (thilo Notes) | a master key per `(tenant, principal)` behind a 6-digit PIN (Argon2id + pepper) and a recovery key | `X-Vola-Unlock`, a short-lived token (§ 8.2) | the pepper file as well; Redis; a PIN UI (`@vol-a/react`'s `VolaPinGate`) |
 | `caller` | server-to-server, the caller already manages keys and wants vola to hold nothing | a 32-byte key per request, never stored | `X-Vola-Content-Key` (scope `encryption:caller`, never from a browser) | losing the key loses the file; no share from the server, no OCR |
 | `client` | end-to-end: the client seals the blob itself and the server is bytes only | the client's | a `fk_ct` the server never opens, on `POST /uploads` | no thumbnail, OCR, share, rename or transfer |
 
@@ -409,7 +409,7 @@ are unaffected. The same `503` for a missing pepper file or key file.
 
 ### 8.3 PIN
 
-Exactly **6 digits** (`PIN_LENGTH` in `@vola/core`, one constant — a host that wants a
+Exactly **6 digits** (`PIN_LENGTH` in `@vol-a/core`, one constant — a host that wants a
 passphrase changes one place); trivial ones refused at setup, PIN change and recovery: all the
 same digit, or a run up or down by one (`123456`, `654321`, `000000`) — `422 pin_invalid` with
 `reason`. An unlock checks only the shape (a typed PIN is compared to the keyring, not judged).
@@ -728,7 +728,7 @@ GET …/:fileId   the blob, byte for byte: application/octet-stream, X-Vola-Encr
 - a folder with a keyring policy refuses a `client` upload (`422`): the policy cannot be applied
   to bytes the server cannot open.
 
-The client side (`@vola/client`) does not seal blobs yet: the server half is what this phase
+The client side (`@vol-a/client`) does not seal blobs yet: the server half is what this phase
 ships, and `test/encryption3.test.ts` produces the blob with the server's own `encryptBuffer`
 (the format is the same code). A follow-up for the client library: `createEncryptStream` in
 WebCrypto (`AES-GCM`, 12-byte nonce `prefix ∥ index`, the AAD of § 2) and a `uploadEncrypted()`
@@ -739,10 +739,10 @@ dependency; the wrapped key stays the host's concern.
 ## 14. The client side, and where vola differs from Notes
 
 What a client of the `keyring` mode has to do — the rules thilo's Notes UI follows, implemented
-in `@vola/react` (`VolaProvider`, `VolaPinGate`, `VolaThumb`; [REACT.md](REACT.md)) and available
-to any other client through `@vola/client`:
+in `@vol-a/react` (`VolaProvider`, `VolaPinGate`, `VolaThumb`; [REACT.md](REACT.md)) and available
+to any other client through `@vol-a/client`:
 
-- **Hold the token in memory only** — never `localStorage`, a cookie or a URL. `@vola/client`
+- **Hold the token in memory only** — never `localStorage`, a cookie or a URL. `@vol-a/client`
   keeps it in the instance; `lock()` sends `DELETE /keyrings/me/unlock` and forgets it.
 - **Lock early, on the client**: after 120 s without activity show a 10 s countdown with "stay
   unlocked", then lock; a tab hidden for more than 30 s locks when it comes back; a tab that

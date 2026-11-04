@@ -80,7 +80,7 @@ jobs:
               node -e '
                 const t = require(process.argv[1]).total;
                 const p = process.argv[1].split("/")[1];
-                console.log(`| @vola/${p} | ${t.lines.pct} % | ${t.statements.pct} % | ${t.functions.pct} % | ${t.branches.pct} % |`);
+                console.log(`| @vol-a/${p} | ${t.lines.pct} % | ${t.statements.pct} % | ${t.functions.pct} % | ${t.branches.pct} % |`);
               ' "$PWD/$f"
             done
           } >> "$GITHUB_STEP_SUMMARY"

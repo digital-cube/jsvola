@@ -7,8 +7,8 @@ export default defineConfig({
   // Test workspace packages from source, without a build step.
   resolve: {
     alias: {
-      "@vola/core": src("../core/src/index.ts"),
-      "@vola/client": src("../client/src/index.ts"),
+      "@vol-a/core": src("../core/src/index.ts"),
+      "@vol-a/client": src("../client/src/index.ts"),
     },
   },
   test: {

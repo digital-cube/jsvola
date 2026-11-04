@@ -6,7 +6,7 @@ pnpm vola <command> --help        # options of one command
 docker compose -f docker-compose.yaml exec vola vola --help      # the same CLI inside the image
 ```
 
-`@vola/cli` is the `vola` command (`packages/cli`). Every administrative command talks to
+`@vol-a/cli` is the `vola` command (`packages/cli`). Every administrative command talks to
 PostgreSQL directly (`VOLA_DATABASE_URL`) and connects only when it runs, so `--help`,
 `--version` and usage errors never open the database. `demo-seed` is the one command that talks
 to a running server over HTTP. Put `--json` **before** the command for machine-readable output
@@ -45,8 +45,8 @@ Environment the commands read:
 | `VOLA_LOOKUPS_PATH` | the vocabulary commands (default: the repository's `lookups.yaml`) |
 | `VOLA_URL`, `VOLA_DEMO_WRITE_KEY`, `VOLA_DEMO_ASSETS`, `VOLA_DEMO_INSTANCE_TYPE`, `VOLA_DEMO_INSTANCE_ID` | `demo-seed` |
 
-In a checkout, `pnpm vola …` runs the CLI from source (`tsx --conditions=@vola/source`); after
-`pnpm build`, `node packages/cli/dist/main.js`; from npm, `npx @vola/cli …` or the `vola` binary
+In a checkout, `pnpm vola …` runs the CLI from source (`tsx --conditions=@vol-a/source`); after
+`pnpm build`, `node packages/cli/dist/main.js`; from npm, `npx @vol-a/cli …` or the `vola` binary
 of a global install.
 
 ## Tenants and keys
@@ -159,7 +159,7 @@ vola demo-seed --url http://localhost:8300/vola --assets apps/examples/assets
 ```
 
 `demo-seed` uploads the pack described by `assets/manifest.json` ([`apps/examples/ASSETS.md`](../apps/examples/ASSETS.md))
-with `@vola/client` under the write key — an upsert per slug, so the compose `seeder` may run
+with `@vol-a/client` under the write key — an upsert per slug, so the compose `seeder` may run
 at every `up`; `--wait` (120 s) is how long it waits for `/health/ready`.
 
 ## Lookups

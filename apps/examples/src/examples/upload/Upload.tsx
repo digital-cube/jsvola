@@ -1,5 +1,5 @@
 import { useI18n } from "@jsudc/react";
-import { useVolaUpload, VolaUploadButton, VolaUploadList } from "@vola/react";
+import { useVolaUpload, VolaUploadButton, VolaUploadList } from "@vol-a/react";
 import { type DragEvent, useState } from "react";
 import { CHUNK_SIZE, RESUMABLE_THRESHOLD } from "../../App.js";
 import { useSettings } from "../../connection.js";

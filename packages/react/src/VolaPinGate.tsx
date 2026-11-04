@@ -1,11 +1,11 @@
-import { VolaError } from "@vola/client";
+import { VolaError } from "@vol-a/client";
 import {
   PIN_INVALID_CODE,
   PIN_LENGTH,
   PIN_WRONG_CODE,
   RECOVERY_WRONG_CODE,
   TOO_MANY_ATTEMPTS_CODE,
-} from "@vola/core";
+} from "@vol-a/core";
 import {
   type ClipboardEvent,
   type KeyboardEvent,

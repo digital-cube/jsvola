@@ -22,9 +22,9 @@ import { useVolaT } from "./i18n.js";
 import { VolaMenu } from "./VolaMenu.js";
 import { VolaThumb } from "./VolaThumb.js";
 
-/** The sort keys the `files` collection accepts (`FILES_SORTABLE` of `@vola/server`). */
+/** The sort keys the `files` collection accepts (`FILES_SORTABLE` of `@vol-a/server`). */
 export const FILES_SORTABLE: readonly string[] = ["created_at", "filename", "size"];
-/** The name an encrypted file has in a row whose name cannot be decrypted (`@vola/server`). */
+/** The name an encrypted file has in a row whose name cannot be decrypted (`@vol-a/server`). */
 export const ENCRYPTED_FILENAME = "<encrypted>";
 
 const ACTION_TERM: Record<RowAction, string> = {

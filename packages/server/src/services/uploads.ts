@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { open } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import type { FileEncryption, FileInfo } from "@vola/core";
+import type { FileEncryption, FileInfo } from "@vol-a/core";
 import { and, eq, lt } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import {

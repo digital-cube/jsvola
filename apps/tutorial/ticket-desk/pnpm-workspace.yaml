@@ -5,9 +5,9 @@ packages:
 
 # Not on npm yet: see vendor/README.md.
 overrides:
-  "@vola/core": "file:vendor/vola-core-1.0.0.tgz"
-  "@vola/client": "file:vendor/vola-client-1.0.0.tgz"
-  "@vola/react": "file:vendor/vola-react-1.0.0.tgz"
+  "@vol-a/core": "file:vendor/vol-a-core-1.0.1.tgz"
+  "@vol-a/client": "file:vendor/vol-a-client-1.0.1.tgz"
+  "@vol-a/react": "file:vendor/vol-a-react-1.0.1.tgz"
   "@memento/core": "file:vendor/memento-core-1.0.0.tgz"
   "@memento/react": "file:vendor/memento-react-1.0.0.tgz"
 

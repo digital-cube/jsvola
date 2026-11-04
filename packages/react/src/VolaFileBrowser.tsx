@@ -7,7 +7,7 @@ import {
   udcKeys,
 } from "@jsudc/react";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FileInfo, FolderInfo } from "@vola/core";
+import type { FileInfo, FolderInfo } from "@vol-a/core";
 import {
   type DragEvent,
   type ReactNode,

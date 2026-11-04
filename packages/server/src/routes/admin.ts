@@ -1,4 +1,4 @@
-import { TransferRequestSchema, type TransferResult } from "@vola/core";
+import { TransferRequestSchema, type TransferResult } from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import type { Database } from "../db/index.js";

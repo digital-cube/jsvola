@@ -1,7 +1,7 @@
 import { useI18n } from "@jsudc/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FileInfo } from "@vola/core";
-import { useFilesLive, useVola } from "@vola/react";
+import type { FileInfo } from "@vol-a/core";
+import { useFilesLive, useVola } from "@vol-a/react";
 import { type ReactNode, useCallback, useState } from "react";
 import { Link } from "react-router";
 import { useSettings } from "../connection.js";

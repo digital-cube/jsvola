@@ -41,6 +41,17 @@ const NOT_IN_A_CHAPTER = /^(README\.md|pnpm-lock\.yaml|vendor\/.*)$/;
  */
 const CORRECTED = ["docker/init-databases.sql"];
 const PAGE_FILES = { en: "ticket-desk.mdx", sr: "ticket-desk-sr.mdx" };
+/**
+ * The packages were `@vola/*` when the step commits were written; since 1.0.1 they are `@vol-a/*`
+ * (the `vola` scope on npm is taken), with new tarballs in vendor/. The history is not rewritten:
+ * every file read from a step's commit goes through this rename, so the chapters, the check and
+ * the run all see the program with the names it has now.
+ */
+const renamed = (text) =>
+  text
+    .replaceAll("@vola/", "@vol-a/")
+    .replace(/\bvola-(core|client|react)-1\.0\.0\.tgz/g, "vol-a-$1-1.0.1.tgz");
+const TARBALLS = ["vol-a-core-1.0.1.tgz", "vol-a-client-1.0.1.tgz", "vol-a-react-1.0.1.tgz"];
 
 const git = (...args) =>
   execFileSync("git", args, { cwd: REPO, encoding: "utf8", maxBuffer: 1 << 28 });
@@ -81,7 +92,7 @@ function snippets() {
       mkdirSync(dirname(base), { recursive: true });
       if (status === "A") {
         const rev = CORRECTED.includes(path) ? "HEAD" : sha;
-        writeFileSync(`${base}.txt`, git("show", `${rev}:${PROGRAM}/${path}`));
+        writeFileSync(`${base}.txt`, renamed(git("show", `${rev}:${PROGRAM}/${path}`)));
       } else if (status === "M") {
         const diff = git(
           "diff",
@@ -91,7 +102,7 @@ function snippets() {
           "--",
           `${PROGRAM}/${path}`,
         );
-        const body = diff.slice(diff.indexOf("--- a/"));
+        const body = renamed(diff.slice(diff.indexOf("--- a/")));
         writeFileSync(`${base}.diff.txt`, body);
       } else {
         throw new Error(`step ${step}: ${path} is ${status}: a chapter cannot show that yet`);
@@ -195,6 +206,37 @@ function checkout(sha, dir) {
       writeFileSync(join(dir, path), git("show", `HEAD:${PROGRAM}/${path}`));
     }
   }
+  renameCheckout(dir);
+}
+
+/** A checkout of a step, with the packages' names of today: see `renamed`. */
+function renameCheckout(dir) {
+  for (const path of walk(dir)) {
+    const bytes = readFileSync(path);
+    if (bytes.includes(0)) continue;
+    const text = bytes.toString("utf8");
+    const next = renamed(text);
+    if (next !== text) writeFileSync(path, next);
+  }
+  const vendor = join(dir, "vendor");
+  if (!existsSync(vendor)) return;
+  for (const name of readdirSync(vendor)) {
+    if (/^vola-.*\.tgz$/.test(name)) rmSync(join(vendor, name));
+  }
+  for (const name of TARBALLS)
+    copyFileSync(join(REPO, PROGRAM, "vendor", name), join(vendor, name));
+  // The lock of that step names the new tarballs now; their integrity and version are today's.
+  const lock = join(dir, "pnpm-lock.yaml");
+  if (!existsSync(lock)) return;
+  const today = readFileSync(join(REPO, PROGRAM, "pnpm-lock.yaml"), "utf8");
+  const entry = (name) =>
+    new RegExp(`^  '@vol-a/\\w+@file:vendor/${name.replaceAll(".", "\\.")}':\n(    .*\n)+`, "m");
+  let text = readFileSync(lock, "utf8");
+  for (const name of TARBALLS) {
+    const now = today.match(entry(name))?.[0];
+    if (now) text = text.replace(entry(name), () => now);
+  }
+  writeFileSync(lock, text);
 }
 
 const tree = (dir) =>

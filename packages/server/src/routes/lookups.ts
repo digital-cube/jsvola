@@ -1,4 +1,4 @@
-import { type InstanceTypesResponse, LOCALE_QUERY, type LookupsResponse } from "@vola/core";
+import { type InstanceTypesResponse, LOCALE_QUERY, type LookupsResponse } from "@vol-a/core";
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import type { FastifyPluginAsync } from "fastify";
 import { requireTenant } from "../context.js";

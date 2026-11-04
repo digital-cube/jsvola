@@ -1,4 +1,4 @@
-import { RECOMPUTE_QUERY, type StorageStats, type TenantStats } from "@vola/core";
+import { RECOMPUTE_QUERY, type StorageStats, type TenantStats } from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync } from "fastify";
 import { hasTenant, requireTenant } from "../context.js";
 import type { Database } from "../db/index.js";

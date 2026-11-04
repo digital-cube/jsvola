@@ -31,7 +31,7 @@
 import { randomBytes } from "node:crypto";
 import type { FileHandle } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import type { FileEncryption } from "@vola/core";
+import type { FileEncryption } from "@vol-a/core";
 import {
   ciphertextLengthFor,
   encodeHeader,

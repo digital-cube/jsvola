@@ -1,4 +1,4 @@
-import type { StorageStats, StorageUsage, TenantStats } from "@vola/core";
+import type { StorageStats, StorageUsage, TenantStats } from "@vol-a/core";
 import { and, count, eq, isNull, lt, max, min, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";

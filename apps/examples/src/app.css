@@ -1,5 +1,5 @@
 /* The examples site: shell (header, sidebar, menu, settings) and the pages. Comes after
-   @jsudc/react/styles.css and @vola/react/styles.css and reads their tokens. */
+   @jsudc/react/styles.css and @vol-a/react/styles.css and reads their tokens. */
 
 :root {
   --ex-bg: var(--background, #f6f7f9);

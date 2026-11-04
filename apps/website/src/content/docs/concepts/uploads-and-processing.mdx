@@ -28,7 +28,7 @@ One consequence for clients: in a multipart body, the `encryption` field and the
 
 ## Resumable uploads
 
-`/vola/uploads` speaks tus 1.0 core with the `creation`, `termination` and `expiration` extensions. `tus-js-client` works unchanged, and `@vola/client`'s `uploads.resumable()` wraps it.
+`/vola/uploads` speaks tus 1.0 core with the `creation`, `termination` and `expiration` extensions. `tus-js-client` works unchanged, and `@vol-a/client`'s `uploads.resumable()` wraps it.
 
 | Route | What it does |
 | --- | --- |
@@ -97,7 +97,7 @@ Every consumer follows four rules:
 3. **If you proxy a thumbnail onwards, pass the status and `no-cache` through.** Do not repackage it into your own `max-age` and `ETag` answer.
 4. **Retry with backoff** (1 s, 2 s, 4 s). The worker usually fills the cache within about a second.
 
-`@vola/client`'s `files.thumb()` and `@vola/react`'s `VolaThumb` implement these rules. The [Thumbnails example](/examples/thumbnails/) lets you watch the sequence.
+`@vol-a/client`'s `files.thumb()` and `@vol-a/react`'s `VolaThumb` implement these rules. The [Thumbnails example](/examples/thumbnails/) lets you watch the sequence.
 
 ```sh
 curl -s -o thumb.webp -w '%{http_code} %header{x-thumbnail-status}\n' -H "Authorization: Bearer $KEY" \

@@ -1,4 +1,4 @@
-# @vola/lookups
+# @vol-a/lookups
 
 Controlled vocabularies for JSVola: the `lookups.yaml` compiler and registry, CSV
 translations with a validator, candidate recording for unknown values, promotion of

@@ -1,6 +1,6 @@
 mkdir -p vendor
-for package in vola-core vola-client vola-react memento-core memento-react; do
-  curl -fsSL -o "vendor/$package-1.0.0.tgz" \
-    "https://vol-a.com/tutorials/ticket-desk/vendor/$package-1.0.0.tgz"
+for tarball in vol-a-core-1.0.1 vol-a-client-1.0.1 vol-a-react-1.0.1 memento-core-1.0.0 memento-react-1.0.0; do
+  curl -fsSL -o "vendor/$tarball.tgz" \
+    "https://vol-a.com/tutorials/ticket-desk/vendor/$tarball.tgz"
 done
 ls vendor

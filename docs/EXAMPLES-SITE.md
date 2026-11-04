@@ -89,7 +89,7 @@ it is soft-deleted with it, and goes for good when its own time comes.
 
 ### The site (`apps/examples`)
 
-Vite + React 19 on `@vola/react` and `@jsudc/react`. `VolaProvider` gets a `VolaClient` whose
+Vite + React 19 on `@vol-a/react` and `@jsudc/react`. `VolaProvider` gets a `VolaClient` whose
 `fetch` is **`demoFetch`** (`src/connection.tsx`): a request that `needsProxy` — anything but
 `GET`/`HEAD`, the whole `/uploads` protocol, `/shares`, `/keyrings/me/*` (not the
 `unlock/close` beacon, not the UDC actions, not the demo routes) — is sent to the write proxy

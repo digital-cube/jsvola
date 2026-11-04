@@ -23,7 +23,7 @@
  * never written in the clear, and goes with the blob (`storage.remove` drops every
  * `<blob>.*`) — and the crypto-shred of the row covers it anyway: no FK, no thumbnail.
  */
-import type { ThumbnailCrop, ThumbnailSize } from "@vola/core";
+import type { ThumbnailCrop, ThumbnailSize } from "@vol-a/core";
 import { aeadOpen, aeadSeal, assertKey, gcmDecrypt, gcmEncrypt, NONCE_BYTES } from "./aead.js";
 import { IntegrityError } from "./errors.js";
 

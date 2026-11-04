@@ -4,7 +4,7 @@ For the applications that call vola-spp today — **thilo.ai, opencon, vigiles, 
 dclabstpl, mementoservice, tplbuilder-2** ([ANALYSIS.md § 2.5](ANALYSIS.md#25-ko-koristi-vola-danas)).
 JSVola is a new API (decision 1 of [PLAN.md](PLAN.md): no wire compatibility) and a clean start
 (decision 2: no data migration). The route reference is [API.md](API.md); the SDK that wraps
-every route is [`@vola/client`](../packages/client/README.md).
+every route is [`@vol-a/client`](../packages/client/README.md).
 
 ## What changes in one paragraph
 
@@ -31,12 +31,12 @@ live lists over WebSocket, OCR, encryption, keyrings, an audit trail.
 | a tenant key on another tenant's file | 404 / 403 | always `404` |
 | errors | FastAPI's `{detail: …}` | `{error: {code, message, …}}`; codes in [API.md § Errors](API.md#errors) |
 
-## Routes: old → new → `@vola/client`
+## Routes: old → new → `@vol-a/client`
 
 `:type/:id` below is `instance_type/instance_id` (`tickets/5c1b…`); `$F` a file id. The SDK
 methods take the same arguments in order.
 
-| vola-spp | JSVola | `@vola/client` |
+| vola-spp | JSVola | `@vol-a/client` |
 |---|---|---|
 | `POST /api/v1/files/{type}/id/{id}` multipart (`folder_path`, `folder_id`, `parent_id`) | `POST /vola/files/:type/:id` multipart (the same fields + `metadata`, `encryption`) | `vola.files.upload(type, id, source, { folderPath, folderId, parentId, metadata, encryption })` |
 | `PUT /api/v1/files/{type}/id/{id}/slug/{slug}` | `PUT /vola/files/:type/:id/slug/:slug` | `vola.files.putSlug(type, id, slug, source)` |
@@ -72,7 +72,7 @@ methods take the same arguments in order.
 | `GET /api/lookups` | `GET /vola/lookups[?locale=]` (no key) | `vola.lookups(locale)` |
 | health | `GET /vola/health/live`, `GET /vola/health/ready` | `vola.live()`, `vola.ready()` |
 | — (new) | `POST /vola/uploads` + tus (`HEAD`/`PATCH`/`DELETE /vola/uploads/:id`) | `vola.uploads.resumable(type, id, source, { … })` |
-| — (new) | `GET /vola/udc/subscribe` (WebSocket) | `@vola/react`'s `VolaFileBrowser`, or a `WebSocket` by hand ([REALTIME.md](REALTIME.md)) |
+| — (new) | `GET /vola/udc/subscribe` (WebSocket) | `@vol-a/react`'s `VolaFileBrowser`, or a `WebSocket` by hand ([REALTIME.md](REALTIME.md)) |
 | — (new) | `/vola/keyrings/…`, `X-Vola-Unlock`, `X-Vola-Content-Key`, `encryption` on uploads, share grants | `vola.keyrings.*`, `encryption` / `contentKey` options, `openShare` handles the fragment |
 
 ## What stays exactly the same
@@ -82,7 +82,7 @@ methods take the same arguments in order.
   there. Branch on the status, never cache a `202` body under a content-derived key, pass
   `no-cache` through a proxy, retry with backoff. Every consumer that got this right against
   vola-spp needs no change here ([API.md](API.md#thumbnails--get-thumbsize-answers-202-too)).
-  `@vola/client`'s `files.thumb()` and `@vola/react`'s `VolaThumb` implement the rule.
+  `@vol-a/client`'s `files.thumb()` and `@vol-a/react`'s `VolaThumb` implement the rule.
 - The sizes `64 / 128 / 256 / 512`, the crops `cover` / `fit` / `attention`, WebP.
 - `Range` / `206` / `416`, `HEAD`, `ETag` and `304` on downloads; `inline` for images, video,
   audio and PDF.
@@ -133,7 +133,7 @@ mementoservice, tplbuilder-2), `…/slug/profile_image` (thilo). Per project:
    tenants keeps using an admin key + `X-Tenant-Slug`.
 2. **Base URL and prefix.** `https://files.example.com/vola` replaces `https://…` + `/api/v1`.
    If the project has a vola client module (thilo.ai has `libs/vola`), replace it with
-   `@vola/client` (TypeScript) or rewrite its route table from the one above (Python). The
+   `@vol-a/client` (TypeScript) or rewrite its route table from the one above (Python). The
    `/udc/*` calls move under the prefix: `/vola/udc/list`.
 3. **Uploads.** `POST /vola/files/:type/:id` — drop `/id/` from the path; the field names
    (`file`, `folder_path`, `folder_id`, `parent_id`) are unchanged, `metadata` is new. The
@@ -151,7 +151,7 @@ mementoservice, tplbuilder-2), `…/slug/profile_image` (thilo). Per project:
    client must send as `X-Share-Secret` (`VolaClient.openShare` does it).
 8. **UDC.** `POST /vola/udc/list|describe|read` with the same filter DSL (`@jsudc/core` 0.2);
    rows gain `kind`, `encryption`, `processing_status`, `ocr`. A UI on `@udc/react` moves to
-   `@jsudc/react` + `@vola/react`'s `VolaFileBrowser` (live through `/udc/subscribe`).
+   `@jsudc/react` + `@vol-a/react`'s `VolaFileBrowser` (live through `/udc/subscribe`).
 9. **Stats, instance types, lookups.** Path changes only (`/vola/stats/tenant`,
    `/vola/instance-types`, `/vola/lookups`).
 10. **Errors.** Map `{error: {code}}` instead of `{detail}`; the codes to branch on are in
@@ -165,6 +165,6 @@ mementoservice, tplbuilder-2), `…/slug/profile_image` (thilo). Per project:
 13. **Decommission** the vola-spp key for that project once the switch is done.
 
 New capabilities worth adopting while there: `encryption: "tenant"` on uploads (one header,
-no client change), keyrings for per-user private files (`@vola/react`'s `VolaPinGate`), OCR
+no client change), keyrings for per-user private files (`@vol-a/react`'s `VolaPinGate`), OCR
 text through `…/info?ocr=full` and the UDC `ocr` full-text filter, the audit trail into memento,
 and live lists instead of polling.

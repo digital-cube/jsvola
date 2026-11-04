@@ -24,7 +24,7 @@ import {
   RECOVERY_KEY_BYTES,
   RECOVERY_KEY_GROUP_LENGTH,
   RECOVERY_KEY_GROUPS,
-} from "@vola/core";
+} from "@vol-a/core";
 import argon2 from "argon2";
 import type { KeyringKdf } from "../db/schema.js";
 import { aeadOpen, aeadSeal, assertKey, KEY_BYTES, NONCE_BYTES, TAG_BYTES } from "./aead.js";

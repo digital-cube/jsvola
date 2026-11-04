@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { VolaClient, VolaError } from "@vola/client";
+import { VolaClient, VolaError } from "@vol-a/client";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {

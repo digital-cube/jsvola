@@ -2,12 +2,12 @@
 # - merge to main  → ghcr.io/digital-cube/jsvola:main, :edge, :sha-<short>
 # - tag vX.Y.Z     → lint, type check, build and unit tests first; then
 #                    ghcr.io/digital-cube/jsvola:X.Y.Z, :X.Y, :X, :latest,
-#                    a GitHub release (notes from CHANGELOG.md) and the @vola/* npm packages
-#                    (@vola/core, @vola/lookups, @vola/server, @vola/client, @vola/react, @vola/cli;
+#                    a GitHub release (notes from CHANGELOG.md) and the @vol-a/* npm packages
+#                    (@vol-a/core, @vol-a/lookups, @vol-a/server, @vol-a/client, @vol-a/react, @vol-a/cli;
 #                    packages/e2e and apps/examples are private and never published).
 # The tag must equal the version in package.json (bump every package, then `git tag vX.Y.Z`).
 # The npm step needs the NPM_TOKEN repository secret (an npm automation token of an account that
-# may publish to the @vola scope); without it the packages are not published, with a warning.
+# may publish to the @vol-a scope); without it the packages are not published, with a warning.
 name: Release
 
 on:
@@ -166,14 +166,14 @@ jobs:
           ' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; }
           printf '\n**Docker:** `docker pull %s:%s`\n' "$IMAGE" "$VERSION" >> notes.md
-          printf '**npm:** `pnpm add @vola/client@%s` · `@vola/react` · `@vola/server` · `@vola/cli` · `@vola/core` · `@vola/lookups`\n' "$VERSION" >> notes.md
+          printf '**npm:** `pnpm add @vol-a/client@%s` · `@vol-a/react` · `@vol-a/server` · `@vol-a/cli` · `@vol-a/core` · `@vol-a/lookups`\n' "$VERSION" >> notes.md
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
 
   npm:
-    name: Publish @vola/* to npm
+    name: Publish @vol-a/* to npm
     if: github.ref_type == 'tag'
     needs: [version, test, image]
     runs-on: ubuntu-latest
@@ -196,7 +196,7 @@ jobs:
           NPM_CONFIG_PROVENANCE: "true"
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::NPM_TOKEN is not set: @vola/* packages were not published"
+            echo "::warning::NPM_TOKEN is not set: @vol-a/* packages were not published"
             exit 0
           fi
           pnpm -r --filter "./packages/*" publish --access public --provenance --no-git-checks

@@ -1,6 +1,6 @@
 import type { FilterNode, Row } from "@jsudc/core";
 import type { Source } from "@jsudc/server";
-import type { FileEventKind } from "@vola/core";
+import type { FileEventKind } from "@vol-a/core";
 
 /**
  * Where a subscription's changes go: the row to put in place, or the id to take out. Both

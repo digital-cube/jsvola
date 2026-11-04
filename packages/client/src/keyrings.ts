@@ -12,7 +12,7 @@ import {
   RecoveredSchema,
   type Unlocked,
   UnlockedSchema,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { CallOptions, VolaClient } from "./client.js";
 
 export interface UnlockOptions extends CallOptions {

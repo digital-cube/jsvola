@@ -111,12 +111,12 @@ Predlog: sve ovo se preuzima 1:1, osim tamo gde vola ima nešto čega memento ne
 ```
 jsvola/
 ├── packages/
-│   ├── core/       @vola/core     — Zod šeme, tipovi, ključ/scope helperi, lookups imena
-│   ├── server/     @vola/server   — Fastify plugin + server, Drizzle šema, CAS storage, UDC source
-│   ├── worker/     @vola/worker   — thumbnails/OCR/stats poslovi (ako se izdvaja; vidi Q5)
-│   ├── client/     @vola/client   — fetch SDK (upload, download, share, folders)
-│   ├── react/      @vola/react    — file browser, upload dugme, thumbnail renderer za @jsudc/react
-│   ├── cli/        @vola/cli      — create-tenant, create-key, list/revoke, migrate, transfer
+│   ├── core/       @vol-a/core     — Zod šeme, tipovi, ključ/scope helperi, lookups imena
+│   ├── server/     @vol-a/server   — Fastify plugin + server, Drizzle šema, CAS storage, UDC source
+│   ├── worker/     @vol-a/worker   — thumbnails/OCR/stats poslovi (ako se izdvaja; vidi Q5)
+│   ├── client/     @vol-a/client   — fetch SDK (upload, download, share, folders)
+│   ├── react/      @vol-a/react    — file browser, upload dugme, thumbnail renderer za @jsudc/react
+│   ├── cli/        @vol-a/cli      — create-tenant, create-key, list/revoke, migrate, transfer
 │   ├── lookups/    (zajednički sa memento? vidi Q4)
 │   └── e2e/
 ├── apps/

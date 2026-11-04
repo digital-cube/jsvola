@@ -16,7 +16,7 @@ import {
   UPLOAD_FOLDER_PATH_FIELD,
   UPLOAD_METADATA_FIELD,
   UPLOAD_PARENT_ID_FIELD,
-} from "@vola/core";
+} from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { requireTenant } from "../context.js";

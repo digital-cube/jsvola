@@ -1,6 +1,6 @@
 {
-  "name": "@vola/server",
-  "version": "1.0.0",
+  "name": "@vol-a/server",
+  "version": "1.0.1",
   "description": "JSVola server: Fastify plugin and standalone server, Drizzle/PostgreSQL storage, Redis, tenant isolation, API key auth, UDC collections.",
   "license": "MIT",
   "repository": {
@@ -16,7 +16,7 @@
   "type": "module",
   "exports": {
     ".": {
-      "@vola/source": "./src/index.ts",
+      "@vol-a/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -29,13 +29,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx watch --conditions=@vola/source src/server.ts",
+    "dev": "tsx watch --conditions=@vol-a/source src/server.ts",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
-    "dev:worker": "tsx watch --conditions=@vola/source src/worker.ts",
+    "dev:worker": "tsx watch --conditions=@vol-a/source src/worker.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --conditions=@vola/source src/migrate-cli.ts",
-    "db:migrate:test": "MIGRATE_TARGET=test tsx --conditions=@vola/source src/migrate-cli.ts",
+    "db:migrate": "tsx --conditions=@vol-a/source src/migrate-cli.ts",
+    "db:migrate:test": "MIGRATE_TARGET=test tsx --conditions=@vol-a/source src/migrate-cli.ts",
     "test": "vitest run",
     "test:cov": "vitest run --coverage"
   },
@@ -46,8 +46,8 @@
     "@fastify/websocket": "^11.3.5",
     "@jsudc/core": "0.2.0",
     "@jsudc/server": "0.2.1",
-    "@vola/core": "workspace:*",
-    "@vola/lookups": "workspace:*",
+    "@vol-a/core": "workspace:*",
+    "@vol-a/lookups": "workspace:*",
     "argon2": "^0.45.1",
     "bullmq": "^6.5.3",
     "drizzle-orm": "^0.45.4",

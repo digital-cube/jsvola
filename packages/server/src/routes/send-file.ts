@@ -1,4 +1,4 @@
-import { ENCRYPTION_RESPONSE_HEADER, errorResponse, FORCE_DOWNLOAD_QUERY } from "@vola/core";
+import { ENCRYPTION_RESPONSE_HEADER, errorResponse, FORCE_DOWNLOAD_QUERY } from "@vol-a/core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { type CiphertextSource, createDecryptStream } from "../crypto/index.js";
 import type { FileRow } from "../db/schema.js";

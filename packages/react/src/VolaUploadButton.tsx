@@ -1,4 +1,4 @@
-import type { FileEncryption } from "@vola/core";
+import type { FileEncryption } from "@vol-a/core";
 import { type ChangeEvent, type ReactNode, useId, useRef, useState } from "react";
 import { useVolaT } from "./i18n.js";
 import {

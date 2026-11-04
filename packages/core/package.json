@@ -1,6 +1,6 @@
 {
-  "name": "@vola/core",
-  "version": "1.0.0",
+  "name": "@vol-a/core",
+  "version": "1.0.1",
   "description": "JSVola protocol: Zod schemas, inferred types and helpers shared by server, CLI and clients.",
   "license": "MIT",
   "repository": {
@@ -17,7 +17,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "@vola/source": "./src/index.ts",
+      "@vol-a/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }

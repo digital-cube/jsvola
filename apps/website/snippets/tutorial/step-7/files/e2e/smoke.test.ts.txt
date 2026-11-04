@@ -2,7 +2,7 @@
  * The main flow against the running stack: `docker compose up -d --build`, `make setup`, then
  * `pnpm test:e2e`. Everything goes through the desk's own port, as the browser's requests do.
  */
-import { VolaClient } from "@vola/client";
+import { VolaClient } from "@vol-a/client";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ticketEvents } from "../src/web/feed.ts";
 

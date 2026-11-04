@@ -1,5 +1,5 @@
 import { useI18n } from "@jsudc/react";
-import type { FileInfo } from "@vola/core";
+import type { FileInfo } from "@vol-a/core";
 import {
   useVola,
   useVolaKeyring,
@@ -7,7 +7,7 @@ import {
   VolaKeyringStatus,
   VolaPinGate,
   VolaThumb,
-} from "@vola/react";
+} from "@vol-a/react";
 import { useEffect, useState } from "react";
 import { useSettings } from "../../connection.js";
 import { Connected } from "../../shell/AppShell.js";

@@ -2,10 +2,27 @@
 
 All notable changes to JSVola. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
-[Semantic Versioning](https://semver.org/). Every `@vola/*` package and the Docker image
-share one version.
+[Semantic Versioning](https://semver.org/). Every `@vol-a/*` package (named `@vola/*` up to 1.0.0) and the
+Docker image share one version.
 
 ## [Unreleased]
+
+## [1.0.1] - 2026-11-04
+
+The packages are renamed from `@vola/*` to **`@vol-a/*`** — `@vol-a/core`, `@vol-a/lookups`,
+`@vol-a/server`, `@vol-a/client`, `@vol-a/react`, `@vol-a/cli` — because the `vola` scope on npm
+is taken; the npm organisation is `vol-a`, like the site vol-a.com. This is the first npm
+publication (1.0.0 went out as the Docker image and the GitHub release only). Nothing else
+changes: the CLI is still `vola`, the image is still `ghcr.io/digital-cube/jsvola`, the
+variables `VOLA_*`, the `/vola` prefix, the `vola_*` tables and the `X-Vola-*` headers stay.
+
+### Changed
+
+- Every package name, import, `--filter` and the source export condition (`@vol-a/source`):
+  replace `@vola/` with `@vol-a/` in an application's `package.json` and imports. The entries
+  below 1.0.0 keep the names the packages had then.
+- The tutorial's tarballs are `vol-a-core-1.0.1.tgz`, `vol-a-client-1.0.1.tgz` and
+  `vol-a-react-1.0.1.tgz`; the chapters show the program with the new names.
 
 ## [1.0.0] - 2026-11-04
 
@@ -628,5 +645,6 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
   timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
   The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
-[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/digital-cube/jsvola/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0

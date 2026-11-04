@@ -4,7 +4,7 @@ import {
   type ProcessingStatus,
   type ThumbnailCrop,
   type ThumbnailSize,
-} from "@vola/core";
+} from "@vol-a/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { Database } from "../db/index.js";
