@@ -2,22 +2,38 @@
 title: Embed it with volaPlugin
 description: vola's routes as a Fastify plugin inside the application you already run.
 sidebar:
-  order: 4
+  order: 5
 ---
 
 import { Code } from "@astrojs/starlight/components";
 import install from "../../../../snippets/embedded/install.sh?raw";
+import checkOut from "../../../../snippets/embedded/check.out.txt?raw";
+import check from "../../../../snippets/embedded/check.sh?raw";
+import env from "../../../../snippets/embedded/env.sh?raw";
 import server from "../../../../snippets/embedded/server.ts?raw";
 
-If your application is already on Fastify, vola can live in the same process, with one database and one deploy.
+If your application is already on Fastify, vola can live in the same process, with one database and one deploy. The database can be your PostgreSQL or a SQLite file next to the application.
 
 <Code code={install} lang="sh" title="Terminal" />
 <Code code={server} lang="ts" title="server.ts" />
 
-`loadConfig()` reads every `VOLA_*` variable and validates it; [Environment variables](/reference/environment/) lists them. `VOLA_DATABASE_URL` is required.
+`loadConfig()` reads every `VOLA_*` variable and validates it; [Environment variables](/reference/environment/) lists them.
+
+## Pick the database
+
+`VOLA_DATABASE_URL` decides: `postgresql://…` for PostgreSQL, `file:<path>` for one SQLite file. `connect()` picks the driver from the URL, and `runMigrations()` brings the database up to date, creating the SQLite file on the first start. The application code is the same for both. This run used SQLite:
+
+<Code code={env} lang="sh" title="Terminal" />
+
+In a second terminal:
+
+<Code code={check} lang="sh" title="Terminal" />
+<Code code={checkOut} lang="txt" title="What it printed" />
+
+On SQLite your application **is** the one server process the file allows: do not also run `server.js` on it. `vola` CLI commands next to it are fine, and a worker on the same host is too. `connect()` opens one database per process. The `onClose` hook closes it, so after a clean stop only `app.db` and `storage` remain. The rest is in [Run it on a SQLite file](/get-started/sqlite/) and the [SQLite guide](/reference/sqlite/#embedded-the-plugin-in-your-application).
 
 ## Things to run beside it
 
-**The worker is a separate process.** Thumbnails and OCR are rendered off the request path, so without a worker `/thumb` keeps answering 202. Run `node node_modules/@vol-a/server/dist/worker.js` with the same environment. It needs `VOLA_REDIS_URL`, the same `VOLA_STORAGE_PATH` and, for encrypted files, the same key file. PDF thumbnails and OCR need `pdftoppm` and `tesseract` on the machine.
+**The worker is a separate process.** With `VOLA_REDIS_URL` set, thumbnails and OCR are rendered off the request path, so without a worker `/thumb` keeps answering 202. Without Redis, thumbnails render inline on `/thumb` and OCR does not run. Run `node node_modules/@vol-a/server/dist/worker.js` with the same environment. It needs `VOLA_REDIS_URL`, the same `VOLA_DATABASE_URL` and `VOLA_STORAGE_PATH` and, for encrypted files, the same key file. On SQLite it must run on the same host, opening the same file. PDF thumbnails and OCR need `pdftoppm` and `tesseract` on the machine.
 
 **Options you can pass.** Besides `prefix`, `config` and `db`, the plugin takes `redis`, `storage`, `events`, `audit`, `encryption`, `decorateRow` and `extend`. The [package README](https://github.com/digital-cube/jsvola/blob/main/packages/server/README.md) describes them.

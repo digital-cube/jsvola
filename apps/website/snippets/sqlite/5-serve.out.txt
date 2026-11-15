@@ -1,0 +1,7 @@
+{"level":40,…,"msg":"lookups.yaml not found: the vocabulary is empty"}
+{"level":30,…,"reason":"no VOLA_REDIS_URL","effect":"thumbnails are rendered inline on /thumb; OCR does not run","msg":"background jobs disabled"}
+{"level":30,…,"key_file":"/run/secrets/vola.key","keyring":null,"msg":"encryption: tenant and caller providers (no Redis: no keyring provider)"}
+{"level":30,…,"msg":"audit disabled: VOLA_MEMENTO_URL / VOLA_MEMENTO_API_KEY are not set"}
+{"level":40,…,"msg":"menu.yaml not found: no menu collection"}
+{"level":30,…,"prefix":"/vola","storage":"…/my-vola/data/storage","redis":false,"msg":"vola configured"}
+{"level":30,…,"msg":"Server listening at http://127.0.0.1:8310"}
