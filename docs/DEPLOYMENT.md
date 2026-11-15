@@ -7,14 +7,15 @@ upgrades and a reverse proxy. The routes: [API.md](API.md); the CLI inside the c
 Contents: [Quick start](#quick-start-docker-composeyaml) · [The image](#the-image) ·
 [Environment variables](#environment-variables) · [The key file and the pepper file](#the-key-file-and-the-pepper-file) ·
 [Volumes](#volumes) · [The worker](#the-worker) · [OCR](#ocr) · [Reverse proxy](#behind-a-reverse-proxy) ·
-[Backups](#backups) · [Upgrades](#upgrades-and-migrations) · [Scaling](#scaling) ·
+[SQLite](#running-on-sqlite) · [Backups](#backups) · [Upgrades](#upgrades-and-migrations) · [Scaling](#scaling) ·
 [Examples site](#the-examples-site-profile-demo) · [Checking a deployment](#checking-a-deployment)
 
 ## Quick start: `docker-compose.yaml`
 
 The production-like stack: the **server** (`vola`), the **worker** (`vola-worker`, the same
 image), **PostgreSQL 16** and **Redis 7**. Every `${VAR}` can be set in the shell or in a `.env`
-next to the file (`.env.example` lists them all).
+next to the file (`.env.example` lists them all). Without a PostgreSQL service, on one SQLite
+file: [SQLITE.md](SQLITE.md).
 
 ```sh
 docker compose -f docker-compose.yaml up -d
@@ -82,7 +83,7 @@ stops the process at start with one line naming every bad variable.
 
 | variable | default | |
 |---|---|---|
-| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process (and one worker on the same host) — see [Running on SQLite](#running-on-sqlite). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
+| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process (and one worker on the same host) — see [SQLITE.md](SQLITE.md). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
 | `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only (the same forms) |
 | `VOLA_REDIS_URL` | *(unset)* | Redis: the job queue, file events across processes, unlock tokens, the share-password counter. Unset: one process, synchronous jobs, in-process events, **no keyrings** |
 | `VOLA_HOST` / `VOLA_PORT` | `0.0.0.0` / `8300` | the listener |
@@ -277,88 +278,38 @@ To turn it off everywhere: `VOLA_OCR_ENABLED=0` on the server (no job is created
 - The examples site, if served, is the same container at `/` (`VOLA_UI_DIR`); the API lives
   under `VOLA_PREFIX`.
 
-## Features by database
-
-| | PostgreSQL (default) | SQLite (`file:<path>`) |
-|---|---|---|
-| files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, encryption (all four modes), UDC lists and `subscribe`, statistics, transfer | yes | yes |
-| thumbnails | by the worker, or inline on `/thumb` | by the worker, or inline on `/thumb` |
-| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract), `tsvector` + GIN | yes (worker + tesseract), FTS5 |
-| OCR search words | PostgreSQL's `simple` parser: lower-cased, no stemming, diacritics kept (`č` ≠ `c`) | FTS5 `unicode61`, `remove_diacritics 0`: the same, except that every character that is not a letter or a digit separates words (`e-mail` is `e` and `mail`; PostgreSQL also keeps `e-mail` whole) |
-| the worker process and its Redis job queue | yes, on any host | yes, **on the server's host**, opening the same file (`VOLA_REDIS_URL` set) |
-| several server processes on one database | yes | **no** — one server process (and one worker) per file, one writer at a time |
-| Redis for file events, keyring unlock tokens, the share-password counter | yes | yes |
-
 ## Running on SQLite
 
-For a small installation that must not depend on a database service: one server process, no
-PostgreSQL — and, when you want OCR or thumbnails off the request path, Redis and one worker
-process on the same host. Point `VOLA_DATABASE_URL` at a file:
+`VOLA_DATABASE_URL=file:<path>` runs vola on one SQLite file instead of PostgreSQL: one server
+process and no database service; with Redis, one worker process on the same host opens the
+same file for thumbnails and OCR. Everything about it is in **[SQLITE.md](SQLITE.md)**: which
+database fits (the features-by-database table), the quick start without Docker, embedding,
+the worker and how the OCR search differs, the files and their permissions, backups with
+`VACUUM INTO`, and the limits. What is particular to the image:
 
-```sh
-VOLA_DATABASE_URL=file:/var/lib/vola/vola.db   # or file:var/vola.db, relative to the working directory
-VOLA_STORAGE_PATH=/var/lib/vola/storage
-# Optional: the worker (thumbnails, OCR). Without VOLA_REDIS_URL everything runs inline.
-VOLA_REDIS_URL=redis://localhost:6379/0
-```
-
-- **The file.** The server creates it (and its directory) at the first start and applies the
-  SQLite migrations (`drizzle-sqlite/`) to it, as it does on PostgreSQL. Keep it on a local disk
-  next to the storage — in the image, under the `/data` volume (`file:/data/vola.db`); not on
-  NFS or another network filesystem, where SQLite's locking is not reliable.
-- **WAL.** The database runs in WAL mode: next to `vola.db` you will see `vola.db-wal` and
-  `vola.db-shm` while it is open. They are part of the database — never delete them while the
-  server runs, and copy them with the file when you copy it stopped.
-- **One server process.** One server process opens the file. Its transactions take turns at
-  one writer (`BEGIN IMMEDIATE`); reads outside a transaction go to a second, read-only
-  connection and do not wait. A `vola` CLI command may run next to the server. Do not start a
-  second server on the file.
-- **Without Redis: everything inline.** Thumbnails are rendered on the first `/thumb` request
-  and stored next to the blob, as without a worker on PostgreSQL; no `OCR` job is created, so
-  the `ocr` filter finds nothing (the search itself works on whatever text is there).
-- **With Redis: the worker, on the same host.** With `VOLA_REDIS_URL` set (and
-  `VOLA_WORKER_ENABLED` `auto` or `true`) the server queues thumbnail and OCR jobs, and
-  `node dist/worker.js` (`pnpm start:worker`) runs them as on PostgreSQL — started with the SAME
-  `VOLA_DATABASE_URL` and `VOLA_STORAGE_PATH`, on the same machine: SQLite's locks and the WAL's
-  shared memory do not cross hosts, so two containers of one host sharing the `/data` volume
-  work, a worker on another machine (or the file on NFS) does not. Server and worker take
-  turns at the file's write lock; every write of the worker is one short statement, and
-  tesseract runs with no transaction open. A process waiting for the other's lock waits on a
-  timer (up to 10 s), so it keeps serving meanwhile. The expired-upload sweep stays in the
-  server (the upload a PATCH is streaming is held in the server's memory). `:memory:` has no
-  worker.
-- **OCR search.** The `ocr` filter with words searches an FTS5 index of the OCR text
-  (`unicode61`, `remove_diacritics 0`), kept in step with `vola_file_metadata` by triggers.
-  Every word must occur, case-insensitively, with no stemming and no ranking, and `č` and `c`
-  stay different letters — as PostgreSQL's `simple` configuration does. A word is a run of
-  letters and digits; any other character separates words, and FTS5's own query syntax (`"`,
-  `*`, `:`, `OR`, `NEAR`, `-`) typed by a user is plain text. The server refuses to start on a
-  Node.js whose SQLite lacks FTS5 (Node's built-in one has it).
-- **Case-insensitive search** (`ilike`) folds every letter, not only ASCII (`Ž` matches `ž`);
-  `LIKE` is case-sensitive, as on PostgreSQL.
-
-**Backup.** Back up the database together with the storage (below), the database first.
-Either stop the server and copy `vola.db` with its `-wal` and `-shm` files, or take a
-consistent copy of the running database with `VACUUM INTO`:
-
-```sh
-sqlite3 /var/lib/vola/vola.db "VACUUM INTO '/backup/vola-$(date +%F).db'"
-```
-
-The copy carries the OCR index with it (its tables are part of the file); to look into the
-index by hand, use a `sqlite3` built with FTS5 (Debian's and Ubuntu's are).
-
-To restore, stop the server, put the copy in place as `vola.db` (with no stale `-wal` / `-shm`
-next to it), restore `storage/` and start the server. There is no move of data between
-PostgreSQL and SQLite: pick one when you install.
+- Put the file on the `/data` volume, next to the storage: `VOLA_DATABASE_URL=file:/data/vola.db`.
+  The server creates and migrates it at the first start. `docker-compose.yaml` is the
+  PostgreSQL stack: on SQLite the `vola` service needs no `postgres` service.
+- A `vola-worker` container must run **on the same host** as `vola`, with the same `/data`
+  volume and the same `VOLA_DATABASE_URL`. SQLite's locks do not cross machines, so a worker on
+  another host does not work, and neither does a `/data` volume on NFS (the storage alone may
+  be on a network file system; the database file may not).
+- Run exactly one `vola` container on the file: `--scale vola=2` is for PostgreSQL only
+  ([Scaling](#scaling)).
+- Back up with `VACUUM INTO` instead of `pg_dump` (step 1 of [Backups](#backups)), e.g.
+  `docker compose exec vola node -e '…'` with the one-liner of
+  [SQLITE.md § Operations](SQLITE.md#operations), into a path on a volume.
 
 ## Backups
 
-Durable data lives in **two places that must be backed up together**: PostgreSQL (the rows —
+Durable data lives in **two places that must be backed up together**: the database (the rows —
 which blob belongs to which file of which tenant, folders, shares, keyrings, OCR text) and
 `VOLA_STORAGE_PATH` (the bytes). A database without the blobs is a catalogue of nothing; blobs
 without the database are unnamed hashes (and, for encrypted files, unreadable ones). The key
 and pepper files are the third place, kept **apart** from the other two ([above](#the-key-file-and-the-pepper-file)).
+
+The commands below are PostgreSQL's; a SQLite file is copied with `VACUUM INTO` instead
+([SQLITE.md § Operations](SQLITE.md#operations)), and the rest is the same.
 
 ```sh
 # 1. the database
@@ -401,6 +352,8 @@ API; a `1.x` client speaks to any `1.y` server.
 
 ## Scaling
 
+- **On SQLite there is no scaling**: one server process, at most one worker, one host
+  ([SQLITE.md](SQLITE.md#limits-and-known-differences)). Everything below is PostgreSQL.
 - **Several server processes** share PostgreSQL, Redis and the storage volume; file events
   travel through Redis pub/sub, so a client subscribed on one process sees uploads made through
   another. Put them behind one proxy; no sticky sessions are needed (the unlock token is in a

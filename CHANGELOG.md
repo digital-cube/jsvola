@@ -9,61 +9,66 @@ Docker image share one version.
 
 ### Added
 
-- **SQLite as a database option** for small, single-process installations that must not
-  depend on a database service: `VOLA_DATABASE_URL=file:<path>` (or `file:///abs/path`,
-  `:memory:` for tests) instead of `postgresql://…`. PostgreSQL stays the default and the
-  full-featured option. On SQLite:
-  - one server process and one writer at a time (`BEGIN IMMEDIATE`; WAL, `foreign_keys = ON`,
-    a busy timeout); the driver is Node's built-in `node:sqlite`, no new dependency;
-  - without Redis everything inline (thumbnails render on `/thumb`, no OCR); with Redis one
-    worker process on the same host, opening the same file, for thumbnails and OCR (next
-    entry);
-  - its own migration set, `packages/server/drizzle-sqlite/`, shipped in the package and
-    applied by the server at start and by `vola migrate` like the PostgreSQL one.
-  The features by database are in the README and `docs/DEPLOYMENT.md` ("Running on SQLite":
-  the file, the WAL files, backups with `VACUUM INTO`).
-- **OCR and the OCR text search on SQLite**, with the same API as on PostgreSQL:
-  - the worker runs on a SQLite file too: with `VOLA_REDIS_URL` set, `vola-worker` opens the
-    server's file (same host) and runs thumbnail and OCR jobs as on PostgreSQL. Its writes are
-    single statements and tesseract runs with no transaction open. Only `:memory:` refuses a
-    worker (`VOLA_WORKER_ENABLED=true` with it is a configuration error);
-  - the `ocr` filter with words searches an FTS5 index (`drizzle-sqlite/0001_ocr_fts.sql`,
-    hand-written: a contentless FTS5 table, `unicode61 remove_diacritics 0`, kept in step with
-    `vola_file_metadata` by triggers; text already there is indexed by the migration). Every
-    word must occur, case-insensitively, no stemming, diacritics kept (`č` ≠ `c`), the first
-    500 000 characters indexed — as `ocr_tsv` on PostgreSQL. The words are quoted by the
-    server, so FTS5 syntax typed by a user is plain text;
-  - the server refuses to open a SQLite database whose build lacks FTS5 (Node's built-in
-    SQLite has it);
-  - a writer waiting for the other process's write lock waits on a timer instead of inside
-    SQLite (`busy_timeout`), so the waiting process keeps serving;
-  - the expired-upload sweep stays in the server on SQLite even with a worker (the upload a
-    PATCH streams into is held in the server's memory).
+- **SQLite as a database option**, for a small installation on one host that must not depend
+  on a database service. Set `VOLA_DATABASE_URL=file:<path>` (relative to the working
+  directory), `file:///abs/path`, or `:memory:` for tests, in place of `postgresql://…`.
+  PostgreSQL stays the default and the full-featured option. The guide is
+  **[docs/SQLITE.md](docs/SQLITE.md)**: which database fits, the quick start without Docker,
+  embedding the plugin, the worker, backups, the limits. The features by database are also
+  in the README. What SQLite gives:
+  - Every feature of the API, with the same routes, answers and error codes: files, folders,
+    versions, shares, tus uploads, the four encryption modes, UDC lists and `subscribe`,
+    statistics, transfer, and the CLI (`vola migrate` creates and migrates the file).
+  - The driver is Node's built-in `node:sqlite` (Node 24+), so there is no new dependency.
+    The database runs in WAL mode with `foreign_keys = ON`. There is one writer at a time:
+    every transaction is `BEGIN IMMEDIATE`, and the server's transactions take turns. Reads
+    outside a transaction use a second, read-only connection.
+  - **One server process per file.** Without Redis everything runs inline: thumbnails render
+    on `/thumb`, and no OCR job is created. With `VOLA_REDIS_URL` set, **one worker process
+    on the same host** opens the same file and runs thumbnail and OCR jobs as on PostgreSQL:
+    - its writes are single statements, and tesseract runs with no transaction open;
+    - a process waiting for the other's write lock waits on a timer, up to 10 s, instead of
+      inside SQLite's `busy_timeout`, so it keeps serving;
+    - the expired-upload sweep stays in the server, because the upload a tus `PATCH` streams
+      into is guarded in the server's memory (`409 upload_locked`, as on PostgreSQL);
+    - only `:memory:` refuses a worker: `VOLA_WORKER_ENABLED=true` with it is a configuration
+      error.
+  - **The OCR text search on SQLite** has the same API as on PostgreSQL. The `ocr` filter with
+    words searches a contentless FTS5 index, `drizzle-sqlite/0001_ocr_fts.sql` (`unicode61`,
+    `remove_diacritics 0`). Triggers keep the index in step with `vola_file_metadata`, and the
+    migration indexes text already there.
+    - Search rules: every word must occur, case-insensitively, with no stemming and no
+      ranking. Diacritics are kept (`č` ≠ `c`), and the first 500 000 characters are indexed,
+      as with `ocr_tsv`.
+    - One difference: any character that is not a letter or a digit separates words
+      (`e-mail` is `e` and `mail`).
+    - The server quotes the words, so FTS5 syntax typed by a user is plain text. It refuses to
+      open a SQLite database built without FTS5 (Node's built-in one has it).
+  - Its own migration set, `packages/server/drizzle-sqlite/`, shipped in the package. The
+    server applies it at start, and `vola migrate` by hand, as with the PostgreSQL set.
+    `pnpm db:generate` writes both.
 
 ### Changed
 
 - `VOLA_DATABASE_URL` / `VOLA_DATABASE_URL_TEST` accept `file:<path>` and `:memory:` next to
-  `postgres(ql)://`. The tables in `db/schema.ts` are those of the database the process
-  connected to (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, same row types); a process
-  speaks one dialect. The dialect seam gained `like`, `forUpdateNoWait`, `onConflictDoNothing`
-  and `capabilities.rowLocks`; `ocrMatch(words)` is a condition on the joined
-  `vola_file_metadata` row (it no longer takes the indexed column).
-- `resolveJobsMode`'s input has `memoryDatabase` (an in-memory SQLite: always `sync`) in
-  place of `sqlite`.
-- The server and CLI test suites run on both databases (`VOLA_TEST_DIALECT=postgres|sqlite`
-  runs one).
-
-- `@vol-a/server`'s database layer is dialect-independent, ahead of a second database: what is
-  PostgreSQL-only (the advisory lock on a content hash, SQLSTATE `23505` / `55P03`,
-  `count(*) filter`, `->>`, `::jsonb`, `ILIKE`, `plainto_tsquery`) goes through one seam,
-  `db/dialect.ts`, with its PostgreSQL implementation in `db/postgres.ts`. The SQL and the API's
-  error codes are the same as before.
-- `connect(url)` picks the database from the URL scheme; a scheme other than `postgres://` /
-  `postgresql://` throws a `ConfigError` naming the scheme (never the rest of the URL).
-- `Database` is drizzle's PostgreSQL query builder without the driver
-  (`PgDatabase<PgQueryResultHKT, …>` instead of `NodePgDatabase`), and `DatabaseHandle` carries
-  `dialect` instead of `pool`: code that reached for `handle.pool` or `db.$client` uses
-  `handle.db` and `handle.close()`.
+  `postgres(ql)://`. `connect(url)` picks the database from the URL scheme. Any other scheme
+  throws a `ConfigError` that names the scheme and never the rest of the URL.
+- `@vol-a/server`'s database layer goes through one dialect seam, `db/dialect.ts`, with
+  `db/postgres.ts` and `db/sqlite.ts` behind it. What is not portable goes through the seam:
+  the advisory lock on a content hash, unique-violation and lock-not-available errors,
+  `count(*) filter`, JSON fields, `LIKE` / `ILIKE`, `FOR UPDATE NOWAIT`,
+  `ON CONFLICT … DO NOTHING` and the OCR text match (`ocrMatch(words)`). `capabilities` says
+  what a dialect has (`rowLocks`, `ocrSearch`). On PostgreSQL the SQL is the same as in 1.0.1.
+- The tables exported from `db/schema.ts` are those of the database the process connected to
+  (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, with the same row types), so a process
+  speaks one dialect. **For code that embeds the server:** `Database` is drizzle's query
+  builder without the driver (`PgDatabase<PgQueryResultHKT, …>` instead of `NodePgDatabase`).
+  `DatabaseHandle` carries `dialect` instead of `pool`, so code that reached for
+  `handle.pool` or `db.$client` uses `handle.db` and `handle.close()`.
+- `resolveJobsMode`'s input takes `memoryDatabase`: an in-memory SQLite is always `sync`.
+- The server and CLI test suites run on both databases (Vitest projects `server` /
+  `server-sqlite`, `cli` / `cli-sqlite`). `VOLA_TEST_DIALECT=postgres|sqlite` runs one
+  ([docs/CONTRIBUTING.md](docs/CONTRIBUTING.md#tests-on-each-database)).
 
 ## [1.0.1] - 2026-11-04
 

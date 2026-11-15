@@ -72,7 +72,8 @@ timestamps as INTEGER epoch milliseconds, `jsonb` and `text[]` as JSON TEXT, `by
 `ocr_tsv` — the OCR search is an FTS5 index, below), the CHECKs spelled with `GLOB` instead of regular expressions, the same partial
 unique indexes; a type-level check in `schema-sqlite.ts` keeps their row types identical, so the
 services never branch on the database. The migrations of the database in use are applied by the
-server at start (`runMigrations`) and by `vola migrate`; `pnpm db:generate` writes both sets. Every table is prefixed
+server at start (`runMigrations`) and by `vola migrate`; `pnpm db:generate` writes both sets. How to run on SQLite, and what it cannot do:
+[SQLITE.md](SQLITE.md). Every table is prefixed
 `vola_`, every row that belongs to a tenant carries `tenant_id`, and every query is scoped by
 it — another tenant's row does not exist (`404`).
 
@@ -84,7 +85,7 @@ it — another tenant's row does not exist (`404`).
 | `vola_file` | `tenant_id`, `instance_type`, `instance_id`, `slug` (one live file per slug), `hash` (SHA-256 of the stored blob), `size`, `filename`, `extension`, `mime_type`, `kind`, `metadata` jsonb, `folder_id`, `parent_id` (the version chain), `is_public`, `is_global_public`, `encryption`, `enc_format`, `keyring_id`, `fk_ct`, `meta_ct`, `created_by`, `updated_at`, soft delete, `last_accessed_*` | the blob is referenced by `hash`; several rows of several tenants may share one |
 | `vola_upload` | a resumable upload in flight: instance, folder, parent, slug, filename, declared MIME, metadata, `length`, `offset`, `expires_at`, `completed_file_id`, `encryption`, `enc_state` jsonb (the sealed-segment state, [CRYPTO.md § 10](CRYPTO.md#10-the-encrypted-resumable-upload-phase-63)) | the row is locked `FOR UPDATE NOWAIT` during a PATCH |
 | `vola_processing_job` | `file_id`, `kind` (`THUMBNAIL`, `OCR`), `params` (size, crop), `status` (`PENDING` → `RUNNING` → `DONE` / `FAILED` / `SKIPPED`), `error`, timestamps | `processing_status` of a file is the aggregate |
-| `vola_file_metadata` | `file_id` (PK, cascade), `ocr_text`, `ocr_lang`, `ocr_pages`, `ocr_at`, `ocr_tsv` (generated `tsvector`, GIN), `ocr_ct` (the sealed text of an encrypted file) | the full-text search of the UDC `ocr` filter |
+| `vola_file_metadata` | `file_id` (PK, cascade), `ocr_text`, `ocr_lang`, `ocr_pages`, `ocr_at`, `ocr_tsv` (generated `tsvector`, GIN; on SQLite the FTS5 table `vola_file_ocr_fts` instead), `ocr_ct` (the sealed text of an encrypted file) | the full-text search of the UDC `ocr` filter |
 | `vola_share_link` | `file_id` XOR `folder_id`, `token_hash`, `scope`, `password_hash` (argon2id), `expires_at`, `max_downloads`, `download_count`, `created_by`, `revoked_at`, `fk_share_ct` (the share grant) | the token's plaintext is answered once |
 | `vola_tenant_stats` | one snapshot per `(tenant, scope tenant\|instance, instance_type, instance_id)`: `total_files`, `total_bytes`, `by_kind`, `oldest_at`, `newest_at`, `computed_at` | refreshed by the worker, or lazily |
 | `vola_keyring` | `tenant_id`, `principal`, `kdf` (Argon2id parameters per keyring), `mk_pin_ct`, `mk_recovery_ct`, `recovery_salt`, `attempts`, `locked_until`, `pin_set_at`, soft delete | [CRYPTO.md § 8](CRYPTO.md#8-the-keyring-provider-phase-62) |
@@ -154,6 +155,8 @@ token, the content key, the share password and secret) at every level, including
   collection). `@fastify/websocket` registered by the host is reused.
 - **The worker** — `node dist/worker.js`, the same image and configuration (§ 6).
 - **Without Redis** — one process, in-process events, synchronous thumbnails, no keyrings.
+- **On SQLite** — any of the above on a `file:` URL, with one server process and, with Redis,
+  one worker on the same host; the how-to is [SQLITE.md](SQLITE.md).
 
 ## 5. The upload flow and the CAS
 
