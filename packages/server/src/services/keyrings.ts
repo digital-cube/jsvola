@@ -54,7 +54,7 @@ import {
   unwrapMasterKey,
   wrapMasterKey,
 } from "../crypto/index.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { files, type KeyringRow, keyrings } from "../db/schema.js";
 import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
@@ -230,12 +230,6 @@ export async function keyringStatus(
 
 // --- setup -------------------------------------------------------------------------------
 
-/** PostgreSQL error code of a unique violation. */
-const UNIQUE_VIOLATION = "23505";
-const pgCode = (error: unknown): string | undefined =>
-  (error as { code?: string } | undefined)?.code ??
-  (error as { cause?: { code?: string } } | undefined)?.cause?.code;
-
 /** The two wraps of a master key for a NEW PIN and a NEW recovery key. */
 async function wrapBoth(
   deps: KeyringsDeps,
@@ -334,7 +328,7 @@ export async function createKeyring(
         createdAt: now,
       });
     } catch (error) {
-      if (pgCode(error) === UNIQUE_VIOLATION) {
+      if (dialect.isUniqueViolation(error)) {
         throw new VolaError(KEYRING_EXISTS_CODE, 409, "this principal already has a keyring");
       }
       throw error;
@@ -640,7 +634,7 @@ async function countFiles(
   const [counts] = await deps.db
     .select({
       files: sql<number>`count(*)`,
-      live: sql<number>`count(*) filter (where ${files.deletedAt} is null)`,
+      live: dialect.countWhere(isNull(files.deletedAt)),
       bytes: sql<number>`coalesce(sum(${files.size}), 0)`,
     })
     .from(files)
@@ -682,7 +676,7 @@ export async function resetKeyring(
       // Under the lock uploads commit under; an encrypted blob is never shared (random key
       // and nonce), the check is for the one row of another file that could still cite it.
       const removed = await deps.db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${file.hash}, 0))`);
+        await dialect.lockContentHash(tx, file.hash);
         const [other] = await tx
           .select({ id: files.id })
           .from(files)
@@ -760,7 +754,7 @@ export async function keyringPepperUsage(
 ): Promise<PepperUsage[]> {
   const rows = await db
     .select({
-      kid: sql<string>`coalesce(${keyrings.kdf} ->> 'pepper_line', '')`,
+      kid: sql<string>`coalesce(${dialect.jsonText(keyrings.kdf, "pepper_line")}, '')`,
       n: sql<number>`count(*)`,
     })
     .from(keyrings)

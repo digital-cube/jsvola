@@ -110,7 +110,7 @@ src/
 ├── examples/          the examples site's demo routes (VOLA_EXAMPLES)
 ├── lookups.ts         the vocabulary (@vol-a/lookups) and GET /lookups
 ├── ui.ts              VOLA_UI_DIR: the built SPA at / and /en/ with an index.html fallback
-└── db/                Drizzle schema, connect(), uuid
+└── db/                Drizzle schema, connect() (the URL scheme picks the database), the dialect seam (dialect.ts, postgres.ts), uuid
 ```
 
 ### Request lifecycle
@@ -169,6 +169,9 @@ StagedUpload ──► finalizeUpload ─ detectMime(head, filename, declared) �
 
 The advisory lock on the hash is what makes dedup safe against a concurrent purge: a purge
 takes the same lock, checks that no row cites the hash, and only then removes the blob. The
+services take it through `dialect.lockContentHash(tx, hash)` (`db/dialect.ts`), the one place,
+with the unique-violation check and the few non-portable expressions (filtered count, JSON
+field and equality, `ILIKE`, the OCR text match), that knows the SQL is PostgreSQL's. The
 multipart `encryption` field (and the folder) must arrive **before** the `file` part because
 the mode decides what is written to disk while the part streams.
 

@@ -16,11 +16,11 @@ import {
   TransferResultSchema,
 } from "@vol-a/core";
 import { and, eq } from "drizzle-orm";
-import { PgDialect } from "drizzle-orm/pg-core";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AuditLog } from "../src/audit/log.js";
 import type { AuditEvent } from "../src/audit/memento.js";
+import { dialect } from "../src/db/index.js";
 import { files, folders, processingJobs, shareLinks, uploads } from "../src/db/schema.js";
 import { LocalFileEventBus } from "../src/events/bus.js";
 import { saveOcrResult } from "../src/services/ocr.js";
@@ -471,7 +471,7 @@ describe("POST /admin/transfer — user_map", () => {
 
   it("mapUsers builds a CASE only for entries that change something", () => {
     const text = (map: Record<string, string>) =>
-      new PgDialect().sqlToQuery(mapUsers(files.createdBy, map)).sql;
+      dialect.render(mapUsers(files.createdBy, map)).sql;
     expect(text({})).not.toContain("case");
     expect(text({ a: "a" })).not.toContain("case");
     expect(text({ a: "b", c: "c" })).toContain("case");

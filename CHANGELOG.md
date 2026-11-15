@@ -7,6 +7,20 @@ Docker image share one version.
 
 ## [Unreleased]
 
+### Changed
+
+- `@vol-a/server`'s database layer is dialect-independent, ahead of a second database: what is
+  PostgreSQL-only (the advisory lock on a content hash, SQLSTATE `23505` / `55P03`,
+  `count(*) filter`, `->>`, `::jsonb`, `ILIKE`, `plainto_tsquery`) goes through one seam,
+  `db/dialect.ts`, with its PostgreSQL implementation in `db/postgres.ts`. The SQL and the API's
+  error codes are the same as before.
+- `connect(url)` picks the database from the URL scheme; a scheme other than `postgres://` /
+  `postgresql://` throws a `ConfigError` naming the scheme (never the rest of the URL).
+- `Database` is drizzle's PostgreSQL query builder without the driver
+  (`PgDatabase<PgQueryResultHKT, …>` instead of `NodePgDatabase`), and `DatabaseHandle` carries
+  `dialect` instead of `pool`: code that reached for `handle.pool` or `db.$client` uses
+  `handle.db` and `handle.close()`.
+
 ## [1.0.1] - 2026-11-04
 
 The packages are renamed from `@vola/*` to **`@vol-a/*`** — `@vol-a/core`, `@vol-a/lookups`,

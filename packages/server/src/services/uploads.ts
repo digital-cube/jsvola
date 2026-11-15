@@ -11,7 +11,7 @@ import {
   parseHeader,
   plaintextLengthOf,
 } from "../crypto/index.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FileRow, type UploadRow, uploads } from "../db/schema.js";
 import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
@@ -73,11 +73,6 @@ export interface UploadsDeps {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** PostgreSQL: `SELECT … FOR UPDATE NOWAIT` found the row locked. */
-const LOCK_NOT_AVAILABLE = "55P03";
-const pgCode = (error: unknown): string | undefined =>
-  (error as { code?: string } | undefined)?.code ??
-  (error as { cause?: { code?: string } } | undefined)?.cause?.code;
 
 const clock = (deps: UploadsDeps) => (deps.now ?? (() => new Date()))();
 
@@ -386,7 +381,7 @@ async function lockUpload(tx: Tx, tenantId: string, uploadId: string): Promise<U
       .where(and(eq(uploads.tenantId, tenantId), eq(uploads.id, uploadId.toLowerCase())))
       .for("update", { noWait: true });
   } catch (error) {
-    if (pgCode(error) === LOCK_NOT_AVAILABLE) {
+    if (dialect.isLockNotAvailable(error)) {
       throw new VolaError(
         "upload_locked",
         409,

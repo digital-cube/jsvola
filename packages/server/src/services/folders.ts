@@ -10,7 +10,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, or, sql } fro
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FolderRow, files, folders } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { type FileEventBus, publishFileEvents } from "../events/bus.js";
@@ -32,11 +32,6 @@ export interface FoldersDeps {
 type Tx = Pick<Database, "select" | "insert" | "update" | "delete" | "execute">;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** PostgreSQL error code of a unique violation. */
-const UNIQUE_VIOLATION = "23505";
-const pgCode = (error: unknown): string | undefined =>
-  (error as { code?: string } | undefined)?.code ??
-  (error as { cause?: { code?: string } } | undefined)?.cause?.code;
 
 /** The one answer for a folder that is not there — or belongs to another tenant (never 403). */
 export function folderNotFound(path: string): VolaError {
@@ -437,9 +432,7 @@ export async function relocateFolder(
   const now = (deps.now ?? (() => new Date()))();
   try {
     const { result, movedFiles } = await deps.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${`${scope.tenantId}/${scope.instanceType}/${scope.instanceId}`}, 0))`,
-      );
+      await dialect.lockKey(tx, `${scope.tenantId}/${scope.instanceType}/${scope.instanceId}`);
       // Descendants first (their LIKE match is by the old prefix), then the folder itself.
       const moved = await tx
         .update(folders)
@@ -480,7 +473,7 @@ export async function relocateFolder(
     await publishFileEvents(deps, { ...scope, kind: "updated" }, movedFiles);
     return result;
   } catch (error) {
-    if (pgCode(error) === UNIQUE_VIOLATION) throw folderExists(target);
+    if (dialect.isUniqueViolation(error)) throw folderExists(target);
     throw error;
   }
 }

@@ -17,7 +17,7 @@ import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vol-a/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant, runWithTenant } from "../context.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FileRow, fileMetadata, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
 import { extensionOf } from "../files/filename.js";
@@ -51,8 +51,9 @@ export const INSTANCE_ID_FILTER = "instance_id";
 export const INCLUDE_DELETED_FILTER = "include_deleted";
 /**
  * Row: whether OCR text was extracted. Filter: `contains <words>` (or `eq <words>`) is a
- * full-text search over the text, `plainto_tsquery('simple', …)` against the GIN-indexed
- * `ocr_tsv`; `eq true|false`, `is_not_null` / `is_null` select files with / without text.
+ * full-text search over the text (`dialect.ocrMatch`; on PostgreSQL `plainto_tsquery('simple',
+ * …)` against the GIN-indexed `ocr_tsv`); `eq true|false`, `is_not_null` / `is_null` select
+ * files with / without text.
  */
 export const OCR_FILTER = "ocr";
 export const FILES_DEFAULT_PAGE_SIZE = 50;
@@ -165,7 +166,10 @@ function ocrCondition(c: Condition): SQL | undefined {
     }
     const words = String(c.value).trim();
     if (words === "") return sql`false`;
-    const match = sql`${fileMetadata.ocrTsv} @@ plainto_tsquery('simple', ${words})`;
+    if (!dialect.capabilities.ocrSearch) {
+      throw new UdcError("unsupported_op", `this database cannot search ${OCR_FILTER} text`);
+    }
+    const match = dialect.ocrMatch(fileMetadata.ocrTsv, words);
     return c.op === "neq" ? sql`not coalesce(${match}, false)` : match;
   }
   throw new UdcError(

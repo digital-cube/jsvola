@@ -7,7 +7,7 @@ import {
 } from "@vol-a/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type ProcessingJobRow, processingJobs } from "../db/schema.js";
 
 export interface ProcessingDeps {
@@ -150,7 +150,7 @@ export async function requestJob(
       and(
         eq(processingJobs.fileId, identity.fileId),
         eq(processingJobs.kind, identity.kind),
-        sql`${processingJobs.params} = ${JSON.stringify(identity.params)}::jsonb`,
+        dialect.jsonEquals(processingJobs.params, identity.params),
       ),
     )
     .limit(1);

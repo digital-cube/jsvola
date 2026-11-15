@@ -13,7 +13,6 @@ import {
   eq,
   gt,
   gte,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -28,6 +27,7 @@ import {
   type SQLWrapper,
   sql,
 } from "drizzle-orm";
+import { dialect } from "../db/index.js";
 
 /** How a field's filter values are coerced before they reach SQL. */
 export type FieldKind = "text" | "time" | "number" | "bool" | "json";
@@ -160,7 +160,7 @@ export class SqlFilterCompiler {
         throw new UdcError("validation_error", `"${c.op}" needs a text field, not ${c.field}`);
       }
       const value = pattern(escapeLike(String(c.value ?? "")));
-      return c.case_insensitive ? ilike(expr as never, value) : like(expr as never, value);
+      return c.case_insensitive ? dialect.ilike(expr as never, value) : like(expr as never, value);
     };
     // drizzle's operators take any SQL expression; the casts only quiet the column typing.
     const e = expr as never;
