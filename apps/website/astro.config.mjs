@@ -24,6 +24,8 @@ export default defineConfig({
       // The home page and the 404 are the site's own Astro pages (src/pages/), not Starlight's.
       disable404Route: true,
       components: {
+        // Starlight's footer and, under it, the build line of the site's own footer.
+        Footer: "./src/components/DocsFooter.astro",
         PageTitle: "./src/components/PageTitle.astro",
         SiteTitle: "./src/components/SiteTitle.astro",
         // Dark first: no stored choice means dark, whatever the system says (ThemeToggle.astro).

@@ -12,7 +12,8 @@
     "typecheck": "pnpm run gen && astro check && node scripts/check-snippets.mjs",
     "shots": "node scripts/shots.mjs",
     "capture": "node scripts/capture.mjs",
-    "check:snippets": "node scripts/check-snippets.mjs"
+    "check:snippets": "node scripts/check-snippets.mjs",
+    "test": "node --test 'test/*.test.mjs'"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.8",

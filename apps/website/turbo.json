@@ -4,7 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["SITE_URL", "EXAMPLE_URL"],
+      "env": ["SITE_URL", "EXAMPLE_URL", "SITE_NPM", "SITE_NPM_TIMEOUT_MS", "SOURCE_DATE_EPOCH"],
       "outputs": ["dist/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -18,7 +18,7 @@
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "env": ["SITE_URL", "EXAMPLE_URL"],
+      "env": ["SITE_URL", "EXAMPLE_URL", "SITE_NPM", "SITE_NPM_TIMEOUT_MS", "SOURCE_DATE_EPOCH"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!src/content/docs/reference/**",

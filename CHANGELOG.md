@@ -7,6 +7,16 @@ Docker image share one version.
 
 ## [Unreleased]
 
+### Added
+
+- **The website says how fresh it is.** The footer of every page, the docs' included, shows
+  the version, the date of its release tag, when the site was built (UTC) and the commit;
+  the Packages table has an *On npm* column with the date each package's newest version
+  was published there, and that version when it is not the repository's (*not on npm yet*
+  while a package has never been published). Read once per build
+  (`apps/website/src/build-info.mjs`); the registry never fails the build, and `SITE_NPM=off`
+  builds without asking it ([apps/website/README.md](apps/website/README.md#build-info-the-footer-line-and-on-npm)).
+
 ### Changed
 
 - **`@jsudc/*` 0.3** (`@jsudc/core` 0.3.0, `@jsudc/server` 0.3.0, `@jsudc/react` 0.3.1, the
