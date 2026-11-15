@@ -76,6 +76,7 @@ export default defineConfig({
             "reference/realtime",
             "reference/cli",
             "reference/environment",
+            "reference/sqlite",
           ],
         },
         { label: "Examples", items: [{ autogenerate: { directory: "examples" } }] },

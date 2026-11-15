@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/lookups",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "JSVola lookups: controlled vocabularies from YAML (file kinds, processing statuses and kinds, share scopes, OCR languages, encryption modes), CSV translations, candidate recording and TypeScript/Zod codegen.",
   "license": "MIT",
   "repository": {

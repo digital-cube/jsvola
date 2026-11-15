@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNull, like, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { files, folders, keyrings } from "../db/schema.js";
 import { type FileEventBus, publishFileEvents } from "../events/bus.js";
 import { deleteFolder, type FoldersDeps } from "../services/folders.js";
@@ -62,7 +62,7 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
       .where(
         and(
           eq(keyrings.tenantId, deps.tenantId),
-          like(keyrings.principal, "demo-%"),
+          dialect.like(keyrings.principal, "demo-%"),
           isNull(keyrings.deletedAt),
           lt(keyrings.createdAt, cutoff),
         ),
@@ -107,7 +107,7 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
     for (const hash of [...new Set(rows.map((r) => r.hash))].sort()) {
       try {
         const removed = await deps.db.transaction(async (tx) => {
-          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${hash}, 0))`);
+          await dialect.lockContentHash(tx, hash);
           const [reference] = await tx
             .select({ id: files.id })
             .from(files)
@@ -132,7 +132,7 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
         eq(folders.tenantId, scope.tenantId),
         eq(folders.instanceType, scope.instanceType),
         eq(folders.instanceId, scope.instanceId),
-        like(folders.createdBy, "demo-%"),
+        dialect.like(folders.createdBy, "demo-%"),
         isNull(folders.deletedAt),
         lt(folders.createdAt, cutoff),
       ),

@@ -8,7 +8,7 @@ sidebar:
 
 import PackageTable from "../../../components/PackageTable.astro";
 
-Most deployments run the Docker image and use one of the client packages. Reach for `@vol-a/server` only to embed vola in your own Fastify application.
+Most deployments run the Docker image and use one of the client packages. Reach for `@vol-a/server` to embed vola in your own Fastify application, or to run the server on one SQLite file without Docker.
 
 <PackageTable />
 
@@ -19,6 +19,7 @@ Most deployments run the Docker image and use one of the client packages. Reach 
 | Calling a vola server from a backend or a browser | `@vol-a/client` |
 | Drawing files in a React app | `@vol-a/react`, `@vol-a/client` and their peers |
 | Mounting vola inside Fastify | `@vol-a/server`, `@vol-a/core` |
+| Running the server on one SQLite file, without Docker ([how](/get-started/sqlite/)) | `@vol-a/server`, `@vol-a/cli` |
 | Sharing types with your own HTTP client | `@vol-a/core` |
 
 The `vola` command line (`@vol-a/cli`) is already inside the image, and `@vol-a/lookups` is what the server uses for its controlled vocabulary.
@@ -27,4 +28,4 @@ The `vola` command line (`@vol-a/cli`) is already inside the image, and `@vol-a/
 
 `ghcr.io/digital-cube/jsvola` holds the server, the worker, the command line, the examples site and the tools the worker needs. The tags and every setting are in the [deployment guide](https://github.com/digital-cube/jsvola/blob/main/docs/DEPLOYMENT.md#the-image).
 
-What changed in each release: [Changelog](/packages/changelog/).
+What changed in each release: [Changelog](/packages/changelog/). SQLite as a database came in 1.1.0; `@vol-a/server` 1.0.1 runs on PostgreSQL only.

@@ -48,7 +48,7 @@ themes. Run it when you change a colour.
 | Get started | `src/content/docs/get-started/*.mdx` | hand-written; the code from `snippets/` |
 | Tutorials | `src/content/docs/tutorials/*.mdx`, one page per language (`-sr` is Serbian) | hand-written; the code from `snippets/tutorial/`, written from the program's `step N: …` commits (below) |
 | Concepts | `src/content/docs/concepts/*.mdx` | hand-written from `docs/` (ARCHITECTURE, CRYPTO, REALTIME, EXAMPLES-SITE, MIGRATION-FROM-VOLA-SPP) |
-| Reference | `src/content/docs/reference/*.md`, **generated, not in git** | `scripts/gen-reference.mjs`: `docs/API.md`, `docs/CRYPTO.md`, `docs/REALTIME.md`, `docs/CLI.md`, the environment-variable tables of `docs/DEPLOYMENT.md` |
+| Reference | `src/content/docs/reference/*.md`, **generated, not in git** | `scripts/gen-reference.mjs`: `docs/API.md`, `docs/CRYPTO.md`, `docs/REALTIME.md`, `docs/CLI.md`, the environment-variable tables of `docs/DEPLOYMENT.md`, `docs/SQLITE.md` |
 | Examples | `src/content/docs/examples/*.mdx` | hand-written from `docs/EXAMPLES-SITE.md` and the pages' code, one per `menu.yaml` example; `<ExampleShot>` shows `src/assets/examples/<page>-light.webp` |
 | Packages | `src/content/docs/packages/index.mdx`, `changelog.md`, **the changelog generated, not in git** | `<PackageTable>` reads `packages/*/package.json`; `scripts/gen-changelog.mjs` turns `CHANGELOG.md` into the page |
 
@@ -76,11 +76,13 @@ every screenshot is a real shot of the live examples site.
 | `Examples.astro`: the examples, live | `src/assets/examples/<page>-light.webp`; one line per page in `src/examples.mjs`, the routes of `menu.yaml` |
 | `AtRest.astro`: encrypted at rest | `docs/CRYPTO.md` § 0 and § 2, in words and in `SegmentDiagram` |
 | `Api.astro`: the API | `src/routes.mjs`, held to `docs/API.md` by `check:snippets`; `snippets/api/<n>-<step>.sh` + `.out.txt` |
-| `QuickStarts.astro`: start where you are | `snippets/docker/<n>-<step>.sh` + `.out.txt`, `snippets/client/`, `snippets/react/App.tsx`, `snippets/embedded/server.ts` |
+| `QuickStarts.astro`: start where you are | `snippets/docker/<n>-<step>.sh` + `.out.txt`, `snippets/sqlite/<n>-<step>.sh` + `.out.txt`, `snippets/client/`, `snippets/react/App.tsx`, `snippets/embedded/server.ts` |
 | `Packages.astro`: packages | `packages/*/package.json` at build time; the image tags of `docs/DEPLOYMENT.md` |
 
 Every command there was run as written: the Docker steps in a scratch directory with their own
-`COMPOSE_PROJECT_NAME` and ports, `snippets/client/read.ts` and `snippets/api/*.sh` against the live
+`COMPOSE_PROJECT_NAME` and ports, the SQLite steps (`snippets/sqlite/`) and `snippets/embedded/env.sh`
+in an empty directory with a fresh database file, the packages installed from `pnpm pack` tarballs
+until a release has SQLite (the server's log lines keep their fields, with time, pid and host as `…`), `snippets/client/read.ts` and `snippets/api/*.sh` against the live
 examples. A `*.out.txt` is what the step printed then, with the key taken out of `4-key.out.txt`.
 
 ### `pnpm run capture`: the recorded requests and answers

@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/website",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "vol-a.com: the website of vola (Astro + Starlight), static files built by deploy/website/stage.sh; not part of the Docker image.",
   "type": "module",

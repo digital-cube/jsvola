@@ -1,0 +1,74 @@
+---
+title: Run it on a SQLite file
+description: The server on one SQLite file with Node 24, without Docker and without a database service, then a tenant, a key and the first upload.
+sidebar:
+  order: 2
+---
+
+import { Aside, Code, Steps } from "@astrojs/starlight/components";
+import install from "../../../../snippets/sqlite/1-install.sh?raw";
+import env from "../../../../snippets/sqlite/2-env.sh?raw";
+import migrateOut from "../../../../snippets/sqlite/3-migrate.out.txt?raw";
+import migrate from "../../../../snippets/sqlite/3-migrate.sh?raw";
+import keyOut from "../../../../snippets/sqlite/4-key.out.txt?raw";
+import key from "../../../../snippets/sqlite/4-key.sh?raw";
+import serveOut from "../../../../snippets/sqlite/5-serve.out.txt?raw";
+import serve from "../../../../snippets/sqlite/5-serve.sh?raw";
+import uploadOut from "../../../../snippets/sqlite/6-upload.out.txt?raw";
+import upload from "../../../../snippets/sqlite/6-upload.sh?raw";
+
+vola runs on PostgreSQL or on a single SQLite file. On SQLite the server needs Node 24 and a local disk, nothing else: no Docker, no database service, no Redis. The driver is Node's built-in `node:sqlite`, and the `vola` command line opens the same file directly.
+
+<Aside type="note" title="Since 1.1.0">
+SQLite support is in 1.1.0 and later ([Changelog](/packages/changelog/)): the `@vol-a/*` packages and the image `ghcr.io/digital-cube/jsvola:1.1.0`. `@vol-a/server` 1.0.1 refuses a `file:` URL.
+</Aside>
+
+<Steps>
+
+1. Make a directory and install the server and the command line:
+
+   <Code code={install} lang="sh" />
+
+2. Point vola at a database file and a storage directory. A relative `file:` path is relative to the working directory; `file:///var/lib/vola/vola.db` is an absolute one:
+
+   <Code code={env} lang="sh" />
+
+3. Create the database. The server would also migrate at start; `vola migrate` creates the file and its directory now:
+
+   <Code code={migrate} lang="sh" />
+   <Code code={migrateOut} lang="txt" title="What it printed" />
+
+4. Make a tenant and an API key for it. No server has to be running, because each command opens the file. The key is printed once; only its SHA-256 is stored:
+
+   <Code code={key} lang="sh" />
+   <Code code={keyOut} lang="txt" title="What it printed" />
+
+5. Start the server. Its log is JSON on stdout. Without `VOLA_REDIS_URL`, thumbnails render on the first `/thumb` request and OCR does not run. The two warnings about `lookups.yaml` and `menu.yaml` are expected: both files are optional.
+
+   <Code code={serve} lang="sh" />
+   <Code code={serveOut} lang="txt" title="What it printed" />
+
+6. In a second terminal, in the same directory, check it is ready, upload a file to an instance of your application (here a ticket) and read it back:
+
+   <Code code={upload} lang="sh" />
+   <Code code={uploadOut} lang="txt" title="What it printed" />
+
+   `vola.db-wal` and `vola.db-shm` are part of the database while the server has it open. Stop the server with `Ctrl-C`: it closes the file cleanly, and only `vola.db` and `storage` remain.
+
+</Steps>
+
+## What SQLite gives up
+
+Every route, answer and error code is the same as on PostgreSQL, and so are the four encryption modes, real-time lists, the CLI and the OCR search. What changes is how far it scales:
+
+- **One server process on the file, on one host.** Your own application counts as that process when it [embeds the plugin](/get-started/embedded/). For more than one server, use PostgreSQL.
+- **At most one worker, on the same host.** Add Redis and run `node node_modules/@vol-a/server/dist/worker.js` with the same variables to take thumbnails off the request path and to get OCR.
+- **The file on a local disk.** Never on NFS or SMB; the storage directory can be, the database cannot.
+
+[Files and storage](/concepts/files-and-storage/#postgresql-or-sqlite) has the features by database, and the [SQLite guide](/reference/sqlite/) has the rest: the worker, backups with `VACUUM INTO`, restores, upgrades and what not to do with the file.
+
+## What to do next
+
+- Every route, with its answers and error codes: [HTTP API](/reference/api/).
+- Call it from code with [@vol-a/client](/get-started/client/), pointing it at `http://localhost:8310/vola`.
+- Every variable the server reads, `VOLA_DATABASE_URL` first: [Environment variables](/reference/environment/).

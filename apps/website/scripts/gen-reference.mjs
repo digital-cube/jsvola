@@ -11,6 +11,7 @@
  *   reference/realtime     docs/REALTIME.md
  *   reference/cli          docs/CLI.md
  *   reference/environment  docs/DEPLOYMENT.md, section "Environment variables"
+ *   reference/sqlite       docs/SQLITE.md
  *   reference/index        the overview: the list above, with each page's description
  *
  * A page's title is the file's H1 (or the section's heading), its description the first
@@ -68,14 +69,15 @@ await writeFile(
     frontmatter({
       title: "Reference",
       description:
-        "Every route, encryption format, stream message, CLI command and environment variable of vola, generated from the repository's docs.",
+        "Every route, encryption format, stream message, CLI command and environment variable of vola, and the SQLite guide, generated from the repository's docs.",
       sidebar: { label: "Overview", order: 0 },
       editUrl: false,
     }),
     "<!-- Written by scripts/gen-reference.mjs. Do not edit: the build rewrites it. -->",
     "",
     "The exact facts: what each route takes and answers, the encrypted blob byte by byte, the",
-    "frames of the live stream, every command of the CLI, every variable the server reads. Each page is a file of the repository's",
+    "frames of the live stream, every command of the CLI, every variable the server reads, and how",
+    "to run on one SQLite file instead of PostgreSQL. Each page is a file of the repository's",
     `[\`docs/\`](${REPO}/tree/main/docs), turned into a page when this site is built, so the`,
     "reference and the repository say the same thing. For the ideas behind them, read",
     "[Concepts](/concepts/) first.",

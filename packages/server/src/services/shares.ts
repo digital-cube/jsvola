@@ -15,12 +15,11 @@ import {
   ShareTokenSchema,
   splitFilePath,
 } from "@vol-a/core";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { type AnyColumn, and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { aeadOpen, aeadSeal, IntegrityError, KEY_BYTES, openMeta } from "../crypto/index.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import {
   type FileRow,
   type FolderRow,
@@ -61,11 +60,6 @@ export interface SharesDeps {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** PostgreSQL error code of a unique violation. */
-const UNIQUE_VIOLATION = "23505";
-const pgCode = (error: unknown): string | undefined =>
-  (error as { code?: string } | undefined)?.code ??
-  (error as { cause?: { code?: string } } | undefined)?.cause?.code;
 const clock = (deps: SharesDeps) => (deps.now ?? (() => new Date()))();
 
 /** The one answer for a share that is not there — another tenant's, an unknown token, a garbled one. */
@@ -365,7 +359,7 @@ export async function createShare(
       });
       return { share: serializeShare(row), token, secret };
     } catch (error) {
-      if (attempt < 5 && pgCode(error) === UNIQUE_VIOLATION) continue;
+      if (attempt < 5 && dialect.isUniqueViolation(error)) continue;
       throw error;
     }
   }
@@ -406,7 +400,7 @@ export async function listShares(
   tenantId: string,
   input: ListSharesInput = {},
 ): Promise<ShareInfo[]> {
-  const idFilter = (column: AnyPgColumn, value: string | undefined) => {
+  const idFilter = (column: AnyColumn, value: string | undefined) => {
     if (value === undefined) return undefined;
     // An id that is not a UUID would make PostgreSQL error out: it simply matches nothing.
     return UUID_RE.test(value) ? eq(column, value.toLowerCase()) : sql`false`;

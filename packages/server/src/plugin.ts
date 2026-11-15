@@ -7,14 +7,14 @@ import { errorResponse, REQUEST_ID_HEADER } from "@vol-a/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
-import type { Config, ExamplesConfig } from "./config.js";
+import { type Config, type ExamplesConfig, isMemoryUrl } from "./config.js";
 import {
   EncryptionUnavailableError,
   IntegrityError,
   KeyFile,
   LockedError,
 } from "./crypto/index.js";
-import type { Database } from "./db/index.js";
+import { type Database, dialect } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
 import { type ExamplesRoutesDeps, examplesRoutes } from "./examples/routes.js";
@@ -75,7 +75,8 @@ export interface VolaPluginOptions {
   uploadsPath?: string | undefined;
   /**
    * Period of the expired-upload sweep in ms; `0` disables it (tests). Default 15 minutes.
-   * In `async` mode the sweep is a repeatable job the worker runs, scheduled by this plugin.
+   * In `async` mode the sweep is a repeatable job the worker runs, scheduled by this plugin
+   * — on PostgreSQL; on SQLite the server sweeps in either mode.
    */
   uploadSweepIntervalMs?: number | undefined;
   /**
@@ -230,6 +231,7 @@ async function setupJobs(
     const mode = resolveJobsMode({
       enabled: options.config.worker.enabled,
       redisUrl: options.config.redisUrl,
+      memoryDatabase: dialect.name === "sqlite" && isMemoryUrl(options.config.databaseUrl),
       log: app.log,
     });
     if (mode === "sync" || !options.config.redisUrl) return { jobs: null, jobsMode: "sync" };
@@ -357,8 +359,12 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   const storage = options.storage ?? new FilesystemBackend(options.config.storagePath);
   const lookups = options.lookups ?? (await loadLookups(app, options.config));
   const { jobs, jobsMode } = await setupJobs(app, options);
-  const sweepIntervalMs = jobsMode === "async" ? 0 : options.uploadSweepIntervalMs; // the worker sweeps in async mode
-  if (jobs && (options.uploadSweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS) > 0) {
+  // In `async` mode the worker sweeps expired uploads — but not without row locks (SQLite):
+  // there the upload a PATCH is streaming is held in THIS process's memory, which the worker
+  // cannot see, so the server keeps sweeping on its own timer.
+  const workerSweeps = jobsMode === "async" && dialect.capabilities.rowLocks;
+  const sweepIntervalMs = workerSweeps ? 0 : options.uploadSweepIntervalMs;
+  if (jobs && workerSweeps && (options.uploadSweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS) > 0) {
     const every = options.uploadSweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
     const queue = jobs.queue;
     app.addHook("onReady", async () => {

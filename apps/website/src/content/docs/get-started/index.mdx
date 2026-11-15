@@ -1,18 +1,19 @@
 ---
 title: Get started
-description: Four ways in to vola, from a whole server in Docker to one plugin in your own Fastify application.
+description: Five ways in to vola, from a whole server in Docker or on one SQLite file to one plugin in your own Fastify application.
 sidebar:
   label: Overview
   order: 0
 ---
 
-vola is a server your application talks to over HTTP. Which page you want depends on what you already have.
+vola is a server your application talks to over HTTP. Which page you want depends on what you already have. The database is PostgreSQL or a single SQLite file, with the same routes and answers on both; [Files and storage](/concepts/files-and-storage/#postgresql-or-sqlite) says which fits.
 
 | You have | Read | You end up with |
 | --- | --- | --- |
 | Docker and nothing else | [Run it with Docker](/get-started/docker/) | The server, the worker, PostgreSQL and Redis on your machine, a tenant, a key and a first upload |
+| Node 24 and nothing else | [Run it on a SQLite file](/get-started/sqlite/) | The server on one database file, no Docker and no database service, a tenant, a key and a first upload |
 | A vola server, and a backend or a browser app | [Call it with @vol-a/client](/get-started/client/) | Typed calls for every route, with Range reads and thumbnails handled |
 | A vola server and a React app | [Draw it with @vol-a/react](/get-started/react/) | A file browser with uploads, thumbnails, a PIN gate and share links |
-| A Fastify application | [Embed it with volaPlugin](/get-started/embedded/) | vola's routes inside your own process, next to your own |
+| A Fastify application | [Embed it with volaPlugin](/get-started/embedded/) | vola's routes inside your own process, next to your own, on PostgreSQL or a SQLite file |
 
 To see it working first, without installing anything, open the [live examples](/examples/). Every command on these pages was run as written, and the programs are compiled against this repository whenever the site is built.

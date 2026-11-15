@@ -7,6 +7,88 @@ Docker image share one version.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
+**SQLite as a database option.** A small installation on one host can run vola on a single
+SQLite file (`VOLA_DATABASE_URL=file:<path>`), with no database service and, if it does
+without background jobs, no Redis. PostgreSQL stays the default and the full-featured option.
+Every API route, answer and error code is the same on both. For the HTTP API, the CLI, the
+image and their configuration, this release only adds things. Code that embeds
+`@vol-a/server` and reaches into its database handle has two type changes, listed under
+*Breaking for code that embeds the server* below. The version is still minor because no
+`@vol-a/*` package had been published to npm before this release.
+
+### Added
+
+- **SQLite as a database option.** Set `VOLA_DATABASE_URL=file:<path>` (relative to the
+  working directory), `file:///abs/path`, or `:memory:` for tests, in place of
+  `postgresql://…`. The guide is
+  **[docs/SQLITE.md](docs/SQLITE.md)**: which database fits, the quick start without Docker,
+  embedding the plugin, the worker, backups, the limits. The features by database are also
+  in the README. What SQLite gives:
+  - Every feature of the API, with the same routes, answers and error codes: files, folders,
+    versions, shares, tus uploads, the four encryption modes, UDC lists and `subscribe`,
+    statistics, transfer, and the CLI (`vola migrate` creates and migrates the file).
+  - The driver is Node's built-in `node:sqlite` (Node 24+), so there is no new dependency.
+    The database runs in WAL mode with `foreign_keys = ON`. There is one writer at a time:
+    every transaction is `BEGIN IMMEDIATE`, and the server's transactions take turns. Reads
+    outside a transaction use a second, read-only connection.
+  - **One server process per file.** Without Redis everything runs inline: thumbnails render
+    on `/thumb`, and no OCR job is created. With `VOLA_REDIS_URL` set, **one worker process
+    on the same host** opens the same file and runs thumbnail and OCR jobs as on PostgreSQL:
+    - its writes are single statements, and tesseract runs with no transaction open;
+    - a process waiting for the other's write lock waits on a timer, up to 10 s, instead of
+      inside SQLite's `busy_timeout`, so it keeps serving;
+    - the expired-upload sweep stays in the server, because the upload a tus `PATCH` streams
+      into is guarded in the server's memory (`409 upload_locked`, as on PostgreSQL);
+    - only `:memory:` refuses a worker: `VOLA_WORKER_ENABLED=true` with it is a configuration
+      error.
+  - **The OCR text search on SQLite** has the same API as on PostgreSQL. The `ocr` filter with
+    words searches a contentless FTS5 index, `drizzle-sqlite/0001_ocr_fts.sql` (`unicode61`,
+    `remove_diacritics 0`). Triggers keep the index in step with `vola_file_metadata`, and the
+    migration indexes text already there.
+    - Search rules: every word must occur, case-insensitively, with no stemming and no
+      ranking. Diacritics are kept (`č` ≠ `c`), and the first 500 000 characters are indexed,
+      as with `ocr_tsv`.
+    - One difference: any character that is not a letter or a digit separates words
+      (`e-mail` is `e` and `mail`).
+    - The server quotes the words, so FTS5 syntax typed by a user is plain text. It refuses to
+      open a SQLite database built without FTS5 (Node's built-in one has it).
+  - Its own migration set, `packages/server/drizzle-sqlite/`, shipped in the package. The
+    server applies it at start, and `vola migrate` by hand, as with the PostgreSQL set.
+    `pnpm db:generate` writes both.
+
+### Breaking for code that embeds the server
+
+These are two exports of `@vol-a/server`. They do not affect the HTTP API, the CLI, the
+image or the configuration.
+
+- `DatabaseHandle` carries `dialect` instead of `pool` (node-postgres' `pg.Pool`).
+- `Database` is drizzle's query builder without the driver: `PgDatabase<PgQueryResultHKT, …>`
+  instead of `NodePgDatabase`, so its type no longer has `$client`.
+
+Code that reached for `handle.pool` or `db.$client` uses `handle.db` for queries and
+`handle.close()` on shutdown.
+
+### Changed
+
+- `VOLA_DATABASE_URL` / `VOLA_DATABASE_URL_TEST` accept `file:<path>` and `:memory:` next to
+  `postgres(ql)://`. `connect(url)` picks the database from the URL scheme. Any other scheme
+  throws a `ConfigError` that names the scheme and never the rest of the URL.
+- `@vol-a/server`'s database layer goes through one dialect seam, `db/dialect.ts`, with
+  `db/postgres.ts` and `db/sqlite.ts` behind it. What is not portable goes through the seam:
+  the advisory lock on a content hash, unique-violation and lock-not-available errors,
+  `count(*) filter`, JSON fields, `LIKE` / `ILIKE`, `FOR UPDATE NOWAIT`,
+  `ON CONFLICT … DO NOTHING` and the OCR text match (`ocrMatch(words)`). `capabilities` says
+  what a dialect has (`rowLocks`, `ocrSearch`). On PostgreSQL the SQL is the same as in 1.0.1.
+- The tables exported from `db/schema.ts` are those of the database the process connected to
+  (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, with the same row types), so a process
+  speaks one dialect.
+- `resolveJobsMode`'s input takes `memoryDatabase`: an in-memory SQLite is always `sync`.
+- The server and CLI test suites run on both databases (Vitest projects `server` /
+  `server-sqlite`, `cli` / `cli-sqlite`). `VOLA_TEST_DIALECT=postgres|sqlite` runs one
+  ([docs/CONTRIBUTING.md](docs/CONTRIBUTING.md#tests-on-each-database)).
+
 ## [1.0.1] - 2026-11-04
 
 The packages are renamed from `@vola/*` to **`@vol-a/*`** — `@vol-a/core`, `@vol-a/lookups`,
@@ -645,6 +727,7 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
   timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
   The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
-[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/digital-cube/jsvola/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/digital-cube/jsvola/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0

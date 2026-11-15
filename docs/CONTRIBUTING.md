@@ -33,7 +33,7 @@ image, the E2E suite and npm.
 | `pnpm lint` / `pnpm format` | Biome (`biome.json`) |
 | `pnpm typecheck` | `tsc --noEmit` in every package |
 | `pnpm build` | Turbo, dependency order |
-| `pnpm test` | Vitest; `@vol-a/server` and `@vol-a/cli` need PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated) and Redis at `VOLA_REDIS_URL` for the keyring, worker and `subscribe` suites |
+| `pnpm test` | Vitest; `@vol-a/server` and `@vol-a/cli` run every suite twice, on PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated) and on a temporary SQLite file (`VOLA_TEST_DIALECT=postgres\|sqlite` for one), and need Redis at `VOLA_REDIS_URL` for the keyring, worker and `subscribe` suites |
 | `pnpm test:cov` | the same with coverage; CI enforces ≥ 80 % lines per package (HTML in `packages/*/coverage/`) |
 | `pnpm test:e2e` | builds the packages (Turbo), then starts the built server on a free port against the compose databases — or targets a running one with `VOLA_E2E_URL` |
 | `pnpm --filter @vol-a/server test -- test/files.test.ts` | one file |
@@ -42,8 +42,36 @@ image, the E2E suite and npm.
 
 The OCR tests need `tesseract` with `eng`, `srp`, `deu` and `pdftoppm` (poppler-utils) on the
 machine, as CI installs them; without tesseract the "OCR with tesseract" suite is skipped. The
-suites that need Redis (keyrings, the worker, `subscribe`, the share-password limiter) are
-skipped when `VOLA_REDIS_URL` is unset.
+suites that need Redis (keyrings, the worker, OCR, the queued audit, `subscribe` across
+processes, the Redis event bus) **fail** with `VOLA_REDIS_URL is needed for …` when
+`VOLA_REDIS_URL` is unset or unreachable: run them with Redis, as CI does.
+
+### Tests on each database
+
+`@vol-a/server` and `@vol-a/cli` run every suite as two Vitest projects: `server` / `cli` on
+PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated by `pnpm db:migrate:test`), and
+`server-sqlite` / `cli-sqlite` on a SQLite file in the temporary directory, created and
+migrated for the run and removed after it. `VOLA_TEST_DIALECT` runs one of them:
+
+```sh
+pnpm test                                                    # both databases (compose up)
+VOLA_TEST_DIALECT=postgres pnpm test                         # PostgreSQL only
+VOLA_TEST_DIALECT=sqlite pnpm test                           # SQLite only: needs no PostgreSQL
+VOLA_TEST_DIALECT=sqlite pnpm --filter @vol-a/server test -- test/sqlite.test.ts   # one file, one database
+pnpm --filter @vol-a/server test:pg                          # the same as scripts of the server package
+pnpm --filter @vol-a/server test:sqlite
+```
+
+The SQLite run still needs Redis for the suites above. `VOLA_REDIS_URL=… VOLA_TEST_DIALECT=sqlite
+pnpm --filter @vol-a/server test` with no PostgreSQL reachable passes (35 files, 545 tests; the
+CLI's: 5 files, 31 tests).
+A test of a feature only PostgreSQL has is skipped on SQLite by name
+(`describe.skipIf(onSqlite)`); `test/sqlite.test.ts` holds what only SQLite has (the FTS5
+index, two connections and a second process writing to one file). A change to the database
+layer goes through the dialect seam (`db/dialect.ts`, `db/postgres.ts`, `db/sqlite.ts`,
+[ARCHITECTURE.md § 3](ARCHITECTURE.md#3-database-schema-postgresql-or-sqlite--drizzle) and
+[§ 5](ARCHITECTURE.md#stageupload--finalizeupload)) and is tested on
+both. The guide for running on SQLite is [SQLITE.md](SQLITE.md).
 
 ### E2E
 
@@ -68,9 +96,11 @@ docker compose -f docker-compose.yaml down -v
   `packages/server/src/services`, then the route, then the `@vol-a/client` method and the
   table in [API.md](API.md). A new error code goes into `@vol-a/core`'s constants and the table
   in API.md.
-- **The schema**: edit `packages/server/src/db/schema.ts`, `pnpm db:generate` writes the
-  migration into `packages/server/drizzle/`, `pnpm db:migrate && pnpm db:migrate:test`
-  applies it. Migrations are additive in 1.x.
+- **The schema**: edit both `packages/server/src/db/schema-postgres.ts` and `schema-sqlite.ts`
+  (a type-level check in `schema-sqlite.ts` fails the type check when their row types differ),
+  then `pnpm db:generate` writes one migration into `packages/server/drizzle/` and one into
+  `packages/server/drizzle-sqlite/`; `pnpm db:migrate && pnpm db:migrate:test` applies the
+  PostgreSQL one, the server and the SQLite tests apply the other. Migrations are additive in 1.x.
 - **A variable**: `config.ts`, `.env.example`, `docker-compose.yaml`, the table in
   [DEPLOYMENT.md](DEPLOYMENT.md#environment-variables), `turbo.json`'s `globalEnv` if tests
   read it.

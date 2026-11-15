@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { Redis } from "ioredis";
 import { AuditDeliveryError, type AuditSink } from "../audit/memento.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { type FileEventBus, publishProcessingStatus } from "../events/bus.js";
@@ -241,6 +241,13 @@ export class ProcessingWorker {
     const uploads = this.options.uploads;
     if (!uploads) {
       this.options.logger?.debug("sweep-uploads job ignored: no uploads configuration");
+      return;
+    }
+    if (!dialect.capabilities.rowLocks) {
+      // SQLite: the upload a PATCH is streaming is held in the server's memory, out of this
+      // process's sight, so the server sweeps (`plugin.ts`); a job left in the queue from
+      // elsewhere is dropped.
+      this.options.logger?.debug("sweep-uploads job ignored: on this database the server sweeps");
       return;
     }
     const deps: UploadsDeps = {

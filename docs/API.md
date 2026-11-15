@@ -325,14 +325,15 @@ one `OCR` job (`VOLA_OCR_ENABLED`, [DEPLOYMENT.md](DEPLOYMENT.md#ocr)). The work
 `tesseract` — an image as it is, a PDF page by page after `pdftoppm -r 200 -png` rasterised the
 first `VOLA_OCR_MAX_PAGES` (20) pages, the texts joined with `\f` — with the languages of
 `VOLA_OCR_LANGS` (`eng+srp+deu`). The result lands in `vola_file_metadata` (`ocr_text`,
-`ocr_lang`, `ocr_pages`, `ocr_at`, and `ocr_tsv`, a `tsvector` under a GIN index); for a `tenant`
-file, sealed, as below.
+`ocr_lang`, `ocr_pages`, `ocr_at`, and on PostgreSQL `ocr_tsv`, a `tsvector` under a GIN index;
+on SQLite an FTS5 index, [SQLITE.md](SQLITE.md#how-the-ocr-search-differs-from-postgresql)); for a
+`tenant` file, sealed, as below.
 
 | | |
 |---|---|
 | `GET …/:fileId/info` | `ocr: {status, lang, pages, text_preview}` (`OcrInfoSchema`) — `text_preview` is the first 500 characters |
 | `GET …/:fileId/info?ocr=full` | adds `ocr.text`, the whole text |
-| UDC `files` filter `{"field":"ocr","op":"contains","value":"invoice 0042"}` | a full-text search (`plainto_tsquery('simple', …)`: every word must occur, any order, case-insensitive, no stemming); `eq true\|false`, `is_null`, `is_not_null` select files with or without text |
+| UDC `files` filter `{"field":"ocr","op":"contains","value":"invoice 0042"}` | a full-text search (`plainto_tsquery('simple', …)` on PostgreSQL, FTS5 on SQLite: every word must occur, any order, case-insensitive, no stemming); `eq true\|false`, `is_null`, `is_not_null` select files with or without text |
 
 ```sh
 curl -s -H "Authorization: Bearer $KEY" localhost:8300/vola/files/tickets/$TICKET/$FILE/info | jq .ocr

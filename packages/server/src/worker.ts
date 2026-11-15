@@ -3,12 +3,15 @@
  * image and configuration as the server; it needs `VOLA_REDIS_URL` and the SAME storage
  * directory (thumbnails are written next to the blobs) and, for the derivatives of
  * `tenant`-encrypted files, the same `VOLA_KEY_FILE`. Migrations are the server's job: the
- * worker only connects. SIGTERM / SIGINT let the active jobs finish, then exit.
+ * worker only connects. On SQLite it opens the server's file (`file:<path>`, the same host:
+ * SQLite's locks do not cross machines) and takes turns with the server at its write lock;
+ * its writes are single statements, and tesseract runs with no transaction open.
+ * SIGTERM / SIGINT let the active jobs finish, then exit.
  */
 import { join } from "node:path";
 import { pino } from "pino";
 import { createAuditSink } from "./audit/log.js";
-import { ConfigError, loadConfig } from "./config.js";
+import { ConfigError, isMemoryUrl, loadConfig } from "./config.js";
 import { connect } from "./db/index.js";
 import { createFileEventBus } from "./events/bus.js";
 import { ProcessingWorker } from "./jobs/worker.js";
@@ -29,6 +32,13 @@ try {
 }
 
 const log = pino({ level: config.logLevel, name: "vola-worker" });
+
+if (isMemoryUrl(config.databaseUrl)) {
+  log.error(
+    "VOLA_DATABASE_URL is :memory:: the worker cannot open the server's in-memory database; use a file:<path> URL (the same file as the server's)",
+  );
+  process.exit(1);
+}
 
 if (!config.redisUrl) {
   log.error("VOLA_REDIS_URL is not set: the worker has no queue to consume");

@@ -7,14 +7,15 @@ upgrades and a reverse proxy. The routes: [API.md](API.md); the CLI inside the c
 Contents: [Quick start](#quick-start-docker-composeyaml) · [The image](#the-image) ·
 [Environment variables](#environment-variables) · [The key file and the pepper file](#the-key-file-and-the-pepper-file) ·
 [Volumes](#volumes) · [The worker](#the-worker) · [OCR](#ocr) · [Reverse proxy](#behind-a-reverse-proxy) ·
-[Backups](#backups) · [Upgrades](#upgrades-and-migrations) · [Scaling](#scaling) ·
+[SQLite](#running-on-sqlite) · [Backups](#backups) · [Upgrades](#upgrades-and-migrations) · [Scaling](#scaling) ·
 [Examples site](#the-examples-site-profile-demo) · [Checking a deployment](#checking-a-deployment)
 
 ## Quick start: `docker-compose.yaml`
 
 The production-like stack: the **server** (`vola`), the **worker** (`vola-worker`, the same
 image), **PostgreSQL 16** and **Redis 7**. Every `${VAR}` can be set in the shell or in a `.env`
-next to the file (`.env.example` lists them all).
+next to the file (`.env.example` lists them all). Without a PostgreSQL service, on one SQLite
+file: [SQLITE.md](SQLITE.md).
 
 ```sh
 docker compose -f docker-compose.yaml up -d
@@ -45,8 +46,8 @@ docker run -d -p 8300:8300 \
   -e VOLA_DATABASE_URL=postgresql://vola:vola@db:5432/vola \
   -e VOLA_REDIS_URL=redis://redis:6379/0 \
   -v vola-data:/data -v ./secrets:/run/secrets/vola:ro \
-  ghcr.io/digital-cube/jsvola:1.0.0
-docker run … ghcr.io/digital-cube/jsvola:1.0.0 node dist/worker.js     # the worker
+  ghcr.io/digital-cube/jsvola:1.1.0
+docker run … ghcr.io/digital-cube/jsvola:1.1.0 node dist/worker.js     # the worker
 ```
 
 - Base `node:24-bookworm-slim`; runs as the unprivileged `node` user; `WORKDIR /app`.
@@ -82,8 +83,8 @@ stops the process at start with one line naming every bad variable.
 
 | variable | default | |
 |---|---|---|
-| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | PostgreSQL. **Set it.** The server migrates it at start; the CLI uses the same |
-| `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only |
+| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process (and one worker on the same host) — see [SQLITE.md](SQLITE.md). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
+| `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only (the same forms) |
 | `VOLA_REDIS_URL` | *(unset)* | Redis: the job queue, file events across processes, unlock tokens, the share-password counter. Unset: one process, synchronous jobs, in-process events, **no keyrings** |
 | `VOLA_HOST` / `VOLA_PORT` | `0.0.0.0` / `8300` | the listener |
 | `VOLA_PREFIX` | `/vola` | the path every route is mounted under |
@@ -277,13 +278,38 @@ To turn it off everywhere: `VOLA_OCR_ENABLED=0` on the server (no job is created
 - The examples site, if served, is the same container at `/` (`VOLA_UI_DIR`); the API lives
   under `VOLA_PREFIX`.
 
+## Running on SQLite
+
+`VOLA_DATABASE_URL=file:<path>` runs vola on one SQLite file instead of PostgreSQL: one server
+process and no database service; with Redis, one worker process on the same host opens the
+same file for thumbnails and OCR. Everything about it is in **[SQLITE.md](SQLITE.md)**: which
+database fits (the features-by-database table), the quick start without Docker, embedding,
+the worker and how the OCR search differs, the files and their permissions, backups with
+`VACUUM INTO`, and the limits. What is particular to the image:
+
+- Put the file on the `/data` volume, next to the storage: `VOLA_DATABASE_URL=file:/data/vola.db`.
+  The server creates and migrates it at the first start. `docker-compose.yaml` is the
+  PostgreSQL stack: on SQLite the `vola` service needs no `postgres` service.
+- A `vola-worker` container must run **on the same host** as `vola`, with the same `/data`
+  volume and the same `VOLA_DATABASE_URL`. SQLite's locks do not cross machines, so a worker on
+  another host does not work, and neither does a `/data` volume on NFS (the storage alone may
+  be on a network file system; the database file may not).
+- Run exactly one `vola` container on the file: `--scale vola=2` is for PostgreSQL only
+  ([Scaling](#scaling)).
+- Back up with `VACUUM INTO` instead of `pg_dump` (step 1 of [Backups](#backups)), e.g.
+  `docker compose exec vola node -e '…'` with the one-liner of
+  [SQLITE.md § Operations](SQLITE.md#operations), into a path on a volume.
+
 ## Backups
 
-Durable data lives in **two places that must be backed up together**: PostgreSQL (the rows —
+Durable data lives in **two places that must be backed up together**: the database (the rows —
 which blob belongs to which file of which tenant, folders, shares, keyrings, OCR text) and
 `VOLA_STORAGE_PATH` (the bytes). A database without the blobs is a catalogue of nothing; blobs
 without the database are unnamed hashes (and, for encrypted files, unreadable ones). The key
 and pepper files are the third place, kept **apart** from the other two ([above](#the-key-file-and-the-pepper-file)).
+
+The commands below are PostgreSQL's; a SQLite file is copied with `VACUUM INTO` instead
+([SQLITE.md § Operations](SQLITE.md#operations)), and the rest is the same.
 
 ```sh
 # 1. the database
@@ -326,6 +352,8 @@ API; a `1.x` client speaks to any `1.y` server.
 
 ## Scaling
 
+- **On SQLite there is no scaling**: one server process, at most one worker, one host
+  ([SQLITE.md](SQLITE.md#limits-and-known-differences)). Everything below is PostgreSQL.
 - **Several server processes** share PostgreSQL, Redis and the storage volume; file events
   travel through Redis pub/sub, so a client subscribed on one process sees uploads made through
   another. Put them behind one proxy; no sticky sessions are needed (the unlock token is in a

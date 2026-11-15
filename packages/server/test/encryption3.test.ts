@@ -204,12 +204,12 @@ beforeAll(async () => {
   await worker.ready();
 });
 afterAll(async () => {
-  await worker.close();
-  await asyncApp.close();
+  await worker?.close();
+  await asyncApp?.close();
   await logged.close();
   await app.close();
-  await queue.queue.obliterate({ force: true }).catch(() => undefined);
-  await queue.close();
+  await queue?.queue.obliterate({ force: true }).catch(() => undefined);
+  await queue?.close();
   await redis.quit();
   await handle.close();
   await rm(root, { recursive: true, force: true });

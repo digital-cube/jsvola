@@ -1,0 +1,12 @@
+{"status":"ok","checks":{"database":"ok"}}
+{
+  "filename": "hello.txt",
+  "size": 18,
+  "mime_type": "text/plain",
+  "kind": "text"
+}
+Hello from SQLite
+storage
+vola.db
+vola.db-shm
+vola.db-wal

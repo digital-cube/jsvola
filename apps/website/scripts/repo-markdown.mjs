@@ -236,6 +236,7 @@ export const REFERENCE = [
     section: "Environment variables",
     label: "Environment variables",
   },
+  { slug: "sqlite", file: "docs/SQLITE.md", label: "SQLite" },
 ];
 
 /** Every Reference page read from its file: route, title, body, anchors, description. */

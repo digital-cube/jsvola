@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-vola keeps two things apart. The bytes live on disk, named by their hash. Everything a person would call a file (its name, folder, owner, versions) is a row in PostgreSQL that points at those bytes.
+vola keeps two things apart. The bytes live on disk, named by their hash. Everything a person would call a file (its name, folder, owner, versions) is a row in the database that points at those bytes: PostgreSQL, or a single SQLite file.
 
 ## Content addressing
 
@@ -28,11 +28,31 @@ The rest of the storage directory holds work in progress:
 
 Every path is derived from a validated hash or a validated derived name, so no input from a request reaches the file system. The filesystem is the only storage backend in v1.0. The interface it implements is what an S3 backend would implement later.
 
+## PostgreSQL or SQLite
+
+`VOLA_DATABASE_URL` picks the database when the server starts: `postgresql://…` for PostgreSQL, the default, or `file:<path>` for one SQLite file. The routes, the answers and the error codes are the same on both, and so are the storage directory, the key files and every other variable. There is no tool to move an installation from one to the other, so pick when you install.
+
+| | PostgreSQL (default) | SQLite (`file:<path>`) |
+| --- | --- | --- |
+| What it needs | A PostgreSQL 16 service | Nothing: Node's built-in `node:sqlite` (Node 24+), one file on a local disk |
+| Files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, `tenant` / `caller` / `client` encryption, UDC lists and `subscribe`, statistics, transfer, the CLI | Yes | Yes |
+| `keyring` encryption (PINs) | Needs Redis | Needs Redis (same) |
+| Thumbnails | By the worker, or inline on the first `/thumb` | By the worker, or inline on the first `/thumb` |
+| OCR and the OCR text search | Yes: worker + tesseract; `tsvector` + GIN | Yes: worker + tesseract; FTS5 ([how it differs](/reference/sqlite/#how-the-ocr-search-differs-from-postgresql)) |
+| The worker and Redis | Optional; the worker on any host | Optional; the worker **on the server's host**, opening the same file |
+| Processes | Any number of servers and workers | **One server process** and at most one worker, one writer at a time |
+| Hosts | Any | **One** (the file, the server and the worker on the same machine) |
+| Backup | `pg_dump` + the storage | `VACUUM INTO` (or a copy while stopped) + the storage |
+| Scaling | More servers behind a proxy, more workers | None: one process. Move to PostgreSQL when it is not enough |
+| Moving to the other database | No tool | No tool |
+
+**SQLite** fits a small installation that must not depend on a database service: a team's file store, an application that [embeds vola](/get-started/embedded/) and ships as one process, a demo, an edge box. **PostgreSQL** fits when you need more than one server process, a worker on another machine, storage shared over the network, or a database your operations already back up and monitor. [Run it on a SQLite file](/get-started/sqlite/) is the quick start, and the [SQLite guide](/reference/sqlite/) covers operating the file.
+
 ## Delete and purge
 
 A delete is soft: the row gets a `deleted_at` and the bytes stay. A purge is the only hard delete of a file, and it is the one moment a blob may leave the disk. It goes only when no row of any tenant cites its hash.
 
-Uploads and purges take the same PostgreSQL advisory lock on the hash. That is what makes deduplication safe: a purge cannot remove a blob at the moment a new upload starts citing it.
+Uploads and purges take the same lock on the hash: a PostgreSQL advisory lock, or on SQLite the file's one write lock, which every transaction holds from its start. That is what makes deduplication safe: a purge cannot remove a blob at the moment a new upload starts citing it.
 
 ## The instance model
 

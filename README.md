@@ -7,7 +7,8 @@ Self-hosted, multi-tenant, **content-addressable file storage** for applications
 application (a ticketing system, a CMS, a chat) hands its files to vola and gets back ids,
 downloads with `Range`, thumbnails, OCR text, share links, folders and versions — per tenant,
 per entity, with encryption at rest when asked. The TypeScript port of vola-spp: Fastify 5 +
-Drizzle/PostgreSQL + Redis, published as `@vol-a/*` packages on npm and as one Docker image.
+Drizzle on PostgreSQL (or SQLite, for a small installation on one host) + Redis, published as
+`@vol-a/*` packages on npm and as one Docker image.
 
 **What makes it vola**
 
@@ -30,6 +31,25 @@ Drizzle/PostgreSQL + Redis, published as `@vol-a/*` packages on npm and as one D
   thumbnails (WebP, sharp) and OCR (tesseract), share links with password / expiry / download
   cap, statistics, an admin transfer of instances between tenants, and an optional audit trail
   in [memento](https://github.com/digital-cube/jsmemento).
+
+## Features by database
+
+PostgreSQL is the default and has every feature. A SQLite file (`VOLA_DATABASE_URL=file:<path>`)
+runs a small installation without a database service — one server process, everything inline,
+or, with Redis, one worker process next to it on the same host for thumbnails and OCR:
+
+| | PostgreSQL (default) | SQLite (`file:<path>`) |
+|---|---|---|
+| files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, encryption (all four modes), UDC lists and `subscribe`, statistics, transfer | yes | yes |
+| thumbnails | by the worker, or inline on `/thumb` | by the worker, or inline on `/thumb` |
+| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract), `tsvector` + GIN | yes (worker + tesseract), FTS5 |
+| OCR search words | PostgreSQL's `simple` parser: lower-cased, no stemming, diacritics kept (`č` ≠ `c`) | FTS5 `unicode61`, `remove_diacritics 0`: the same, except that every character that is not a letter or a digit separates words (`e-mail` is `e` and `mail`; PostgreSQL also keeps `e-mail` whole) |
+| the worker process and its Redis job queue | yes, on any host | yes, **on the server's host**, opening the same file (`VOLA_REDIS_URL` set) |
+| several server processes on one database | yes | **no** — one server process (and one worker) per file, one writer at a time |
+| Redis for file events, keyring unlock tokens, the share-password counter | yes | yes |
+
+Which one fits, a quick start on a SQLite file, embedding, the worker, backups and the limits:
+[docs/SQLITE.md](docs/SQLITE.md).
 
 ## Packages
 
@@ -54,6 +74,11 @@ pnpm add @vol-a/server @vol-a/core # embed the Fastify plugin in your own server
 ```
 
 ## Quick start
+
+**Pick the database first** ([Features by database](#features-by-database)). This quick start
+is the full stack on PostgreSQL. For one process on one SQLite file, with no database service
+and no Docker, follow the [SQLite quick start](docs/SQLITE.md#quick-start-a-server-on-a-sqlite-file)
+instead; the API calls below are the same.
 
 Docker (or podman) and `curl`. The stack is the server, the worker, PostgreSQL 16 and Redis 7;
 the image is `ghcr.io/digital-cube/jsvola`. Keys and tenants are made with the bundled `vola`
@@ -149,9 +174,9 @@ pnpm vola create-key --tenant acme --name local --env test --scopes files:read,f
 |---|---|
 | `pnpm lint` / `pnpm format` | Biome |
 | `pnpm typecheck` / `pnpm build` | Turbo over every package |
-| `pnpm test` / `pnpm test:cov` | Vitest; server and CLI need the compose databases; coverage ≥ 80 % per package |
+| `pnpm test` / `pnpm test:cov` | Vitest; server and CLI run on PostgreSQL and on SQLite and need the compose databases ([CONTRIBUTING.md](docs/CONTRIBUTING.md#running-checks): one dialect at a time); coverage ≥ 80 % per package |
 | `pnpm test:e2e` | the built server against PostgreSQL + Redis over HTTP (`VOLA_E2E_URL` to point it at a running one) |
-| `pnpm db:generate` | a new Drizzle migration after editing `packages/server/src/db/schema.ts` |
+| `pnpm db:generate` | new Drizzle migrations for both databases after editing `packages/server/src/db/schema-postgres.ts` and `schema-sqlite.ts` |
 | `pnpm vola lookups validate` | `lookups.yaml` + `i18n/translations.csv` |
 
 `.env` is not loaded automatically: export the variables (`set -a; . ./.env; set +a`) or rely on
@@ -165,6 +190,7 @@ the relative-link check of the documents, and builds the image and runs the E2E 
 - [docs/API.md](docs/API.md) — every route: method, path, scope, body, answers, error codes; `Range`/`HEAD` rules, the **202 thumbnail rule**, tus, shares and grants, keyrings, UDC
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — packages, the upload flow (`finalizeUpload`), the CAS layout, the worker and its queues, the event bus and `subscribe`, transfer, the database schema
 - [docs/CRYPTO.md](docs/CRYPTO.md) — encryption at rest: keys, the `JSV` blob format, the four modes, keyrings, what a dump reveals, troubleshooting
+- [docs/SQLITE.md](docs/SQLITE.md) — running on a SQLite file: SQLite or PostgreSQL, the quick start, embedding, the worker, backups, limits
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — the image, `docker-compose.yaml`, every `VOLA_*` variable, the key and pepper files, volumes, backups, upgrades
 - [docs/CLI.md](docs/CLI.md) — every `vola` command
 - [docs/MIGRATION-FROM-VOLA-SPP.md](docs/MIGRATION-FROM-VOLA-SPP.md) — for consumers of vola-spp: route table, auth, what stays the same, the checklist

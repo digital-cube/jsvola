@@ -17,7 +17,7 @@ import { LOOKUP_SECTIONS, type ProcessingStatus } from "@vol-a/core";
 import { and, count, eq, gt, isNull, lt, or, type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type BoundTenantContext, requireTenant, runWithTenant } from "../context.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FileRow, fileMetadata, files, folders } from "../db/schema.js";
 import type { FileEvent, FileEventBus } from "../events/bus.js";
 import { extensionOf } from "../files/filename.js";
@@ -51,8 +51,9 @@ export const INSTANCE_ID_FILTER = "instance_id";
 export const INCLUDE_DELETED_FILTER = "include_deleted";
 /**
  * Row: whether OCR text was extracted. Filter: `contains <words>` (or `eq <words>`) is a
- * full-text search over the text, `plainto_tsquery('simple', …)` against the GIN-indexed
- * `ocr_tsv`; `eq true|false`, `is_not_null` / `is_null` select files with / without text.
+ * full-text search over the text (`dialect.ocrMatch`: on PostgreSQL `plainto_tsquery('simple',
+ * …)` against the GIN-indexed `ocr_tsv`, on SQLite the FTS5 index `vola_file_ocr_fts`); `eq true|false`, `is_not_null` / `is_null` select
+ * files with / without text.
  */
 export const OCR_FILTER = "ocr";
 export const FILES_DEFAULT_PAGE_SIZE = 50;
@@ -117,17 +118,18 @@ export interface FileField extends SqlField {
 const encrypted = (file: FileRow) => file.encryption !== "none";
 
 // Filters and sorts see the SAME masked values the rows carry: the name, MIME type and
-// extension of an encrypted file never reach SQL comparisons or a cursor.
-const maskedName = sql<string>`case when ${files.encryption} = 'none' then ${files.filename} else ${ENCRYPTED_FILENAME} end`;
-const maskedMime = sql<
-  string | null
->`case when ${files.encryption} = 'none' then ${files.mimeType} end`;
-const maskedExtension = sql<
-  string | null
->`case when ${files.encryption} = 'none' then ${files.extension} end`;
-const folderPath = sql<string>`coalesce(${folders.path}, '')`;
-const isDeleted = sql<boolean>`${files.deletedAt} is not null`;
-const hasOcr = sql<boolean>`coalesce(${fileMetadata.ocrText}, '') <> ''`;
+// extension of an encrypted file never reach SQL comparisons or a cursor. Functions, not
+// constants: the tables are read when a query is built (`db/schema.ts`).
+const maskedName = () =>
+  sql<string>`case when ${files.encryption} = 'none' then ${files.filename} else ${ENCRYPTED_FILENAME} end`;
+const maskedMime = () =>
+  sql<string | null>`case when ${files.encryption} = 'none' then ${files.mimeType} end`;
+const maskedExtension = () =>
+  sql<string | null>`case when ${files.encryption} = 'none' then ${files.extension} end`;
+const folderPath = () => sql<string>`coalesce(${folders.path}, '')`;
+const isDeleted = () => sql<boolean>`${files.deletedAt} is not null`;
+/** A boolean in the row on every database (SQLite answers 0/1). */
+const hasOcr = () => sql<boolean>`coalesce(${fileMetadata.ocrText}, '') <> ''`.mapWith(Boolean);
 
 /** `true` / `false` of a filter value, `null` for anything that is not one. */
 function booleanValue(value: unknown): boolean | null {
@@ -155,17 +157,26 @@ export function needsSqlMatch(node: FilterNode | undefined): boolean {
 
 /** The SQL of a condition on `ocr`: a full-text match, or the yes/no flag. */
 function ocrCondition(c: Condition): SQL | undefined {
-  if (c.op === "is_null") return sql`not ${hasOcr}`;
-  if (c.op === "is_not_null") return hasOcr;
+  if (c.op === "is_null") return sql`not ${hasOcr()}`;
+  if (c.op === "is_not_null") return hasOcr();
   if (c.op === "contains" || c.op === "eq" || c.op === "neq") {
     const flag = c.op === "contains" ? null : booleanValue(c.value);
-    if (flag !== null) return flag === (c.op === "eq") ? hasOcr : sql`not ${hasOcr}`;
+    if (flag !== null) return flag === (c.op === "eq") ? hasOcr() : sql`not ${hasOcr()}`;
     if (c.value === null || c.value === undefined || typeof c.value === "object") {
       throw new UdcError("validation_error", `${OCR_FILTER} needs the words to search for`);
     }
     const words = String(c.value).trim();
     if (words === "") return sql`false`;
-    const match = sql`${fileMetadata.ocrTsv} @@ plainto_tsquery('simple', ${words})`;
+    // Both supported databases search (a SQLite without FTS5 is refused at start); the
+    // guard is for a dialect that cannot.
+    if (!dialect.capabilities.ocrSearch) {
+      throw new UdcError(
+        "unsupported_op",
+        `searching ${OCR_FILTER} text is not supported on this database (${dialect.name})`,
+        { field: OCR_FILTER },
+      );
+    }
+    const match = dialect.ocrMatch(words);
     return c.op === "neq" ? sql`not coalesce(${match}, false)` : match;
   }
   throw new UdcError(
@@ -223,21 +234,29 @@ interface TenantGroup {
 /** What one subscription gets for one event, decided before anything is sent. */
 type Decision = { sink: RowSink; upsert: Row } | { sink: RowSink; remove: string } | null;
 
+// Getters: each column is read when a query is built, from the schema of the process's
+// dialect (`db/schema.ts`).
 export const FILES_SORTABLE: Record<string, SortableField> = {
-  created_at: {
-    expr: files.createdAt,
-    cursorValue: (r) => r.file.createdAt.getTime(),
-    param: (v) => new Date(Number(v)),
+  get created_at(): SortableField {
+    return {
+      expr: files.createdAt,
+      cursorValue: (r) => r.file.createdAt.getTime(),
+      param: (v) => new Date(Number(v)),
+    };
   },
-  filename: {
-    expr: maskedName,
-    cursorValue: (r) => (encrypted(r.file) ? ENCRYPTED_FILENAME : r.file.filename),
-    param: (v) => String(v),
+  get filename(): SortableField {
+    return {
+      expr: maskedName(),
+      cursorValue: (r) => (encrypted(r.file) ? ENCRYPTED_FILENAME : r.file.filename),
+      param: (v) => String(v),
+    };
   },
-  size: {
-    expr: files.size,
-    cursorValue: (r) => Number(r.file.size),
-    param: (v) => Number(v),
+  get size(): SortableField {
+    return {
+      expr: files.size,
+      cursorValue: (r) => Number(r.file.size),
+      param: (v) => Number(v),
+    };
   },
 };
 
@@ -257,7 +276,7 @@ export function filesFields(prefix: string): Record<string, FileField> {
       description: "Which instance (UUID)",
     }),
     filename: text(
-      maskedName,
+      maskedName(),
       (r) => (encrypted(r.file) ? ENCRYPTED_FILENAME : r.file.filename),
       {
         length: 255,
@@ -285,15 +304,15 @@ export function filesFields(prefix: string): Record<string, FileField> {
       expr: files.size,
       value: (r) => Number(r.file.size),
     },
-    extension: text(maskedExtension, (r) => (encrypted(r.file) ? null : r.file.extension), {
+    extension: text(maskedExtension(), (r) => (encrypted(r.file) ? null : r.file.extension), {
       length: 50,
       description: "Lowercase, without the dot; null for an encrypted file",
     }),
-    mime_type: text(maskedMime, (r) => (encrypted(r.file) ? null : r.file.mimeType), {
+    mime_type: text(maskedMime(), (r) => (encrypted(r.file) ? null : r.file.mimeType), {
       length: 255,
       description: "MIME type; null for an encrypted file",
     }),
-    folder_path: text(folderPath, (r) => r.folderPath ?? "", {
+    folder_path: text(folderPath(), (r) => r.folderPath ?? "", {
       description:
         'The folder inside the instance ("" at the root); a filter lists that level only',
     }),
@@ -380,7 +399,7 @@ export function filesFields(prefix: string): Record<string, FileField> {
           "Filter: `eq true` lists soft-deleted files too (live ones only otherwise). Row: whether the file is soft-deleted.",
       },
       kind: "bool",
-      expr: isDeleted,
+      expr: isDeleted(),
       value: (r) => r.file.deletedAt !== null,
       sortable: false,
     },
@@ -391,7 +410,7 @@ export function filesFields(prefix: string): Record<string, FileField> {
           "Row: whether OCR text was extracted (yes/no). Filter: `contains <words>` searches the OCR text (full-text, every language alike); `eq true|false` / `is_not_null` / `is_null` select files with or without text.",
       },
       kind: "bool",
-      expr: hasOcr,
+      expr: hasOcr(),
       value: (r) => r.hasOcr,
       sortable: false,
       condition: ocrCondition,
@@ -708,7 +727,7 @@ export class FilesCollectionSource implements SubscribableSource {
 
   private select() {
     return this.db
-      .select({ file: files, folderPath: folders.path, hasOcr })
+      .select({ file: files, folderPath: folders.path, hasOcr: hasOcr() })
       .from(files)
       .leftJoin(folders, eq(folders.id, files.folderId))
       .leftJoin(fileMetadata, eq(fileMetadata.fileId, files.id))

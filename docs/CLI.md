@@ -6,8 +6,10 @@ pnpm vola <command> --help        # options of one command
 docker compose -f docker-compose.yaml exec vola vola --help      # the same CLI inside the image
 ```
 
-`@vol-a/cli` is the `vola` command (`packages/cli`). Every administrative command talks to
-PostgreSQL directly (`VOLA_DATABASE_URL`) and connects only when it runs, so `--help`,
+`@vol-a/cli` is the `vola` command (`packages/cli`). Every administrative command talks to the
+database directly (`VOLA_DATABASE_URL`: PostgreSQL, or a SQLite `file:<path>` — next to the
+running server, a command waits up to 10 s for SQLite's one writer; [SQLITE.md](SQLITE.md#quick-start-a-server-on-a-sqlite-file)
+makes the first tenant and key on a file) and connects only when it runs, so `--help`,
 `--version` and usage errors never open the database. `demo-seed` is the one command that talks
 to a running server over HTTP. Put `--json` **before** the command for machine-readable output
 (`vola --json list-keys`). Exit code 0 on success, 1 on any error (the message on stderr, one
@@ -15,7 +17,7 @@ line, never a secret).
 
 | command | |
 |---|---|
-| `migrate` | apply pending database migrations (the server does this at start too) |
+| `migrate` | apply pending database migrations (the server does this at start too); on a SQLite `file:` URL it creates the file and its directory |
 | `create-tenant --slug <slug> [--name <name>]` | create a tenant |
 | `tenant-set --slug <slug> --default-encryption none\|tenant\|keyring\|caller` | how an upload that names no mode is stored |
 | `create-key --tenant <slug> --name <label> [--env live\|test] [--scopes a,b] [--expires <iso>] [--created-by <who>]` | a tenant API key; the plaintext printed **once** |
@@ -37,7 +39,7 @@ Environment the commands read:
 
 | variable | used by |
 |---|---|
-| `VOLA_DATABASE_URL` | every database command (default `postgresql://vola:vola@localhost:5432/vola`) |
+| `VOLA_DATABASE_URL` | every database command: `postgresql://…` or `file:<path>` (SQLite) (default `postgresql://vola:vola@localhost:5432/vola`) |
 | `VOLA_REDIS_URL` | `transfer` announces the move to live subscribers of both tenants |
 | `VOLA_MEMENTO_URL` + `VOLA_MEMENTO_API_KEY` | `create-key`, `create-admin-key`, `revoke-key`, `transfer` write audit events to memento (one direct push, awaited) with the actor `cli:<$USER>` |
 | `VOLA_KEY_FILE` | `keys-generate`, `keys-status`, `transfer` (re-wraps `tenant` files); default `/run/secrets/vola.key` |

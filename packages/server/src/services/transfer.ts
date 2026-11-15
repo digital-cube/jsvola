@@ -56,6 +56,7 @@
  */
 import type { TransferInstance, TransferRequest, TransferResult } from "@vol-a/core";
 import {
+  type AnyColumn,
   and,
   eq,
   gt,
@@ -66,7 +67,6 @@ import {
   sql,
   TransactionRollbackError,
 } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import type { AuditActorType } from "../audit/memento.js";
@@ -167,7 +167,7 @@ export function distinctInstances(instances: readonly TransferInstance[]): Trans
  * `CASE column WHEN old THEN new … ELSE column END` for the entries of `userMap` that change
  * something; the column itself when none does. One expression rewrites a whole table.
  */
-export function mapUsers(column: AnyPgColumn, userMap: Record<string, string>): SQL {
+export function mapUsers(column: AnyColumn, userMap: Record<string, string>): SQL {
   const entries = Object.entries(userMap).filter(([from, to]) => from !== to);
   if (entries.length === 0) return sql`${column}`;
   const whens = entries.map(([from, to]) => sql`when ${column} = ${from} then ${to}`);

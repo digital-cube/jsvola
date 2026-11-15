@@ -4,7 +4,7 @@ const url = process.env.VOLA_DATABASE_URL ?? "postgresql://vola:vola@localhost:5
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/db/schema.ts",
+  schema: "./src/db/schema-postgres.ts",
   out: "./drizzle",
   dbCredentials: { url },
 });

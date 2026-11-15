@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/cli",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "JSVola CLI: tenants, API keys, migrations and the lookups vocabulary for @vol-a/server.",
   "license": "MIT",
   "repository": {

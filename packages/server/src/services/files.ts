@@ -14,7 +14,7 @@ import {
   type ProcessingStatus,
   type PurgeResult,
 } from "@vol-a/core";
-import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
@@ -25,7 +25,7 @@ import {
   newFileKey,
   sealMeta,
 } from "../crypto/index.js";
-import type { Database } from "../db/index.js";
+import { type Database, dialect } from "../db/index.js";
 import { type FileRow, files } from "../db/schema.js";
 import { uuidv7 } from "../db/uuid.js";
 import { VolaError } from "../errors.js";
@@ -370,12 +370,6 @@ export interface FinalizeUploadInput {
   userId: string | null;
 }
 
-/** PostgreSQL error code of a unique violation. */
-const UNIQUE_VIOLATION = "23505";
-const pgCode = (error: unknown): string | undefined =>
-  (error as { code?: string } | undefined)?.code ??
-  (error as { cause?: { code?: string } } | undefined)?.cause?.code;
-
 /**
  * Turns a staged upload into a file row: detects MIME, extension and kind, then in ONE
  * transaction — under an advisory lock on the hash, so a concurrent purge of the same bytes
@@ -469,9 +463,7 @@ export async function finalizeUpload(
     for (let attempt = 1; ; attempt++) {
       try {
         const { info, replaced } = await deps.db.transaction(async (tx) => {
-          await tx.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${upload.staged.hash}, 0))`,
-          );
+          await dialect.lockContentHash(tx, upload.staged.hash);
           if (!committed) {
             await deps.storage.commit(upload.staged);
             committed = true;
@@ -566,7 +558,7 @@ export async function finalizeUpload(
         }
         return info;
       } catch (error) {
-        if (slug && attempt < 3 && pgCode(error) === UNIQUE_VIOLATION) continue;
+        if (slug && attempt < 3 && dialect.isUniqueViolation(error)) continue;
         throw error;
       }
     }
@@ -633,7 +625,7 @@ async function resolveFilename(
   const siblings = await tx
     .select({ filename: files.filename })
     .from(files)
-    .where(and(namespace, like(files.filename, `${escapeLike(base)} (%`)));
+    .where(and(namespace, dialect.like(files.filename, `${escapeLike(base)} (%`)));
   return nextCollisionFilename(filename, [filename, ...siblings.map((row) => row.filename)]);
 }
 
@@ -1094,7 +1086,7 @@ export async function purgeFile(
   for (const hash of hashes) {
     try {
       const removed = await deps.db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${hash}, 0))`);
+        await dialect.lockContentHash(tx, hash);
         const [reference] = await tx
           .select({ id: files.id })
           .from(files)
