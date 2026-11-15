@@ -1,0 +1,19 @@
+# How the thilo board's Testing engine (Project → Testing, test tickets) runs this repository's
+# tests. Read by the thilo runner out of the checkout it is about to test; committed so that it
+# travels with the branch. Docs: docs/CONTRIBUTING.md § "The full suite".
+
+[testing]
+# Run from the repository root; the exit status is the verdict. Every package's Vitest suite
+# with coverage (@vol-a/server and @vol-a/cli on PostgreSQL and on SQLite), then the E2E suite.
+# Needs the PostgreSQL and Redis of compose.yaml; says so and exits 2 when they do not answer.
+# A test ticket's `workers` arrives as `-n N` in PYTEST_ADDOPTS and becomes Vitest's
+# --maxWorkers=N (tools/test-full.mjs); its `timeout_minutes` replaces `timeout_s` below.
+command = "sh tools/test-full.sh"
+
+# Every package's Vitest coverage merged into one report, in coverage.py's JSON format (the
+# only one the runner reads). Git-ignored (`coverage/`).
+coverage_json = "coverage/coverage.json"
+format = "coverage-py-json"
+
+# Wall-clock backstop, seconds: a ceiling against a hung suite, not a budget (it runs in minutes).
+timeout_s = 1800

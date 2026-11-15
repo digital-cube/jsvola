@@ -14,6 +14,7 @@
     "test:cov": "turbo run test:cov",
     "test:coverage": "turbo run test:cov",
     "test:e2e": "turbo run test:e2e",
+    "test:full": "node tools/test-full.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "biome check .",
     "format": "biome format --write .",

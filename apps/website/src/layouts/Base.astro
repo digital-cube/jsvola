@@ -8,6 +8,7 @@ import "@fontsource-variable/archivo/wdth.css";
 import "@fontsource-variable/jetbrains-mono/wght.css";
 import "../styles/tokens.css";
 import "../styles/home.css";
+import BuildLine from "../components/BuildLine.astro";
 import SiteTitle from "../components/SiteTitle.astro";
 import ThemeProvider from "../components/ThemeProvider.astro";
 import ThemeToggle from "../components/ThemeToggle.astro";
@@ -53,7 +54,10 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     </header>
     <main><slot /></main>
     <footer class="site-footer">
-      <span>vola. MIT licensed, self-hosted, yours to run.</span>
+      <div class="colophon">
+        <p>vola. MIT licensed, self-hosted, yours to run.</p>
+        <BuildLine />
+      </div>
       <nav aria-label="Footer">
         <a href="/get-started/docker/">Run it with Docker</a>
         <a href="/packages/changelog/">Changelog</a>
@@ -94,5 +98,12 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     padding-block: 1.5rem 2.5rem;
     font-size: 0.875rem;
     border-top: 1px solid var(--vola-rule-strong);
+  }
+  .colophon {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .colophon p {
+    margin: 0;
   }
 </style>

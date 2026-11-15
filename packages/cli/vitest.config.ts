@@ -47,7 +47,9 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       // The process entry point only wires argv/exit code to `runCli`.
       exclude: ["src/main.ts"],
-      reporter: ["text", "html", "json-summary"],
+      reporter: ["text", "html", "json-summary", "json"],
+      // A red run still reports (tools/test-full.mjs merges it for the thilo Testing tab).
+      reportOnFailure: true,
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 80 },
     },
   },

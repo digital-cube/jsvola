@@ -68,7 +68,7 @@ methods take the same arguments in order.
 | `GET /api/v1/instance-types` | `GET /vola/instance-types` | `vola.instanceTypes()` |
 | `POST /api/v1/keys` | `POST /vola/keys` `{name, scopes, env, expires_at}`; `GET /vola/keys`; `DELETE /vola/keys/:id` | `vola.keys.create(…)`, `vola.keys.list()`, `vola.keys.revoke(id)` |
 | `POST /api/v1/admin/transfer` | `POST /vola/admin/transfer` (the same body; `dry_run` added) | `vola.admin.transfer(…)` |
-| `POST /udc/list\|describe\|read` | `POST /vola/udc/list\|describe\|read` (`@jsudc/server` 0.2 protocol; the `files` collection needs a top-level `instance_type` filter, as before) | `vola.udc.list(…)`, `vola.udc.describe(…)`, `vola.udc.read(…)` |
+| `POST /udc/list\|describe\|read` | `POST /vola/udc/list\|describe\|read` (`@jsudc/server` 0.3 protocol, for these three actions the same as 0.2; the `files` collection needs a top-level `instance_type` filter, as before) | `vola.udc.list(…)`, `vola.udc.describe(…)`, `vola.udc.read(…)` |
 | `GET /api/lookups` | `GET /vola/lookups[?locale=]` (no key) | `vola.lookups(locale)` |
 | health | `GET /vola/health/live`, `GET /vola/health/ready` | `vola.live()`, `vola.ready()` |
 | — (new) | `POST /vola/uploads` + tus (`HEAD`/`PATCH`/`DELETE /vola/uploads/:id`) | `vola.uploads.resumable(type, id, source, { … })` |
@@ -149,7 +149,7 @@ mementoservice, tplbuilder-2), `…/slug/profile_image` (thilo). Per project:
    `VOLA_PUBLIC_URL` on the server so it is the public one); `/share/token/…` URLs in templates
    become `/vola/s/<token>`. For an encrypted file the `url` has a `#fragment` the recipient's
    client must send as `X-Share-Secret` (`VolaClient.openShare` does it).
-8. **UDC.** `POST /vola/udc/list|describe|read` with the same filter DSL (`@jsudc/core` 0.2);
+8. **UDC.** `POST /vola/udc/list|describe|read` with the same filter DSL (`@jsudc/core` 0.3, unchanged from 0.2);
    rows gain `kind`, `encryption`, `processing_status`, `ocr`. A UI on `@udc/react` moves to
    `@jsudc/react` + `@vol-a/react`'s `VolaFileBrowser` (live through `/udc/subscribe`).
 9. **Stats, instance types, lookups.** Path changes only (`/vola/stats/tenant`,

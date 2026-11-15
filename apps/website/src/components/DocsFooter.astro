@@ -1,0 +1,21 @@
+---
+/*
+ * The docs' footer (astro.config.mjs, `components.Footer`): Starlight's own (pagination) and,
+ * under a rule, the same build line as the footer of the site's own pages (Base.astro).
+ */
+import Default from "@astrojs/starlight/components/Footer.astro";
+import BuildLine from "./BuildLine.astro";
+---
+
+<Default><slot /></Default>
+<div class="docs-build">
+  <BuildLine />
+</div>
+
+<style>
+  .docs-build {
+    margin-top: 2.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--vola-rule);
+  }
+</style>

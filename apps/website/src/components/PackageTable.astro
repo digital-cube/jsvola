@@ -1,8 +1,11 @@
 ---
 /*
  * Every published package: name, what it is, version, licence and which @vol-a packages it uses,
- * read from packages/*\/package.json when the site is built (no network, no registry). Nothing
- * here names a version; bump the package and the page follows.
+ * read from packages/*\/package.json when the site is built; and when its newest version went to
+ * npm, asked of the registry by src/build-info.mjs in the same build (a short timeout, never an
+ * error: "not on npm yet" for a 404, an empty cell when the registry did not answer, and no
+ * column at all when it answered for none). Nothing here names a version; bump the package and
+ * the page follows.
  */
 import cli from "../../../../packages/cli/package.json";
 import client from "../../../../packages/client/package.json";
@@ -10,6 +13,7 @@ import core from "../../../../packages/core/package.json";
 import lookups from "../../../../packages/lookups/package.json";
 import react from "../../../../packages/react/package.json";
 import server from "../../../../packages/server/package.json";
+import { buildInfo, dateOf, minuteOf } from "../build-info.mjs";
 import { REPO_URL } from "../site.mjs";
 
 type Manifest = {
@@ -41,6 +45,18 @@ const rows = (
 }));
 const versions = [...new Set(rows.map((r) => r.version))];
 const licences = [...new Set(rows.map((r) => r.license))];
+
+const info = await buildInfo();
+const npmOf = (name: string) => info.npm[name] ?? { state: "unknown" as const };
+const table = rows.map((r) => ({ ...r, npm: npmOf(r.name) }));
+const showNpm = table.some((r) => r.npm.state !== "unknown");
+const published = table.filter((r) => r.npm.state === "published").length;
+const npmNote =
+  info.npmSource === "off"
+    ? "not asked of npm for this build (SITE_NPM=off)."
+    : !showNpm
+      ? "the npm registry did not answer during this build."
+      : `the npm registry, asked in the same build${info.npmSource === "fixture" ? " (here a fixture, SITE_NPM)" : ""}: the newest version of each package and when it was published${published === 0 ? "; none is on npm yet" : ""}.`;
 ---
 
 <div class="pkg-scroll not-content">
@@ -49,18 +65,36 @@ const licences = [...new Set(rows.map((r) => r.license))];
       <tr>
         <th scope="col">Package</th>
         <th scope="col">Version</th>
+        {showNpm && <th scope="col">On npm</th>}
         <th scope="col">Uses</th>
       </tr>
     </thead>
     <tbody>
       {
-        rows.map((p) => (
+        table.map((p) => (
           <tr>
             <th scope="row">
               <a href={`${REPO_URL}/tree/main/packages/${p.dir}`}><code>{p.name}</code></a>
               <span class="desc">{p.description}</span>
             </th>
             <td><code>{p.version}</code></td>
+            {showNpm && (
+              <td class="npm">
+                {p.npm.state === "published" && (
+                  <>
+                    <time datetime={p.npm.time} title={`${p.npm.version} published ${minuteOf(p.npm.time)}`}>
+                      {dateOf(p.npm.time)}
+                    </time>
+                    {p.npm.version !== p.version && (
+                      <span class="behind">
+                        <code>{p.npm.version}</code> on npm
+                      </span>
+                    )}
+                  </>
+                )}
+                {p.npm.state === "absent" && <span class="none">not on npm yet</span>}
+              </td>
+            )}
             <td>{p.uses.length ? p.uses.map((u) => <code class="dep">{u}</code>) : "None"}</td>
           </tr>
         ))
@@ -69,10 +103,29 @@ const licences = [...new Set(rows.map((r) => r.license))];
   </table>
 </div>
 <p class="pkg-note">
-  Read from <code>packages/*/package.json</code> when this site was built: {versions.length === 1 ? `one version, ${versions[0]}, for all ${rows.length}` : `versions ${versions.join(", ")}`}. Licence: {licences.join(", ")}.
+  Read from <code>packages/*/package.json</code> when this site was built (<time datetime={info.builtAt}>{minuteOf(info.builtAt)}</time>): {versions.length === 1 ? `one version, ${versions[0]}, for all ${rows.length}` : `versions ${versions.join(", ")}`}. Licence: {licences.join(", ")}. On npm: {npmNote}
 </p>
 
 <style>
+  .npm time {
+    display: block;
+    white-space: nowrap;
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    color: var(--vola-ink-2);
+  }
+  .npm .behind {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    color: var(--vola-ink-2);
+  }
+  .npm .none {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    color: var(--vola-ink-3);
+  }
   .pkg-scroll {
     overflow-x: auto;
   }

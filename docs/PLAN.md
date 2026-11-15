@@ -58,7 +58,7 @@ standalone. Greške su `{error: {code, message}}`; kodovi su snake_case i stabil
   - `GET /vola/stats/tenant|storage`, `GET /vola/stats/instance/:type/:id`, `GET /vola/instance-types`, `GET /vola/lookups`
   - `POST /vola/admin/transfer`
   - `/vola/keyrings…` (faza 6.2)
-  - `/vola/udc/*` (`@jsudc/server` plugin) i `GET /vola/udc/subscribe` (WS subscribe; `@jsudc/server` 0.2 nema transport za `capabilities.subscribe`, pa je transport vola-in, `docs/REALTIME.md`)
+  - `/vola/udc/*` (`@jsudc/server` plugin) i `GET /vola/udc/subscribe` (WS subscribe; `@jsudc/server` 0.3 (kao ni 0.2) nema transport za `capabilities.subscribe`, pa je transport vola-in, `docs/REALTIME.md`)
 - **Tabele** imaju prefiks `vola_`. Drizzle migracije su u gitu (`packages/server/drizzle`).
 
 ## Faze i tiketi
@@ -93,10 +93,18 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 
 NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `vol-a` sa scope-om `@vol-a`, jer je `vola` zauzet; `NPM_TOKEN`; tag `v1.0.0`).
 
-Stanje (2026-11-15): `main` = tag `v1.1.0`, svi paketi i slika su na `1.1.0`. Dok TCK2J3WUWW nije urađen, `@vol-a/*` nisu na npm (ni 1.0.1 ni 1.1.0): Release workflow preskače npm korak bez `NPM_TOKEN`, a *Re-run all jobs* na runu taga `v1.1.0` ih objavljuje kad secret postoji. Stage sajtovi se podižu na 1.1.0 u sledećem tiketu.
+Stanje (2026-11-15): `main` = tag `v1.1.0`, svi paketi i slika su na `1.1.0`. Dok TCK2J3WUWW nije urađen, `@vol-a/*` nisu na npm (ni 1.0.1 ni 1.1.0): Release workflow preskače npm korak bez `NPM_TOKEN`, a *Re-run all jobs* na runu taga `v1.1.0` ih objavljuje kad secret postoji. Stage sajtovi su na 1.1.0 (TCKHJFU2P3, ispod).
 
 ## Stage (2026-11-02)
 
 Faze 1–8 su spojene u `main` i podignute: `https://stage.vol-a.com` (edge `hetzner4` → VM `igor.digitalcube.work`,
 checkout `/home/digital/sites/stage.vol-a.com`, compose projekat `jsvola-stage`). Detalji i postupak za redeploy su u
 komentaru na TCK9D5KENM. Posle 9.1 `stage.vol-a.com` je prezentacioni sajt, a examples ostaje samo na `examples.stage.vol-a.com`.
+
+2026-11-15 (TCKHJFU2P3): oba stage sajta su na `v1.1.0` — `main` u `92179c3` (merge, isto stablo kao tag `a71f7a9`).
+`stage.vol-a.com` je `releases/92179c3` (stranice za SQLite, changelog 1.1.0); `examples.stage.vol-a.com` je slika
+`localhost/jsvola-stage:latest` izgrađena iz `92179c3`, i dalje na PostgreSQL-u (isti volume, nijedna nova migracija:
+1.1.0 ne menja PostgreSQL šemu). Pre toga `pg_dump` u `/home/digital/sites/backups/examples.stage.vol-a.com/` i
+prethodna slika kao `localhost/jsvola-stage:pre-1.1.0-bad0090`. Smoke test kroz javni hostname (health, demo paket,
+upload, Range, thumbnail, share, šifrovani fajl, OCR pretraga `plainto_tsquery`, real-time u drugom tabu) i
+`packages/e2e` sa `VOLA_E2E_URL` su prošli.

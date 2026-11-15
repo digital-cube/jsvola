@@ -35,6 +35,7 @@ image, the E2E suite and npm.
 | `pnpm build` | Turbo, dependency order |
 | `pnpm test` | Vitest; `@vol-a/server` and `@vol-a/cli` run every suite twice, on PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated) and on a temporary SQLite file (`VOLA_TEST_DIALECT=postgres\|sqlite` for one), and need Redis at `VOLA_REDIS_URL` for the keyring, worker and `subscribe` suites |
 | `pnpm test:cov` | the same with coverage; CI enforces ≥ 80 % lines per package (HTML in `packages/*/coverage/`) |
+| `pnpm test:full` | `test:cov` and `test:e2e` in one go, with one merged coverage report — [§ The full suite](#the-full-suite) |
 | `pnpm test:e2e` | builds the packages (Turbo), then starts the built server on a free port against the compose databases — or targets a running one with `VOLA_E2E_URL` |
 | `pnpm --filter @vol-a/server test -- test/files.test.ts` | one file |
 | `node tools/check-links.mjs` | every relative link and anchor in the Markdown documents resolves |
@@ -45,6 +46,33 @@ machine, as CI installs them; without tesseract the "OCR with tesseract" suite i
 suites that need Redis (keyrings, the worker, OCR, the queued audit, `subscribe` across
 processes, the Redis event bus) **fail** with `VOLA_REDIS_URL is needed for …` when
 `VOLA_REDIS_URL` is unset or unreachable: run them with Redis, as CI does.
+
+### The full suite
+
+`pnpm test:full` (`node tools/test-full.mjs`) is the whole suite as one command: every
+workspace's `test:cov` (`@vol-a/server` and `@vol-a/cli` on PostgreSQL **and** SQLite), then
+`test:e2e`, then every workspace's coverage merged into **`coverage/coverage.json`** at the
+repository root (git-ignored), with a per-package table at the end. It is what the thilo
+board's Testing engine runs: [`thilo.toml`](../thilo.toml) `[testing]` has
+`command = "sh tools/test-full.sh"` (the same, after putting the newest Node ≥ 24 from
+`$NVM_DIR` on `PATH` when there is none) and `coverage_json = "coverage/coverage.json"`.
+
+- **Needs**: `pnpm install`, and the PostgreSQL and Redis of `compose.yaml`
+  (`docker compose up -d postgres redis`). The URLs come from the environment, then `.env`,
+  then `.env.example`; when either service does not answer, the command says which and exits
+  `2` before running anything. The OCR suites want `tesseract` and `pdftoppm` as above.
+- **Exit status**: `0` only when every suite passed and every package met its coverage
+  threshold (as in CI); otherwise the first failing step's status. The coverage file is written
+  either way (`reportOnFailure` in each Vitest config), so a red run still has numbers.
+- **Coverage file**: coverage.py's JSON format (`files`, `totals`, line numbers per file —
+  what the thilo runner reads), built from Vitest's `coverage-final.json` with istanbul's line
+  rule, plus `packages` with each package's totals (and Vitest's own lines / statements /
+  functions / branches percentages, the ones the thresholds check).
+- **Workers**: `VOLA_TEST_WORKERS=4` (or `off` for one worker without file parallelism, `auto`
+  for Vitest's default) becomes `--maxWorkers=4` on every Vitest run. A thilo test ticket's
+  `workers` arrives as pytest-xdist's `-n 4` in `PYTEST_ADDOPTS`, which is read the same way.
+  The database suites run their files one at a time regardless (`fileParallelism: false`).
+- `--no-e2e` (or `VOLA_TEST_E2E=0`) skips the E2E step.
 
 ### Tests on each database
 

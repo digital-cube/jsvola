@@ -2,10 +2,15 @@
 /*
  * Packages: <PackageTable> reads packages/*\/package.json at build time; the image tags are the
  * sentence of docs/DEPLOYMENT.md that defines them, so a new tag scheme shows up here by itself.
+ * Beside the image: the newest release tag of this build and its date (src/build-info.mjs).
  */
+import { buildInfo, dateOf } from "../../build-info.mjs";
 import deployment from "../../../../../docs/DEPLOYMENT.md?raw";
 import PackageTable from "../PackageTable.astro";
 import Section from "../Section.astro";
+
+const { release } = await buildInfo();
+const releaseTag = release ? (release.tag ?? `v${release.version}`) : null;
 
 const line = /`(ghcr\.io\/[^`:]+):<version>` \(([^)]*)\)/.exec(deployment.replace(/\n/g, " "));
 if (!line?.[1] || !line[2]) throw new Error("docs/DEPLOYMENT.md: the image tags line has moved");
@@ -25,7 +30,16 @@ const tags = [...line[2].matchAll(/`([^`]+)`(?: = ([^,]+))?/g)].map((m) => ({
 
   <PackageTable />
 
-  <h3>The image</h3>
+  <h3>
+    The image
+    {
+      release && (
+        <span class="released">
+          {releaseTag} released <time datetime={release.date}>{dateOf(release.date)}</time>
+        </span>
+      )
+    }
+  </h3>
   <p class="image"><code>{image}:&lt;version&gt;</code></p>
   <dl>
     {
@@ -46,6 +60,15 @@ const tags = [...line[2].matchAll(/`([^`]+)`(?: = ([^,]+))?/g)].map((m) => ({
     font-stretch: 108%;
     font-weight: 560;
     color: var(--vola-ink);
+  }
+  .released {
+    margin-inline-start: 0.75rem;
+    font-family: var(--vola-font-mono);
+    font-size: 0.8125rem;
+    font-stretch: 100%;
+    font-weight: 400;
+    color: var(--vola-ink-3);
+    white-space: nowrap;
   }
   .image {
     margin: 0.5rem 0 0;

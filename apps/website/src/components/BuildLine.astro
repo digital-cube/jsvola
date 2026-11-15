@@ -1,0 +1,64 @@
+---
+/*
+ * One quiet mono line in the footer of every page, the site's own (Base.astro) and the docs'
+ * (DocsFooter.astro): the version, when it was released, when this site was built, the commit.
+ * All of it from src/build-info.mjs, once per build. A part the build could not know is left out.
+ */
+import { buildInfo, dateOf, minuteOf } from "../build-info.mjs";
+import { REPO_URL } from "../site.mjs";
+
+const { version, release, builtAt, commit } = await buildInfo();
+// The tag named only when it is not this version's (a version bumped, not released yet).
+const releaseTag = release && release.version !== version ? (release.tag ?? `v${release.version}`) : null;
+---
+
+<p class="build-line" data-pagefind-ignore>
+  <span>v{version}</span>
+  {
+    release && (
+      <span>
+        {releaseTag ? `${releaseTag} released ` : "released "}
+        <time datetime={release.date}>{dateOf(release.date)}</time>
+      </span>
+    )
+  }
+  <span>built <time datetime={builtAt}>{minuteOf(builtAt)}</time></span>
+  {
+    commit && (
+      <span>
+        <a href={`${REPO_URL}/commit/${commit.full}`} title={`commit ${commit.full}`}>{commit.short}</a>
+      </span>
+    )
+  }
+</p>
+
+<style>
+  .build-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 0;
+    margin: 0;
+    font-family: var(--vola-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--vola-ink-3);
+  }
+  /* Each part keeps its words together; on a narrow screen the line wraps between parts. */
+  span:not(:last-child)::after {
+    content: "·";
+    padding-inline: 0.55em;
+  }
+  span {
+    white-space: nowrap;
+  }
+  /* .build-line: Astro scopes with :where(), and home.css's `a` would win otherwise. */
+  .build-line a {
+    color: var(--vola-ink-3);
+    text-decoration: underline;
+    text-decoration-color: var(--vola-rule-strong);
+    text-underline-offset: 0.2em;
+  }
+  .build-line a:hover {
+    color: var(--vola-ink);
+  }
+</style>

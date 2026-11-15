@@ -19,7 +19,9 @@ pnpm --filter @vol-a/website typecheck   # gen + astro check + check:snippets (a
 ```
 
 `.astro` and `.mdx` files are not linted by Biome (the root `biome.json` skips them); the rest of
-`src/` is. The build needs no network.
+`src/` is. The build needs no network: the one thing it asks the network for, the npm registry
+(below), it can do without. `pnpm --filter @vol-a/website test` runs `test/*.test.mjs`
+(`node --test`, offline: a fake fetch and a fixture).
 
 ## The look
 
@@ -50,7 +52,7 @@ themes. Run it when you change a colour.
 | Concepts | `src/content/docs/concepts/*.mdx` | hand-written from `docs/` (ARCHITECTURE, CRYPTO, REALTIME, EXAMPLES-SITE, MIGRATION-FROM-VOLA-SPP) |
 | Reference | `src/content/docs/reference/*.md`, **generated, not in git** | `scripts/gen-reference.mjs`: `docs/API.md`, `docs/CRYPTO.md`, `docs/REALTIME.md`, `docs/CLI.md`, the environment-variable tables of `docs/DEPLOYMENT.md`, `docs/SQLITE.md` |
 | Examples | `src/content/docs/examples/*.mdx` | hand-written from `docs/EXAMPLES-SITE.md` and the pages' code, one per `menu.yaml` example; `<ExampleShot>` shows `src/assets/examples/<page>-light.webp` |
-| Packages | `src/content/docs/packages/index.mdx`, `changelog.md`, **the changelog generated, not in git** | `<PackageTable>` reads `packages/*/package.json`; `scripts/gen-changelog.mjs` turns `CHANGELOG.md` into the page |
+| Packages | `src/content/docs/packages/index.mdx`, `changelog.md`, **the changelog generated, not in git** | `<PackageTable>` reads `packages/*/package.json` and asks npm when each was published ([Build info](#build-info-the-footer-line-and-on-npm)); `scripts/gen-changelog.mjs` turns `CHANGELOG.md` into the page |
 
 ### `pnpm run gen`: the generated pages
 
@@ -77,7 +79,7 @@ every screenshot is a real shot of the live examples site.
 | `AtRest.astro`: encrypted at rest | `docs/CRYPTO.md` § 0 and § 2, in words and in `SegmentDiagram` |
 | `Api.astro`: the API | `src/routes.mjs`, held to `docs/API.md` by `check:snippets`; `snippets/api/<n>-<step>.sh` + `.out.txt` |
 | `QuickStarts.astro`: start where you are | `snippets/docker/<n>-<step>.sh` + `.out.txt`, `snippets/sqlite/<n>-<step>.sh` + `.out.txt`, `snippets/client/`, `snippets/react/App.tsx`, `snippets/embedded/server.ts` |
-| `Packages.astro`: packages | `packages/*/package.json` at build time; the image tags of `docs/DEPLOYMENT.md` |
+| `Packages.astro`: packages | `packages/*/package.json` at build time, *On npm* from the registry (`src/build-info.mjs`, below); the image tags of `docs/DEPLOYMENT.md` and the release date of the newest tag |
 
 Every command there was run as written: the Docker steps in a scratch directory with their own
 `COMPOSE_PROJECT_NAME` and ports, the SQLite steps (`snippets/sqlite/`) and `snippets/embedded/env.sh`
@@ -162,6 +164,40 @@ host. The defaults are production's:
 | `EXAMPLE_URL` | the examples site every "live example" link opens | `https://examples.stage.vol-a.com` |
 
 No production examples instance exists yet; that default moves when one does.
+
+## Build info: the footer line and "On npm"
+
+`src/build-info.mjs` works out, once per build, what the footer of every page shows
+(`src/components/BuildLine.astro`, in `Base.astro` and, through Starlight's `Footer` override
+`DocsFooter.astro`, in the docs) and what the Packages table adds:
+
+| shown | where it comes from |
+|---|---|
+| `v1.1.0` | the root `package.json` |
+| `released 2026-11-15` | the commit date of the newest `v<x.y.z>` tag reachable from the built commit (`git describe`, then `git log -1 --format=%cI <tag>`); without git history or tags (a tarball, a shallow clone) the `## [x.y.z] - <date>` heading of `CHANGELOG.md` for that version. Also beside *The image* on the home page |
+| `built 2026-11-15 17:01 UTC` | the clock of the build, UTC (`SOURCE_DATE_EPOCH` when set) |
+| `92179c3` | `git rev-parse HEAD`, linked to the commit on GitHub; left out without git |
+| *On npm* | `https://registry.npmjs.org/<name>`: `dist-tags.latest` and its `time`, asked once per package in parallel during the build, with npm's version under the date when it differs from the repository's |
+
+The registry never fails the build. A 404 shows *not on npm yet*; no answer (offline, a timeout,
+an error) leaves that package's cell empty and logs one warning for the build, and when no package
+got an answer the column is not shown. Both the build line and the note under the table are
+`<time datetime="…">` with the ISO time in the attribute.
+
+| variable | | default |
+|---|---|---|
+| `SITE_NPM` | `off`: do not ask the registry; a `.json` path (relative to `apps/website`): a fixture `{ "<name>": <registry document> \| null }`, `null` being a 404 | unset: the registry |
+| `SITE_NPM_TIMEOUT_MS` | how long one registry request may take | `5000` |
+
+```sh
+SITE_NPM=off pnpm --filter @vol-a/website build                                 # offline, no warning
+SITE_NPM=test/fixtures/npm-published.json pnpm --filter @vol-a/website dev      # the column with dates
+```
+
+Everything is read when the site is built, so the dates are as fresh as the build:
+`deploy/website/stage.sh` rebuilds only for a new commit (or with `--force`), and a `turbo run build`
+served from the cache keeps the build time of the cached run. `stage.sh` clones the whole
+repository, tags included, so stage's release date comes from git.
 
 ## Deploy: stage
 

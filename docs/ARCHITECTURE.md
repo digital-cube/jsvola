@@ -288,7 +288,10 @@ the `files` collection (`udc/files-source.ts`: the row shape, the filter → SQL
 `sql-filter.ts`, an opaque keyset cursor in `cursor.ts`, the view in `udc/files/view.yaml`) and
 the `menu` collection (`menu.yaml`, the examples site's sidebar). The `files` source requires a
 top-level `instance_type` filter, ANDs the tenant in, computes `download_url` / `thumb_url`,
-maps `kind` / `encryption` / `processing_status` to lookup values, exposes `ocr` as a
+maps `kind` / `encryption` / `processing_status` to lookup values (vocabulary lookups: a
+`lookup` field whose `ref` is a `lookups.yaml` section and no collection, which the startup
+check of lookups and row links in `@jsudc/server` 0.3 would refuse, so vola switches that check
+off and runs it itself without them, `udc/links.ts`), exposes `ocr` as a
 full-text filter (`dialect.ocrMatch`) — on PostgreSQL `ocr_tsv @@ plainto_tsquery('simple',
 …)` against the GIN index; on SQLite an FTS5 index (`drizzle-sqlite/0001_ocr_fts.sql`): the
 contentless table `vola_file_ocr_fts` (`unicode61 remove_diacritics 0`, so case folded and

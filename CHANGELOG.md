@@ -7,6 +7,34 @@ Docker image share one version.
 
 ## [Unreleased]
 
+### Added
+
+- **The website says how fresh it is.** The footer of every page, the docs' included, shows
+  the version, the date of its release tag, when the site was built (UTC) and the commit;
+  the Packages table has an *On npm* column with the date each package's newest version
+  was published there, and that version when it is not the repository's (*not on npm yet*
+  while a package has never been published). Read once per build
+  (`apps/website/src/build-info.mjs`); the registry never fails the build, and `SITE_NPM=off`
+  builds without asking it ([apps/website/README.md](apps/website/README.md#build-info-the-footer-line-and-on-npm)).
+
+### Changed
+
+- **`@jsudc/*` 0.3** (`@jsudc/core` 0.3.0, `@jsudc/server` 0.3.0, `@jsudc/react` 0.3.1, the
+  lookups and `row_link` release) in `@vol-a/server`, `@vol-a/client`, `@vol-a/react`, the
+  examples site and the website. Nothing changes on the wire: the `files` collection's rows,
+  filters, cursors and `GET /vola/udc/subscribe` are as before. `@jsudc/server` 0.3 checks
+  at startup that every `lookup` field names a served collection; vola's `kind`,
+  `encryption` and `processing_status` are lookups into `lookups.yaml`, which name none, so
+  `@vol-a/server` turns that check off and runs it itself without them (`udc/links.ts`):
+  any other lookup or `row_link` of the registry still stops the start when it does not
+  fit. `@jsudc/server` 0.3 still has no transport for `capabilities.subscribe`, so vola's
+  own stays ([docs/REALTIME.md](docs/REALTIME.md)).
+- **`@vol-a/react`'s `@jsudc/core` and `@jsudc/react` peer ranges are `^0.2.0 || ^0.3.0`**
+  (were `^0.2.0`): an application embedding it can stay on `@jsudc/*` 0.2 or move to 0.3,
+  with `@jsudc/react` and `@jsudc/core` from the same line. The tutorial program
+  (`apps/tutorial/ticket-desk`) stays on 0.2, because its chapters show its
+  `package.json`.
+
 ## [1.1.0] - 2026-11-15
 
 **SQLite as a database option.** A small installation on one host can run vola on a single
