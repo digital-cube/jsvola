@@ -8,6 +8,7 @@ import { hasTenant, tenantRequired } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
 import { LastUsedThrottle, touchLastUsed } from "../services/apikeys.js";
+import { checkUdcLinks } from "./links.js";
 
 export interface UdcRoutesOptions {
   db: Database;
@@ -99,9 +100,12 @@ export const udcRoutes: FastifyPluginAsync<UdcRoutesOptions> = async (app, optio
     }
   });
 
+  // jsudc's own check refuses vola's vocabulary lookups (`files.kind`, …); ours skips them only.
+  await checkUdcLinks(options.registry);
   await app.register(udcPlugin, {
     dispatcher: createDispatcher(options.registry, { log: app.log }),
     registry: options.registry,
+    checkLinks: false,
     swagger: false,
   });
 };

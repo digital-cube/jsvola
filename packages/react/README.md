@@ -11,6 +11,10 @@ pnpm add @vol-a/react @vol-a/client @jsudc/react @jsudc/core @tanstack/react-que
 # the peers @jsudc/react needs for its table: radix-ui lucide-react @tanstack/react-table
 ```
 
+`@jsudc/react` and `@jsudc/core` are peers in `^0.2.0 || ^0.3.0`: the components use nothing
+that changed in 0.3, so an application already on `@jsudc/*` 0.2 keeps it, and a new one gets
+0.3. Take the two from the same line (`@jsudc/react` 0.3 needs `@jsudc/core` 0.3).
+
 ```tsx
 import "@jsudc/react/styles.css";
 import "@vol-a/react/styles.css";

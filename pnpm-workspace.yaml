@@ -8,3 +8,10 @@ allowBuilds:
   esbuild: true
   argon2: false
   msgpackr-extract: false
+
+# Our own @jsudc/* releases, installed on their release day (TCK6PDM3NP); pnpm's
+# minimum release age would hold them back a day. Safe to drop once they are older.
+minimumReleaseAgeExclude:
+  - "@jsudc/core@0.3.0"
+  - "@jsudc/react@0.3.1"
+  - "@jsudc/server@0.3.0"

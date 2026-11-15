@@ -32,7 +32,7 @@
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
-    "@jsudc/core": "0.2.0",
+    "@jsudc/core": "0.3.0",
     "@vol-a/core": "workspace:*"
   },
   "publishConfig": {

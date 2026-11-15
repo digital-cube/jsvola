@@ -13,8 +13,9 @@ POST /vola/uploads   │          Redis: vola:files:<tenant id>      │   (row 
 worker (4.1)        ─┘          (or in-process without Redis)      └─▶ admin: {instance_type: tickets}
 ```
 
-`@jsudc/server` 0.2 declares the `capabilities.subscribe` flag but ships no transport for
-it, and jsudc's own plan keeps live updates to polling. The transport here is vola's own
+`@jsudc/server` declares the `capabilities.subscribe` flag but ships no transport for it
+(0.2 did not, and 0.3, the version vola is on, still does not: its sources answer
+`subscribe: false`), and jsudc's own plan keeps live updates to polling. The transport here is vola's own
 (`SubscribableSource` in `@vol-a/server`), shaped so a future `@jsudc/*` one can replace it:
 a source gets `subscribe(filter, sink)` next to `list`, the sink receives `upsert(row)` /
 `remove(id)`, and the wire messages are UDC envelopes (`udc.row.upsert`, `udc.row.remove`).
