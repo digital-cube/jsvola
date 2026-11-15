@@ -16,7 +16,6 @@ import {
   inArray,
   isNotNull,
   isNull,
-  like,
   lt,
   lte,
   ne,
@@ -160,7 +159,9 @@ export class SqlFilterCompiler {
         throw new UdcError("validation_error", `"${c.op}" needs a text field, not ${c.field}`);
       }
       const value = pattern(escapeLike(String(c.value ?? "")));
-      return c.case_insensitive ? dialect.ilike(expr as never, value) : like(expr as never, value);
+      return c.case_insensitive
+        ? dialect.ilike(expr as never, value)
+        : dialect.like(expr as never, value);
     };
     // drizzle's operators take any SQL expression; the casts only quiet the column typing.
     const e = expr as never;

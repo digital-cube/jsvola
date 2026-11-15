@@ -27,10 +27,17 @@ export const DEFAULT_DEMO_MAX_BYTES = 5 * 1024 * 1024;
 /** Writes one visitor IP may make through the demo routes per ten minutes. */
 export const DEFAULT_DEMO_RATE_LIMIT = 60;
 
-const POSTGRES_URL = /^postgres(ql)?:\/\/.+/;
+/** `postgres://…` / `postgresql://…` (PostgreSQL), `file:<path>` or `:memory:` (SQLite). */
+const DATABASE_URL = /^(postgres(ql)?:\/\/.+|file:.+|:memory:)$/i;
 
-const postgresUrl = (fallback: string) =>
-  z.string().regex(POSTGRES_URL, "must be a postgresql:// URL").default(fallback);
+const databaseUrl = (fallback: string) =>
+  z
+    .string()
+    .regex(DATABASE_URL, "must be a postgresql:// URL, file:<path> (SQLite) or :memory:")
+    .default(fallback);
+
+/** `true` for a URL of a SQLite database (`file:<path>`, `:memory:`). */
+export const isSqliteUrl = (url: string): boolean => /^(file:|:memory:$)/i.test(url);
 
 /** `true|false|1|0|yes|no|on|off`, case-insensitive. */
 const boolean = (fallback: boolean) =>
@@ -63,8 +70,8 @@ const autoBoolean = () =>
 
 const ConfigSchema = z
   .object({
-    VOLA_DATABASE_URL: postgresUrl("postgresql://vola:vola@localhost:5432/vola"),
-    VOLA_DATABASE_URL_TEST: postgresUrl("postgresql://vola:vola@localhost:5432/vola_test"),
+    VOLA_DATABASE_URL: databaseUrl("postgresql://vola:vola@localhost:5432/vola"),
+    VOLA_DATABASE_URL_TEST: databaseUrl("postgresql://vola:vola@localhost:5432/vola_test"),
     VOLA_REDIS_URL: z
       .string()
       .regex(/^rediss?:\/\/.+/, "must be a redis:// URL")
@@ -188,6 +195,16 @@ const ConfigSchema = z
       path: ["VOLA_DEMO_API_KEY"],
     },
   )
+  .refine((c) => !(isSqliteUrl(c.VOLA_DATABASE_URL) && c.VOLA_WORKER_ENABLED === true), {
+    message:
+      "VOLA_WORKER_ENABLED=true needs PostgreSQL: on SQLite (file:…) the server does everything inline and there is no worker process; unset VOLA_WORKER_ENABLED or set it to false",
+    path: ["VOLA_WORKER_ENABLED"],
+  })
+  .refine((c) => !(isSqliteUrl(c.VOLA_DATABASE_URL) && c.VOLA_OCR_ENABLED === true), {
+    message:
+      "VOLA_OCR_ENABLED=true needs PostgreSQL: OCR does not run on SQLite (file:…); unset VOLA_OCR_ENABLED or set it to false",
+    path: ["VOLA_OCR_ENABLED"],
+  })
   .refine((c) => !c.VOLA_EXAMPLES || c.VOLA_DEMO_API_KEY !== c.VOLA_DEMO_WRITE_KEY, {
     message: "VOLA_DEMO_API_KEY and VOLA_DEMO_WRITE_KEY must be two different keys",
     path: ["VOLA_DEMO_WRITE_KEY"],
@@ -208,7 +225,13 @@ export interface LookupsConfig {
 }
 
 export interface Config {
+  /**
+   * `VOLA_DATABASE_URL`: `postgresql://user:password@host:5432/db` (the default, every
+   * feature), `file:<path>` / `file:///abs/path` (SQLite: one server process, everything
+   * inline, no worker, no OCR) or `:memory:` (SQLite in memory, for tests).
+   */
   databaseUrl: string;
+  /** `VOLA_DATABASE_URL_TEST`: the database of the test suites, same forms. */
   testDatabaseUrl: string;
   /** `null` → no Redis: no background jobs, no `redis` readiness check. */
   redisUrl: string | null;

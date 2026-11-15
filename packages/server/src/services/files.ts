@@ -14,7 +14,7 @@ import {
   type ProcessingStatus,
   type PurgeResult,
 } from "@vol-a/core";
-import { and, desc, eq, inArray, isNull, like, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
@@ -625,7 +625,7 @@ async function resolveFilename(
   const siblings = await tx
     .select({ filename: files.filename })
     .from(files)
-    .where(and(namespace, like(files.filename, `${escapeLike(base)} (%`)));
+    .where(and(namespace, dialect.like(files.filename, `${escapeLike(base)} (%`)));
   return nextCollisionFilename(filename, [filename, ...siblings.map((row) => row.filename)]);
 }
 

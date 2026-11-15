@@ -24,7 +24,15 @@ import { AUDIT_MAX_ATTEMPTS, ProcessingQueue } from "../src/jobs/queue.js";
 import { ProcessingWorker } from "../src/jobs/worker.js";
 import { FilesystemBackend } from "../src/storage/index.js";
 import { waitFor } from "./fixtures.js";
-import { bearer, config, type Fixture, setupFixture, testDatabase, truncate } from "./helpers.js";
+import {
+  bearer,
+  config,
+  type Fixture,
+  onSqlite,
+  setupFixture,
+  testDatabase,
+  truncate,
+} from "./helpers.js";
 import { httpClient } from "./http.js";
 
 /** A request the fake memento received. */
@@ -386,7 +394,8 @@ describe("audit → memento (direct mode)", () => {
   });
 });
 
-describe("audit → memento (through the queue and the worker)", () => {
+// PostgreSQL only: the worker process and its queue.
+describe.skipIf(onSqlite)("audit → memento (through the queue and the worker)", () => {
   const redisUrl = config.redisUrl as string;
   const prefix = `vola-audit-${randomUUID().slice(0, 8)}`;
   let queue: ProcessingQueue;

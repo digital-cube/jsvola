@@ -82,8 +82,8 @@ stops the process at start with one line naming every bad variable.
 
 | variable | default | |
 |---|---|---|
-| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | PostgreSQL. **Set it.** The server migrates it at start; the CLI uses the same |
-| `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only |
+| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process — see [Running on SQLite](#running-on-sqlite). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
+| `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only (the same forms) |
 | `VOLA_REDIS_URL` | *(unset)* | Redis: the job queue, file events across processes, unlock tokens, the share-password counter. Unset: one process, synchronous jobs, in-process events, **no keyrings** |
 | `VOLA_HOST` / `VOLA_PORT` | `0.0.0.0` / `8300` | the listener |
 | `VOLA_PREFIX` | `/vola` | the path every route is mounted under |
@@ -276,6 +276,57 @@ To turn it off everywhere: `VOLA_OCR_ENABLED=0` on the server (no job is created
   headers through unchanged. Never log `X-Vola-Content-Key` or `X-Vola-Unlock` at the proxy.
 - The examples site, if served, is the same container at `/` (`VOLA_UI_DIR`); the API lives
   under `VOLA_PREFIX`.
+
+## Features by database
+
+| | PostgreSQL (default) | SQLite (`file:<path>`) |
+|---|---|---|
+| files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, encryption (all four modes), UDC lists and `subscribe`, statistics, transfer | yes | yes |
+| thumbnails | by the worker, or inline on `/thumb` | inline on `/thumb` only |
+| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract) | **no** — no OCR job is created; the text search answers `unsupported_op` |
+| the worker process and its Redis job queue | yes | **no** — `VOLA_WORKER_ENABLED=true` is a configuration error |
+| several server processes on one database | yes | **no** — one server process, one writer at a time |
+| Redis for file events, keyring unlock tokens, the share-password counter | yes | yes |
+
+## Running on SQLite
+
+For a small installation that must not depend on a database service: one server process, no
+worker, no PostgreSQL. Point `VOLA_DATABASE_URL` at a file:
+
+```sh
+VOLA_DATABASE_URL=file:/var/lib/vola/vola.db   # or file:var/vola.db, relative to the working directory
+VOLA_STORAGE_PATH=/var/lib/vola/storage
+# VOLA_WORKER_ENABLED and VOLA_OCR_ENABLED unset (or false): `true` stops the server at start
+```
+
+- **The file.** The server creates it (and its directory) at the first start and applies the
+  SQLite migrations (`drizzle-sqlite/`) to it, as it does on PostgreSQL. Keep it on a local disk
+  next to the storage — in the image, under the `/data` volume (`file:/data/vola.db`); not on
+  NFS or another network filesystem, where SQLite's locking is not reliable.
+- **WAL.** The database runs in WAL mode: next to `vola.db` you will see `vola.db-wal` and
+  `vola.db-shm` while it is open. They are part of the database — never delete them while the
+  server runs, and copy them with the file when you copy it stopped.
+- **One process.** One server process opens the file. Its transactions take turns at one
+  writer (`BEGIN IMMEDIATE`); reads outside a transaction go to a second, read-only connection
+  and do not wait. A `vola` CLI command may run next to the server (it waits up to 10 s for
+  the writer). Do not start a second server — or the worker (it refuses SQLite) — on the file.
+- **Everything inline.** Thumbnails are rendered on the first `/thumb` request and stored next to
+  the blob, as without a worker on PostgreSQL. No `OCR` job is ever created, and the `ocr`
+  filter with words answers `unsupported_op` (the yes/no `ocr` flag still works).
+- **Case-insensitive search** (`ilike`) folds every letter, not only ASCII (`Ž` matches `ž`);
+  `LIKE` is case-sensitive, as on PostgreSQL.
+
+**Backup.** Back up the database together with the storage (below), the database first.
+Either stop the server and copy `vola.db` with its `-wal` and `-shm` files, or take a
+consistent copy of the running database with `VACUUM INTO`:
+
+```sh
+sqlite3 /var/lib/vola/vola.db "VACUUM INTO '/backup/vola-$(date +%F).db'"
+```
+
+To restore, stop the server, put the copy in place as `vola.db` (with no stale `-wal` / `-shm`
+next to it), restore `storage/` and start the server. There is no move of data between
+PostgreSQL and SQLite: pick one when you install.
 
 ## Backups
 

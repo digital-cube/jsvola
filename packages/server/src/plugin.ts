@@ -7,14 +7,14 @@ import { errorResponse, REQUEST_ID_HEADER } from "@vol-a/core";
 import type { FastifyError, FastifyInstance, FastifyPluginAsync } from "fastify";
 import { AuditLog, createAuditSink, disabledAuditLog } from "./audit/log.js";
 import { installAuth } from "./auth.js";
-import type { Config, ExamplesConfig } from "./config.js";
+import { type Config, ConfigError, type ExamplesConfig } from "./config.js";
 import {
   EncryptionUnavailableError,
   IntegrityError,
   KeyFile,
   LockedError,
 } from "./crypto/index.js";
-import type { Database } from "./db/index.js";
+import { type Database, dialect } from "./db/index.js";
 import { codeForStatus, VolaError } from "./errors.js";
 import { createFileEventBus, type FileEventBus } from "./events/bus.js";
 import { type ExamplesRoutesDeps, examplesRoutes } from "./examples/routes.js";
@@ -225,11 +225,16 @@ async function setupJobs(
   options: VolaPluginOptions,
 ): Promise<{ jobs: Jobs | null; jobsMode: JobsMode }> {
   if (options.jobs === false) return { jobs: null, jobsMode: "sync" };
+  const sqlite = dialect.name === "sqlite";
+  if (options.jobs && sqlite) {
+    throw new ConfigError(["a job queue needs PostgreSQL: on SQLite there is no worker process"]);
+  }
   let queue = options.jobs;
   if (!queue) {
     const mode = resolveJobsMode({
       enabled: options.config.worker.enabled,
       redisUrl: options.config.redisUrl,
+      sqlite,
       log: app.log,
     });
     if (mode === "sync" || !options.config.redisUrl) return { jobs: null, jobsMode: "sync" };

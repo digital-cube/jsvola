@@ -7,7 +7,32 @@ Docker image share one version.
 
 ## [Unreleased]
 
+### Added
+
+- **SQLite as a database option** for small, single-process installations that must not
+  depend on a database service: `VOLA_DATABASE_URL=file:<path>` (or `file:///abs/path`,
+  `:memory:` for tests) instead of `postgresql://…`. PostgreSQL stays the default and the
+  full-featured option. On SQLite:
+  - one server process and one writer at a time (`BEGIN IMMEDIATE`; WAL, `foreign_keys = ON`,
+    a busy timeout); the driver is Node's built-in `node:sqlite`, no new dependency;
+  - everything inline: thumbnails render on `/thumb`, **no OCR** (no `OCR` job is created, the
+    `ocr` text search of the files list answers `unsupported_op`), **no worker process** —
+    `VOLA_WORKER_ENABLED=true` or `VOLA_OCR_ENABLED=true` with a SQLite URL is a configuration
+    error at start, and `vola-worker` refuses a SQLite database;
+  - its own migration set, `packages/server/drizzle-sqlite/`, shipped in the package and
+    applied by the server at start and by `vola migrate` like the PostgreSQL one.
+  The features by database are in the README and `docs/DEPLOYMENT.md` ("Running on SQLite":
+  the file, the WAL files, backups with `VACUUM INTO`).
+
 ### Changed
+
+- `VOLA_DATABASE_URL` / `VOLA_DATABASE_URL_TEST` accept `file:<path>` and `:memory:` next to
+  `postgres(ql)://`. The tables in `db/schema.ts` are those of the database the process
+  connected to (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, same row types); a process
+  speaks one dialect. The dialect seam gained `like`, `forUpdateNoWait`, `onConflictDoNothing`
+  and `capabilities.rowLocks`.
+- The server and CLI test suites run on both databases (`VOLA_TEST_DIALECT=postgres|sqlite`
+  runs one).
 
 - `@vol-a/server`'s database layer is dialect-independent, ahead of a second database: what is
   PostgreSQL-only (the advisory lock on a content hash, SQLSTATE `23505` / `55P03`,

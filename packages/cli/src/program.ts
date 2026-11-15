@@ -282,7 +282,8 @@ Examples:
   $ vola lookup-promote --dry-run
 
 Environment:
-  VOLA_DATABASE_URL     PostgreSQL the commands use (default postgresql://vola:vola@localhost:5432/vola)
+  VOLA_DATABASE_URL     the database the commands use: postgresql://… or file:<path> (SQLite)
+                        (default postgresql://vola:vola@localhost:5432/vola)
   VOLA_REDIS_URL        with it, transfer announces the move to live subscribers
   VOLA_MEMENTO_URL      with VOLA_MEMENTO_API_KEY: key and transfer commands write audit events to memento
   VOLA_KEY_FILE         the tenant encryption key file (default /run/secrets/vola.key); keys-generate / keys-status / transfer
@@ -943,7 +944,7 @@ export async function runCli(
   }
 }
 
-/** The first `code` on `error` or its `cause` chain (drizzle wraps the pg error). */
+/** The first `code` on `error` or its `cause` chain (drizzle wraps the driver error). */
 function errorCode(error: unknown, depth = 0): string | null {
   if (!error || typeof error !== "object" || depth > 5) return null;
   if ("code" in error && typeof (error as { code: unknown }).code === "string") {
@@ -959,6 +960,9 @@ export function friendlyError(error: unknown): string {
   const code = errorCode(error);
   if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "ECONNRESET") {
     return `cannot reach the database (${code}); check VOLA_DATABASE_URL`;
+  }
+  if (code === "SQLITE_BUSY") {
+    return "the SQLite database is busy (another process is writing); retry in a moment";
   }
   return error instanceof Error ? error.message : String(error);
 }

@@ -6,7 +6,7 @@ import {
   folderSegmentError,
   parseFolderPath,
 } from "@vol-a/core";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, like, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import type { AuditLog } from "../audit/log.js";
 import { fileAuditPayload } from "../audit/memento.js";
@@ -96,7 +96,7 @@ function subtreeWhere(scope: InstanceScope, path: string) {
   return and(
     instanceWhere(scope),
     isNull(folders.deletedAt),
-    or(eq(folders.path, path), like(folders.path, `${escapeLike(path)}/%`)),
+    or(eq(folders.path, path), dialect.like(folders.path, `${escapeLike(path)}/%`)),
   );
 }
 
@@ -304,23 +304,24 @@ export async function ensureFolder(
       created = false;
       continue;
     }
-    const [inserted]: FolderRow[] = await deps.db
-      .insert(folders)
-      .values({
-        tenantId: scope.tenantId,
-        instanceType: scope.instanceType,
-        instanceId: scope.instanceId,
-        parentId: parent?.id ?? null,
-        name: segment,
-        path: running,
-        createdBy: userId,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing({
-        target: [folders.tenantId, folders.instanceType, folders.instanceId, folders.path],
-        where: sql`${folders.deletedAt} is null`,
-      })
+    const [inserted]: FolderRow[] = await dialect
+      .onConflictDoNothing(
+        deps.db.insert(folders).values({
+          tenantId: scope.tenantId,
+          instanceType: scope.instanceType,
+          instanceId: scope.instanceId,
+          parentId: parent?.id ?? null,
+          name: segment,
+          path: running,
+          createdBy: userId,
+          createdAt: now,
+          updatedAt: now,
+        }),
+        {
+          target: [folders.tenantId, folders.instanceType, folders.instanceId, folders.path],
+          where: sql`${folders.deletedAt} is null`,
+        },
+      )
       .returning();
     if (inserted) {
       deps.logger?.info(

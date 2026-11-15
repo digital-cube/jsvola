@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
+import { ConfigError } from "../config.js";
 
 /**
  * `VOLA_WORKER_ENABLED`: `auto` (the default) runs jobs through the worker when Redis is
@@ -14,6 +15,11 @@ export type JobsMode = "async" | "sync";
 export interface ResolveJobsModeInput {
   enabled: WorkerEnabled;
   redisUrl: string | null;
+  /**
+   * The database is SQLite: one server process, no worker. `auto` is `sync` whatever Redis
+   * says, and `true` is a configuration error.
+   */
+  sqlite?: boolean | undefined;
   log?: Pick<FastifyBaseLogger, "info" | "error"> | undefined;
 }
 
@@ -22,9 +28,27 @@ export interface ResolveJobsModeInput {
  * server does the work itself (`sync`: thumbnails are rendered inline on `/thumb`, OCR does
  * not run). A deployment without a worker is a supported configuration, so `sync` is logged
  * once at INFO, never as an error; the one misconfiguration — `VOLA_WORKER_ENABLED=1`
- * without `VOLA_REDIS_URL` — is one ERROR line, and the process degrades to `sync`.
+ * without `VOLA_REDIS_URL` — is one ERROR line, and the process degrades to `sync`. On
+ * SQLite it is always `sync`.
+ *
+ * @throws ConfigError for `VOLA_WORKER_ENABLED=true` on SQLite.
  */
 export function resolveJobsMode(input: ResolveJobsModeInput): JobsMode {
+  if (input.sqlite) {
+    if (input.enabled === true) {
+      throw new ConfigError([
+        "VOLA_WORKER_ENABLED=true needs PostgreSQL: on SQLite there is no worker process",
+      ]);
+    }
+    input.log?.info(
+      {
+        reason: "SQLite database",
+        effect: "thumbnails are rendered inline on /thumb; OCR does not run",
+      },
+      "background jobs disabled",
+    );
+    return "sync";
+  }
   const hasRedis = input.redisUrl !== null;
   if (input.enabled === true && !hasRedis) {
     input.log?.error(

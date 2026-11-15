@@ -7,7 +7,8 @@ Self-hosted, multi-tenant, **content-addressable file storage** for applications
 application (a ticketing system, a CMS, a chat) hands its files to vola and gets back ids,
 downloads with `Range`, thumbnails, OCR text, share links, folders and versions — per tenant,
 per entity, with encryption at rest when asked. The TypeScript port of vola-spp: Fastify 5 +
-Drizzle/PostgreSQL + Redis, published as `@vol-a/*` packages on npm and as one Docker image.
+Drizzle on PostgreSQL (or SQLite, for a small single-process installation) + Redis, published as
+`@vol-a/*` packages on npm and as one Docker image.
 
 **What makes it vola**
 
@@ -30,6 +31,22 @@ Drizzle/PostgreSQL + Redis, published as `@vol-a/*` packages on npm and as one D
   thumbnails (WebP, sharp) and OCR (tesseract), share links with password / expiry / download
   cap, statistics, an admin transfer of instances between tenants, and an optional audit trail
   in [memento](https://github.com/digital-cube/jsmemento).
+
+## Features by database
+
+PostgreSQL is the default and has every feature. A SQLite file (`VOLA_DATABASE_URL=file:<path>`)
+runs a small installation without a database service — one server process, everything inline:
+
+| | PostgreSQL (default) | SQLite (`file:<path>`) |
+|---|---|---|
+| files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, encryption (all four modes), UDC lists and `subscribe`, statistics, transfer | yes | yes |
+| thumbnails | by the worker, or inline on `/thumb` | inline on `/thumb` only |
+| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract) | **no** — no OCR job is created; the text search answers `unsupported_op` |
+| the worker process and its Redis job queue | yes | **no** — `VOLA_WORKER_ENABLED=true` is a configuration error |
+| several server processes on one database | yes | **no** — one server process, one writer at a time |
+| Redis for file events, keyring unlock tokens, the share-password counter | yes | yes |
+
+How to run on SQLite, and how to back it up: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#running-on-sqlite).
 
 ## Packages
 

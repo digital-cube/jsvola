@@ -24,7 +24,7 @@ jsvola/
 ├── packages/
 │   ├── core/     @vol-a/core     Zod schemas, types, header/query/error constants, key helpers (dep: zod)
 │   ├── lookups/  @vol-a/lookups  YAML vocabulary, CSV translations, candidates, promotion (dep: yaml)
-│   ├── server/   @vol-a/server   Fastify plugin + server.ts + worker.ts, Drizzle schema + drizzle/ migrations,
+│   ├── server/   @vol-a/server   Fastify plugin + server.ts + worker.ts, Drizzle schemas + drizzle/, drizzle-sqlite/ migrations,
 │   │                            CAS storage, services, crypto, jobs, events, UDC collections, udc/files/view.yaml
 │   ├── cli/      @vol-a/cli      the `vola` command (Commander) over @vol-a/server's services
 │   ├── client/   @vol-a/client   the fetch SDK (deps: @vol-a/core, @jsudc/core)
@@ -59,10 +59,20 @@ server and the CLI share: `parseApiKey` / `displayApiKey`, `missingScopes`, `par
 (`safeParse` in the handler); `@vol-a/client` types its answers with them and can validate them
 (`validate: true`).
 
-## 3. Database schema (PostgreSQL + Drizzle)
+## 3. Database schema (PostgreSQL or SQLite + Drizzle)
 
-`packages/server/src/db/schema.ts`; migrations in `packages/server/drizzle/` (`0000` … `0009`),
-applied by the server at start (`runMigrations`) and by `vola migrate`. Every table is prefixed
+Two databases, one schema. PostgreSQL (`packages/server/src/db/schema-postgres.ts`, migrations
+in `packages/server/drizzle/`, `0000` … `0009`) is the default and has every feature; SQLite
+(`schema-sqlite.ts`, migrations in `drizzle-sqlite/`) runs a single-process installation
+without OCR and without the worker. `VOLA_DATABASE_URL` picks one (`postgres://…` or
+`file:<path>`); `connect` opens it and points the table bindings of `db/schema.ts` — what every
+service imports — at that database's tables, so a process speaks one dialect. The SQLite tables
+are the PostgreSQL ones column for column with SQLite types (UUIDs and `varchar` as TEXT,
+timestamps as INTEGER epoch milliseconds, `jsonb` and `text[]` as JSON TEXT, `bytea` as BLOB, no
+`ocr_tsv`), the CHECKs spelled with `GLOB` instead of regular expressions, the same partial
+unique indexes; a type-level check in `schema-sqlite.ts` keeps their row types identical, so the
+services never branch on the database. The migrations of the database in use are applied by the
+server at start (`runMigrations`) and by `vola migrate`; `pnpm db:generate` writes both sets. Every table is prefixed
 `vola_`, every row that belongs to a tenant carries `tenant_id`, and every query is scoped by
 it — another tenant's row does not exist (`404`).
 
@@ -110,7 +120,7 @@ src/
 ├── examples/          the examples site's demo routes (VOLA_EXAMPLES)
 ├── lookups.ts         the vocabulary (@vol-a/lookups) and GET /lookups
 ├── ui.ts              VOLA_UI_DIR: the built SPA at / and /en/ with an index.html fallback
-└── db/                Drizzle schema, connect() (the URL scheme picks the database), the dialect seam (dialect.ts, postgres.ts), uuid
+└── db/                Drizzle schemas (schema-postgres.ts, schema-sqlite.ts, schema.ts picks), connect() (the URL scheme picks the database), the dialect seam (dialect.ts, postgres.ts, sqlite.ts), uuid
 ```
 
 ### Request lifecycle
@@ -171,7 +181,15 @@ The advisory lock on the hash is what makes dedup safe against a concurrent purg
 takes the same lock, checks that no row cites the hash, and only then removes the blob. The
 services take it through `dialect.lockContentHash(tx, hash)` (`db/dialect.ts`), the one place,
 with the unique-violation check and the few non-portable expressions (filtered count, JSON
-field and equality, `ILIKE`, the OCR text match), that knows the SQL is PostgreSQL's. The
+field and equality, `LIKE` / `ILIKE`, `FOR UPDATE NOWAIT`, `ON CONFLICT … WHERE … DO NOTHING`,
+the OCR text match), that knows which database it talks to. `db/postgres.ts` implements it
+with advisory locks and SQLSTATEs; `db/sqlite.ts` (Node's built-in `node:sqlite` under
+drizzle's `sqlite-proxy` driver) has no locks to take: every transaction there is `BEGIN
+IMMEDIATE` and the handle runs one at a time (an in-process queue in front of the single writer
+connection; SELECTs outside a transaction read from a second, read-only connection in WAL mode),
+so two uploads of one hash are serialised by the transaction itself. Without row locks a tus
+`PATCH` on SQLite streams its body outside any transaction and guards the upload in memory
+(`409 upload_locked` for everyone else), which is sound because SQLite serves one process. The
 multipart `encryption` field (and the folder) must arrive **before** the `file` part because
 the mode decides what is written to disk while the part streams.
 
@@ -317,10 +335,14 @@ over it on `@jsudc/react`'s `UdcDataView` and `/udc/subscribe` ([REACT.md](REACT
 
 ## 13. Testing
 
-- **Unit and integration** (`packages/*/test`, Vitest): the server's tests run against a real
-  PostgreSQL (`VOLA_DATABASE_URL_TEST`, migrated with `pnpm db:migrate:test`) and a real Redis
-  where the feature needs one (keyrings, the worker, `subscribe`), with a temporary storage
-  directory; coverage ≥ 80 % per package is enforced in CI.
+- **Unit and integration** (`packages/*/test`, Vitest): the server's and the CLI's tests run
+  twice — against a real PostgreSQL (`VOLA_DATABASE_URL_TEST`, migrated with `pnpm
+  db:migrate:test`) and against a SQLite file in the temporary directory, created and migrated
+  for the run (the vitest projects `server` / `server-sqlite`, `cli` / `cli-sqlite`;
+  `VOLA_TEST_DIALECT=postgres|sqlite` picks one) — with a real Redis where the feature needs one
+  (keyrings, the worker, `subscribe`) and a temporary storage directory. The suites of the worker
+  and of OCR are skipped on SQLite by name (`describe.skipIf(onSqlite)`); coverage ≥ 80 % per
+  package is enforced in CI.
 - **E2E** (`packages/e2e`): the built server (or a running one, `VOLA_E2E_URL`) over HTTP — the
   file API, tus with `tus-js-client`, the WebSocket, encryption, the SDK, the examples site.
 - **CI** (`.github/workflows/ci.yml`): lint, typecheck, build, tests with coverage, E2E,

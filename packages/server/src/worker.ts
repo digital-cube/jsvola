@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { pino } from "pino";
 import { createAuditSink } from "./audit/log.js";
 import { ConfigError, loadConfig } from "./config.js";
-import { connect } from "./db/index.js";
+import { connect, dialectOf } from "./db/index.js";
 import { createFileEventBus } from "./events/bus.js";
 import { ProcessingWorker } from "./jobs/worker.js";
 import { createEncryptionService } from "./services/encryption.js";
@@ -29,6 +29,13 @@ try {
 }
 
 const log = pino({ level: config.logLevel, name: "vola-worker" });
+
+if (dialectOf(config.databaseUrl).name === "sqlite") {
+  log.error(
+    "VOLA_DATABASE_URL is a SQLite database: the worker process needs PostgreSQL (on SQLite the server does everything inline)",
+  );
+  process.exit(1);
+}
 
 if (!config.redisUrl) {
   log.error("VOLA_REDIS_URL is not set: the worker has no queue to consume");

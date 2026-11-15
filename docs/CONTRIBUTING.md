@@ -33,7 +33,7 @@ image, the E2E suite and npm.
 | `pnpm lint` / `pnpm format` | Biome (`biome.json`) |
 | `pnpm typecheck` | `tsc --noEmit` in every package |
 | `pnpm build` | Turbo, dependency order |
-| `pnpm test` | Vitest; `@vol-a/server` and `@vol-a/cli` need PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated) and Redis at `VOLA_REDIS_URL` for the keyring, worker and `subscribe` suites |
+| `pnpm test` | Vitest; `@vol-a/server` and `@vol-a/cli` run every suite twice, on PostgreSQL at `VOLA_DATABASE_URL_TEST` (migrated) and on a temporary SQLite file (`VOLA_TEST_DIALECT=postgres\|sqlite` for one), and need Redis at `VOLA_REDIS_URL` for the keyring, worker and `subscribe` suites |
 | `pnpm test:cov` | the same with coverage; CI enforces ≥ 80 % lines per package (HTML in `packages/*/coverage/`) |
 | `pnpm test:e2e` | builds the packages (Turbo), then starts the built server on a free port against the compose databases — or targets a running one with `VOLA_E2E_URL` |
 | `pnpm --filter @vol-a/server test -- test/files.test.ts` | one file |

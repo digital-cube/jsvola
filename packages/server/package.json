@@ -1,7 +1,7 @@
 {
   "name": "@vol-a/server",
   "version": "1.0.1",
-  "description": "JSVola server: Fastify plugin and standalone server, Drizzle/PostgreSQL storage, Redis, tenant isolation, API key auth, UDC collections.",
+  "description": "JSVola server: Fastify plugin and standalone server, Drizzle on PostgreSQL or SQLite, Redis, tenant isolation, API key auth, UDC collections.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,6 +24,7 @@
   "files": [
     "dist",
     "drizzle",
+    "drizzle-sqlite",
     "udc"
   ],
   "scripts": {
@@ -33,10 +34,12 @@
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
     "dev:worker": "tsx watch --conditions=@vol-a/source src/worker.ts",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && drizzle-kit generate --config drizzle-sqlite.config.ts",
     "db:migrate": "tsx --conditions=@vol-a/source src/migrate-cli.ts",
     "db:migrate:test": "MIGRATE_TARGET=test tsx --conditions=@vol-a/source src/migrate-cli.ts",
     "test": "vitest run",
+    "test:pg": "VOLA_TEST_DIALECT=postgres vitest run",
+    "test:sqlite": "VOLA_TEST_DIALECT=sqlite vitest run",
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
@@ -74,6 +77,7 @@
     "jsvola",
     "file-storage",
     "content-addressable",
+    "sqlite",
     "fastify",
     "multi-tenant",
     "encryption",

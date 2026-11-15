@@ -27,8 +27,9 @@ async function probe(check: () => Promise<unknown>, timeoutMs: number): Promise<
 }
 
 /**
- * `GET /health/live` — the process answers. `GET /health/ready` — PostgreSQL (and Redis when
- * configured) answer; 503 with the failing checks otherwise. No API key needed.
+ * `GET /health/live` — the process answers. `GET /health/ready` — the database (PostgreSQL or
+ * SQLite: a `select 1`) and Redis when configured answer; 503 with the failing checks
+ * otherwise. No API key needed.
  */
 export const healthRoutes: FastifyPluginAsync<HealthDeps> = async (app, deps) => {
   const timeoutMs = deps.timeoutMs ?? 5000;

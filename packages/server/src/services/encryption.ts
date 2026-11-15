@@ -471,7 +471,7 @@ export interface KeyUsage {
 export async function tenantKeyUsage(db: Database, lines: readonly KeyLine[]): Promise<KeyUsage[]> {
   const rows = await db
     .select({
-      kid: sql<Buffer>`substring(${files.fkCt} from 1 for ${sql.raw(String(KID_BYTES))})`,
+      kid: sql<Buffer>`substr(${files.fkCt}, 1, ${sql.raw(String(KID_BYTES))})`,
       n: sql<number>`count(*)`,
     })
     .from(files)

@@ -1,0 +1,1523 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "673fc90f-1bb8-4aab-b8fb-e5c9540dbdbf",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "vola_apikey": {
+      "name": "vola_apikey",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last4": {
+          "name": "last4",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_admin": {
+          "name": "is_admin",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_apikey_key_hash_unique": {
+          "name": "vola_apikey_key_hash_unique",
+          "columns": ["key_hash"],
+          "isUnique": true
+        },
+        "vola_apikey_tenant_idx": {
+          "name": "vola_apikey_tenant_idx",
+          "columns": ["tenant_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_apikey_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_apikey_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_apikey",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_apikey_prefix_check": {
+          "name": "vola_apikey_prefix_check",
+          "value": "\"vola_apikey\".\"prefix\" in ('vola_live', 'vola_test', 'vola_admin')"
+        },
+        "vola_apikey_admin_check": {
+          "name": "vola_apikey_admin_check",
+          "value": "(\"vola_apikey\".\"tenant_id\" is null) = \"vola_apikey\".\"is_admin\""
+        }
+      }
+    },
+    "vola_file_metadata": {
+      "name": "vola_file_metadata",
+      "columns": {
+        "file_id": {
+          "name": "file_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ocr_text": {
+          "name": "ocr_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ocr_lang": {
+          "name": "ocr_lang",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ocr_pages": {
+          "name": "ocr_pages",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ocr_at": {
+          "name": "ocr_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ocr_ct": {
+          "name": "ocr_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_file_metadata_tenant_idx": {
+          "name": "vola_file_metadata_tenant_idx",
+          "columns": ["tenant_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_file_metadata_file_id_vola_file_id_fk": {
+          "name": "vola_file_metadata_file_id_vola_file_id_fk",
+          "tableFrom": "vola_file_metadata",
+          "tableTo": "vola_file",
+          "columnsFrom": ["file_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_file_metadata_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_file_metadata_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_file_metadata",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_file_metadata_ocr_pages_check": {
+          "name": "vola_file_metadata_ocr_pages_check",
+          "value": "\"vola_file_metadata\".\"ocr_pages\" is null or \"vola_file_metadata\".\"ocr_pages\" >= 0"
+        }
+      }
+    },
+    "vola_file": {
+      "name": "vola_file",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_type": {
+          "name": "instance_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "hash": {
+          "name": "hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "extension": {
+          "name": "extension",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "folder_id": {
+          "name": "folder_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_public": {
+          "name": "is_public",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "is_global_public": {
+          "name": "is_global_public",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "encryption": {
+          "name": "encryption",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'none'"
+        },
+        "enc_format": {
+          "name": "enc_format",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "keyring_id": {
+          "name": "keyring_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fk_ct": {
+          "name": "fk_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "meta_ct": {
+          "name": "meta_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_accessed_at": {
+          "name": "last_accessed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_accessed_by": {
+          "name": "last_accessed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_file_instance_idx": {
+          "name": "vola_file_instance_idx",
+          "columns": ["tenant_id", "instance_type", "instance_id"],
+          "isUnique": false
+        },
+        "vola_file_hash_idx": {
+          "name": "vola_file_hash_idx",
+          "columns": ["hash"],
+          "isUnique": false
+        },
+        "vola_file_folder_idx": {
+          "name": "vola_file_folder_idx",
+          "columns": ["folder_id"],
+          "isUnique": false
+        },
+        "vola_file_parent_idx": {
+          "name": "vola_file_parent_idx",
+          "columns": ["parent_id"],
+          "isUnique": false
+        },
+        "vola_file_keyring_idx": {
+          "name": "vola_file_keyring_idx",
+          "columns": ["keyring_id"],
+          "isUnique": false
+        },
+        "vola_file_slug_live_uq": {
+          "name": "vola_file_slug_live_uq",
+          "columns": ["tenant_id", "instance_type", "instance_id", "slug"],
+          "isUnique": true,
+          "where": "\"vola_file\".\"deleted_at\" is null and \"vola_file\".\"slug\" is not null"
+        }
+      },
+      "foreignKeys": {
+        "vola_file_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_file_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_file",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_file_folder_id_vola_folder_id_fk": {
+          "name": "vola_file_folder_id_vola_folder_id_fk",
+          "tableFrom": "vola_file",
+          "tableTo": "vola_folder",
+          "columnsFrom": ["folder_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "vola_file_parent_id_vola_file_id_fk": {
+          "name": "vola_file_parent_id_vola_file_id_fk",
+          "tableFrom": "vola_file",
+          "tableTo": "vola_file",
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_file_instance_type_check": {
+          "name": "vola_file_instance_type_check",
+          "value": "\"vola_file\".\"instance_type\" glob '[a-z]*' and \"vola_file\".\"instance_type\" not glob '*[^a-z0-9_]*'"
+        },
+        "vola_file_hash_check": {
+          "name": "vola_file_hash_check",
+          "value": "length(\"vola_file\".\"hash\") = 64 and \"vola_file\".\"hash\" not glob '*[^a-f0-9]*'"
+        },
+        "vola_file_size_check": {
+          "name": "vola_file_size_check",
+          "value": "\"vola_file\".\"size\" >= 0"
+        },
+        "vola_file_encryption_check": {
+          "name": "vola_file_encryption_check",
+          "value": "\"vola_file\".\"encryption\" in ('none', 'tenant', 'keyring', 'caller', 'client')"
+        }
+      }
+    },
+    "vola_folder": {
+      "name": "vola_folder",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_type": {
+          "name": "instance_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "default_keyring_id": {
+          "name": "default_keyring_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_folder_path_live_uq": {
+          "name": "vola_folder_path_live_uq",
+          "columns": ["tenant_id", "instance_type", "instance_id", "path"],
+          "isUnique": true,
+          "where": "\"vola_folder\".\"deleted_at\" is null"
+        },
+        "vola_folder_parent_idx": {
+          "name": "vola_folder_parent_idx",
+          "columns": ["tenant_id", "instance_type", "instance_id", "parent_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_folder_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_folder_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_folder",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_folder_parent_id_vola_folder_id_fk": {
+          "name": "vola_folder_parent_id_vola_folder_id_fk",
+          "tableFrom": "vola_folder",
+          "tableTo": "vola_folder",
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_folder_instance_type_check": {
+          "name": "vola_folder_instance_type_check",
+          "value": "\"vola_folder\".\"instance_type\" glob '[a-z]*' and \"vola_folder\".\"instance_type\" not glob '*[^a-z0-9_]*'"
+        },
+        "vola_folder_path_check": {
+          "name": "vola_folder_path_check",
+          "value": "\"vola_folder\".\"path\" <> '' and \"vola_folder\".\"path\" not glob '/*' and \"vola_folder\".\"path\" not glob '*/' and instr(\"vola_folder\".\"path\", '//') = 0"
+        }
+      }
+    },
+    "vola_keyring": {
+      "name": "vola_keyring",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "principal": {
+          "name": "principal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kdf": {
+          "name": "kdf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mk_pin_ct": {
+          "name": "mk_pin_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mk_recovery_ct": {
+          "name": "mk_recovery_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recovery_salt": {
+          "name": "recovery_salt",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pin_set_at": {
+          "name": "pin_set_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_keyring_principal_live_uq": {
+          "name": "vola_keyring_principal_live_uq",
+          "columns": ["tenant_id", "principal"],
+          "isUnique": true,
+          "where": "\"vola_keyring\".\"deleted_at\" is null"
+        }
+      },
+      "foreignKeys": {
+        "vola_keyring_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_keyring_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_keyring",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_keyring_attempts_check": {
+          "name": "vola_keyring_attempts_check",
+          "value": "\"vola_keyring\".\"attempts\" >= 0"
+        }
+      }
+    },
+    "vola_processing_job": {
+      "name": "vola_processing_job",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "params": {
+          "name": "params",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PENDING'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_processing_job_identity_uq": {
+          "name": "vola_processing_job_identity_uq",
+          "columns": ["file_id", "kind", "params"],
+          "isUnique": true
+        },
+        "vola_processing_job_tenant_status_idx": {
+          "name": "vola_processing_job_tenant_status_idx",
+          "columns": ["tenant_id", "status"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_processing_job_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_processing_job_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_processing_job",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_processing_job_file_id_vola_file_id_fk": {
+          "name": "vola_processing_job_file_id_vola_file_id_fk",
+          "tableFrom": "vola_processing_job",
+          "tableTo": "vola_file",
+          "columnsFrom": ["file_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_processing_job_kind_check": {
+          "name": "vola_processing_job_kind_check",
+          "value": "\"vola_processing_job\".\"kind\" in ('THUMBNAIL', 'OCR')"
+        },
+        "vola_processing_job_status_check": {
+          "name": "vola_processing_job_status_check",
+          "value": "\"vola_processing_job\".\"status\" in ('PENDING', 'RUNNING', 'DONE', 'FAILED', 'SKIPPED')"
+        },
+        "vola_processing_job_attempts_check": {
+          "name": "vola_processing_job_attempts_check",
+          "value": "\"vola_processing_job\".\"attempts\" >= 0"
+        }
+      }
+    },
+    "vola_share_link": {
+      "name": "vola_share_link",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "file_id": {
+          "name": "file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_id": {
+          "name": "folder_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'PUBLIC_LINK'"
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "max_downloads": {
+          "name": "max_downloads",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "download_count": {
+          "name": "download_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fk_share_ct": {
+          "name": "fk_share_ct",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_share_link_token_hash_unique": {
+          "name": "vola_share_link_token_hash_unique",
+          "columns": ["token_hash"],
+          "isUnique": true
+        },
+        "vola_share_link_tenant_idx": {
+          "name": "vola_share_link_tenant_idx",
+          "columns": ["tenant_id"],
+          "isUnique": false
+        },
+        "vola_share_link_file_idx": {
+          "name": "vola_share_link_file_idx",
+          "columns": ["file_id"],
+          "isUnique": false
+        },
+        "vola_share_link_folder_idx": {
+          "name": "vola_share_link_folder_idx",
+          "columns": ["folder_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_share_link_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_share_link_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_share_link",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_share_link_file_id_vola_file_id_fk": {
+          "name": "vola_share_link_file_id_vola_file_id_fk",
+          "tableFrom": "vola_share_link",
+          "tableTo": "vola_file",
+          "columnsFrom": ["file_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_share_link_folder_id_vola_folder_id_fk": {
+          "name": "vola_share_link_folder_id_vola_folder_id_fk",
+          "tableFrom": "vola_share_link",
+          "tableTo": "vola_folder",
+          "columnsFrom": ["folder_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_share_link_target_check": {
+          "name": "vola_share_link_target_check",
+          "value": "(\"vola_share_link\".\"file_id\" is null) <> (\"vola_share_link\".\"folder_id\" is null)"
+        },
+        "vola_share_link_scope_check": {
+          "name": "vola_share_link_scope_check",
+          "value": "\"vola_share_link\".\"scope\" in ('PUBLIC_LINK', 'TENANT', 'INSTANCE_VIEWERS', 'EMAIL')"
+        },
+        "vola_share_link_max_downloads_check": {
+          "name": "vola_share_link_max_downloads_check",
+          "value": "\"vola_share_link\".\"max_downloads\" is null or \"vola_share_link\".\"max_downloads\" > 0"
+        },
+        "vola_share_link_download_count_check": {
+          "name": "vola_share_link_download_count_check",
+          "value": "\"vola_share_link\".\"download_count\" >= 0"
+        }
+      }
+    },
+    "vola_tenant_stats": {
+      "name": "vola_tenant_stats",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_type": {
+          "name": "instance_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_files": {
+          "name": "total_files",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "total_bytes": {
+          "name": "total_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "by_kind": {
+          "name": "by_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "oldest_at": {
+          "name": "oldest_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "newest_at": {
+          "name": "newest_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "vola_tenant_stats_tenant_uq": {
+          "name": "vola_tenant_stats_tenant_uq",
+          "columns": ["tenant_id"],
+          "isUnique": true,
+          "where": "\"vola_tenant_stats\".\"scope\" = 'tenant'"
+        },
+        "vola_tenant_stats_instance_uq": {
+          "name": "vola_tenant_stats_instance_uq",
+          "columns": ["tenant_id", "instance_type", "instance_id"],
+          "isUnique": true,
+          "where": "\"vola_tenant_stats\".\"scope\" = 'instance'"
+        },
+        "vola_tenant_stats_computed_idx": {
+          "name": "vola_tenant_stats_computed_idx",
+          "columns": ["computed_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_tenant_stats_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_tenant_stats_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_tenant_stats",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_tenant_stats_scope_check": {
+          "name": "vola_tenant_stats_scope_check",
+          "value": "\"vola_tenant_stats\".\"scope\" in ('tenant', 'instance')"
+        },
+        "vola_tenant_stats_instance_check": {
+          "name": "vola_tenant_stats_instance_check",
+          "value": "(\"vola_tenant_stats\".\"scope\" = 'tenant' and \"vola_tenant_stats\".\"instance_type\" is null and \"vola_tenant_stats\".\"instance_id\" is null) or (\"vola_tenant_stats\".\"scope\" = 'instance' and \"vola_tenant_stats\".\"instance_type\" is not null and \"vola_tenant_stats\".\"instance_id\" is not null)"
+        },
+        "vola_tenant_stats_totals_check": {
+          "name": "vola_tenant_stats_totals_check",
+          "value": "\"vola_tenant_stats\".\"total_files\" >= 0 and \"vola_tenant_stats\".\"total_bytes\" >= 0"
+        }
+      }
+    },
+    "vola_tenant": {
+      "name": "vola_tenant",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "default_encryption": {
+          "name": "default_encryption",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'none'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "vola_tenant_slug_unique": {
+          "name": "vola_tenant_slug_unique",
+          "columns": ["slug"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_tenant_default_encryption_check": {
+          "name": "vola_tenant_default_encryption_check",
+          "value": "\"vola_tenant\".\"default_encryption\" in ('none', 'tenant', 'keyring', 'caller')"
+        }
+      }
+    },
+    "vola_upload": {
+      "name": "vola_upload",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_key_id": {
+          "name": "api_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "instance_type": {
+          "name": "instance_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "folder_path": {
+          "name": "folder_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "folder_id": {
+          "name": "folder_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "declared_mime": {
+          "name": "declared_mime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "length": {
+          "name": "length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "offset": {
+          "name": "offset",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsec') * 1000 as integer))"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_file_id": {
+          "name": "completed_file_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "encryption": {
+          "name": "encryption",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enc_state": {
+          "name": "enc_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vola_upload_tenant_idx": {
+          "name": "vola_upload_tenant_idx",
+          "columns": ["tenant_id"],
+          "isUnique": false
+        },
+        "vola_upload_expires_idx": {
+          "name": "vola_upload_expires_idx",
+          "columns": ["expires_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vola_upload_tenant_id_vola_tenant_id_fk": {
+          "name": "vola_upload_tenant_id_vola_tenant_id_fk",
+          "tableFrom": "vola_upload",
+          "tableTo": "vola_tenant",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vola_upload_api_key_id_vola_apikey_id_fk": {
+          "name": "vola_upload_api_key_id_vola_apikey_id_fk",
+          "tableFrom": "vola_upload",
+          "tableTo": "vola_apikey",
+          "columnsFrom": ["api_key_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "vola_upload_folder_id_vola_folder_id_fk": {
+          "name": "vola_upload_folder_id_vola_folder_id_fk",
+          "tableFrom": "vola_upload",
+          "tableTo": "vola_folder",
+          "columnsFrom": ["folder_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "vola_upload_parent_id_vola_file_id_fk": {
+          "name": "vola_upload_parent_id_vola_file_id_fk",
+          "tableFrom": "vola_upload",
+          "tableTo": "vola_file",
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "vola_upload_completed_file_id_vola_file_id_fk": {
+          "name": "vola_upload_completed_file_id_vola_file_id_fk",
+          "tableFrom": "vola_upload",
+          "tableTo": "vola_file",
+          "columnsFrom": ["completed_file_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "vola_upload_instance_type_check": {
+          "name": "vola_upload_instance_type_check",
+          "value": "\"vola_upload\".\"instance_type\" glob '[a-z]*' and \"vola_upload\".\"instance_type\" not glob '*[^a-z0-9_]*'"
+        },
+        "vola_upload_length_check": {
+          "name": "vola_upload_length_check",
+          "value": "\"vola_upload\".\"length\" >= 0"
+        },
+        "vola_upload_offset_check": {
+          "name": "vola_upload_offset_check",
+          "value": "\"vola_upload\".\"offset\" >= 0 and \"vola_upload\".\"offset\" <= \"vola_upload\".\"length\""
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

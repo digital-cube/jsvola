@@ -17,6 +17,14 @@ import {
 import { createApiKey } from "../src/services/apikeys.js";
 import { createTenant } from "../src/services/tenants.js";
 
+/**
+ * The suite runs on SQLite (the `server-sqlite` vitest project). The tests of what SQLite
+ * does not have — the worker process and its queue, OCR — are skipped there BY NAME:
+ * `describe.skipIf(onSqlite)` / `it.skipIf(onSqlite)` with "PostgreSQL only" in the reason
+ * comment next to them, never by leaving the file out.
+ */
+export const onSqlite = process.env.VOLA_TEST_DIALECT === "sqlite";
+
 // The vocabulary of the repository, without recording candidates into its var/ directory.
 // Background jobs are OFF (`sync` mode: thumbnails render inline, nothing is queued) so the
 // suites never touch the shared Redis queue; the worker suite opens its own queue explicitly.

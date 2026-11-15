@@ -11,6 +11,7 @@
       "!**/dist",
       "!**/coverage",
       "!**/drizzle/meta",
+      "!**/drizzle-sqlite/meta",
       "!docs",
       "!**/*.md",
       "!**/*.generated.ts",

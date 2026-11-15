@@ -316,8 +316,7 @@ export async function createUpload(
     "upload created",
   );
   if (upload.length > 0) return { upload, file: null, fileId: futureFileId(upload) };
-  const file = await deps.db.transaction(async (tx) => {
-    const locked = await lockUpload(tx, scope.tenantId, upload.id);
+  const file = await withUpload(deps, scope.tenantId, upload.id, async (tx, locked) => {
     // An encrypted empty file is one empty, sealed last segment: the "flush" writes it.
     const enc = parseEncState(locked.encState);
     if (enc && enc.mode !== "client" && deps.crypto) {
@@ -368,31 +367,81 @@ function assertNotExpired(deps: UploadsDeps, row: UploadRow): void {
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
+ * The uploads held right now — a PATCH streaming into one, a completion — on a database
+ * without row locks (`dialect.capabilities.rowLocks` off: SQLite, which serves one process).
+ * There the work runs OUTSIDE any outer transaction — the body streams with the one writer
+ * free, and `finalizeUpload` commits its own transaction before it announces the file — and
+ * this set stands in for `FOR UPDATE NOWAIT`: every other PATCH, DELETE or sweep of the upload
+ * is `409 upload_locked` until the holder is done.
+ */
+const streaming = new Set<string>();
+
+const uploadLocked = () =>
+  new VolaError(
+    "upload_locked",
+    409,
+    "another request is writing to this upload; retry when it has finished",
+  );
+
+/**
  * The row under `FOR UPDATE NOWAIT`: a second PATCH (or DELETE) on the same upload while one
  * is streaming does not wait — `409 upload_locked` at once.
  */
-async function lockUpload(tx: Tx, tenantId: string, uploadId: string): Promise<UploadRow> {
+async function lockUpload(
+  tx: Tx | Database,
+  tenantId: string,
+  uploadId: string,
+): Promise<UploadRow> {
   if (!UUID_RE.test(uploadId)) throw uploadNotFound();
+  if (streaming.has(uploadId.toLowerCase())) throw uploadLocked();
   let rows: UploadRow[];
   try {
-    rows = await tx
-      .select()
-      .from(uploads)
-      .where(and(eq(uploads.tenantId, tenantId), eq(uploads.id, uploadId.toLowerCase())))
-      .for("update", { noWait: true });
+    rows = await dialect.forUpdateNoWait(
+      tx
+        .select()
+        .from(uploads)
+        .where(and(eq(uploads.tenantId, tenantId), eq(uploads.id, uploadId.toLowerCase()))),
+    );
   } catch (error) {
-    if (dialect.isLockNotAvailable(error)) {
-      throw new VolaError(
-        "upload_locked",
-        409,
-        "another request is writing to this upload; retry when it has finished",
-      );
-    }
+    if (dialect.isLockNotAvailable(error)) throw uploadLocked();
     throw error;
   }
   const [row] = rows;
   if (!row) throw uploadNotFound();
   return row;
+}
+
+/** What runs on a held upload: the transaction it holds the row in, or the database itself. */
+type UploadWork<T> = (tx: Tx | Database, row: UploadRow) => Promise<T>;
+
+/**
+ * Runs `work` on the upload, held for its whole duration (`409 upload_locked` for anyone
+ * else): with row locks, in one transaction on the row `FOR UPDATE NOWAIT`; without them, in
+ * memory (`streaming`), with no transaction around `work` — its writes commit one by one.
+ */
+async function withUpload<T>(
+  deps: UploadsDeps,
+  tenantId: string,
+  uploadId: string,
+  work: UploadWork<T>,
+): Promise<T> {
+  if (dialect.capabilities.rowLocks) {
+    return deps.db.transaction(async (tx) => work(tx, await lockUpload(tx, tenantId, uploadId)));
+  }
+  if (!UUID_RE.test(uploadId)) throw uploadNotFound();
+  const id = uploadId.toLowerCase();
+  if (streaming.has(id)) throw uploadLocked();
+  streaming.add(id);
+  try {
+    const [row] = await deps.db
+      .select()
+      .from(uploads)
+      .where(and(eq(uploads.tenantId, tenantId), eq(uploads.id, id)));
+    if (!row) throw uploadNotFound();
+    return await work(deps.db, row);
+  } finally {
+    streaming.delete(id);
+  }
 }
 
 // --- append ------------------------------------------------------------------------------
@@ -421,79 +470,17 @@ export interface AppendResult {
  * match (`409 upload_offset_mismatch`), the bytes go to the part file and the new offset is
  * committed only after `fsync`. A client that dies mid-body still gets what arrived counted:
  * the offset is committed and the error re-thrown afterwards, so the next `HEAD` is exact.
- * When the offset reaches the length the upload completes in the same transaction.
+ * When the offset reaches the length the upload completes in the same transaction. Without
+ * row locks (SQLite) the upload is held in memory instead and nothing wraps the PATCH: the
+ * offset is written once the bytes are durable, then the completion runs (`withUpload`).
  */
 export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promise<AppendResult> {
   if (!Number.isSafeInteger(input.offset) || input.offset < 0) {
     throw new VolaError("bad_request", 400, "Upload-Offset: a non-negative integer is required");
   }
-  const outcome = await deps.db.transaction(async (tx) => {
-    const row = await lockUpload(tx, input.tenantId, input.uploadId);
-    assertNotExpired(deps, row);
-    if (row.completedFileId !== null) {
-      throw new VolaError("upload_completed", 409, "the upload is complete; nothing more to send");
-    }
-    if (input.offset !== row.offset) {
-      throw new VolaError(
-        "upload_offset_mismatch",
-        409,
-        `Upload-Offset ${input.offset} does not match the current offset ${row.offset}`,
-      );
-    }
-    const room = row.length - row.offset;
-    if (input.contentLength !== undefined && input.contentLength > room) {
-      throw new VolaError(
-        "upload_overflow",
-        400,
-        `Content-Length ${input.contentLength} exceeds the ${room} bytes left before Upload-Length`,
-      );
-    }
-    if ((await deps.parts.size(row.id)) === null) throw uploadLost();
-    const enc = parseEncState(row.encState);
-    let appended: { size: number; error: Error | null; encState?: EncState };
-    try {
-      if (enc && enc.mode !== "client") {
-        // Segment by segment, under the key of THIS request (423 / 409 / 503 before a byte).
-        if (!deps.crypto) throw encryptionUnavailable(enc.mode);
-        const result = await appendEncrypted(deps.crypto, deps.parts, enc, {
-          uploadId: row.id,
-          tenantId: row.tenantId,
-          length: row.length,
-          offset: row.offset,
-          body: input.body,
-          room,
-        });
-        appended = { size: result.offset, error: result.error, encState: result.enc };
-      } else {
-        appended = await deps.parts.append(row.id, row.offset, input.body, room);
-      }
-    } catch (error) {
-      if (error instanceof PartOverflowError) {
-        throw new VolaError(
-          "upload_overflow",
-          400,
-          `the body exceeds the ${error.room} bytes left before Upload-Length`,
-        );
-      }
-      throw error;
-    }
-    const [updated] = await tx
-      .update(uploads)
-      .set({
-        offset: appended.size,
-        ...(appended.encState
-          ? { encState: appended.encState as unknown as Record<string, unknown> }
-          : {}),
-      })
-      .where(eq(uploads.id, row.id))
-      .returning();
-    const upload = updated as UploadRow;
-    if (appended.error || upload.offset < upload.length) {
-      return { upload, file: null, error: appended.error };
-    }
-    const file = await completeLocked(deps, tx, upload, input.userId);
-    return { upload: { ...upload, completedFileId: file.id }, file, error: null };
-  });
+  const outcome = await withUpload(deps, input.tenantId, input.uploadId, (tx, row) =>
+    appendToRow(deps, input, tx, row),
+  );
   if (outcome.error) {
     deps.logger?.info(
       { upload: outcome.upload.id, offset: outcome.upload.offset, err: outcome.error },
@@ -502,6 +489,88 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
     throw outcome.error;
   }
   return { upload: outcome.upload, file: outcome.file };
+}
+
+interface AppendOutcome {
+  upload: UploadRow;
+  file: FileInfo | null;
+  error: Error | null;
+}
+
+/**
+ * The body of a PATCH on the held `row` (`withUpload`): checks, the bytes to the part file,
+ * the new offset, and the completion when that was the last byte.
+ */
+async function appendToRow(
+  deps: UploadsDeps,
+  input: AppendInput,
+  tx: Tx | Database,
+  row: UploadRow,
+): Promise<AppendOutcome> {
+  assertNotExpired(deps, row);
+  if (row.completedFileId !== null) {
+    throw new VolaError("upload_completed", 409, "the upload is complete; nothing more to send");
+  }
+  if (input.offset !== row.offset) {
+    throw new VolaError(
+      "upload_offset_mismatch",
+      409,
+      `Upload-Offset ${input.offset} does not match the current offset ${row.offset}`,
+    );
+  }
+  const room = row.length - row.offset;
+  if (input.contentLength !== undefined && input.contentLength > room) {
+    throw new VolaError(
+      "upload_overflow",
+      400,
+      `Content-Length ${input.contentLength} exceeds the ${room} bytes left before Upload-Length`,
+    );
+  }
+  if ((await deps.parts.size(row.id)) === null) throw uploadLost();
+  const enc = parseEncState(row.encState);
+  let appended: { size: number; error: Error | null; encState?: EncState };
+  try {
+    if (enc && enc.mode !== "client") {
+      // Segment by segment, under the key of THIS request (423 / 409 / 503 before a byte).
+      if (!deps.crypto) throw encryptionUnavailable(enc.mode);
+      const result = await appendEncrypted(deps.crypto, deps.parts, enc, {
+        uploadId: row.id,
+        tenantId: row.tenantId,
+        length: row.length,
+        offset: row.offset,
+        body: input.body,
+        room,
+      });
+      appended = { size: result.offset, error: result.error, encState: result.enc };
+    } else {
+      appended = await deps.parts.append(row.id, row.offset, input.body, room);
+    }
+  } catch (error) {
+    if (error instanceof PartOverflowError) {
+      throw new VolaError(
+        "upload_overflow",
+        400,
+        `the body exceeds the ${error.room} bytes left before Upload-Length`,
+      );
+    }
+    throw error;
+  }
+  const [updated] = await tx
+    .update(uploads)
+    .set({
+      offset: appended.size,
+      ...(appended.encState
+        ? { encState: appended.encState as unknown as Record<string, unknown> }
+        : {}),
+    })
+    .where(eq(uploads.id, row.id))
+    .returning();
+  const upload = updated as UploadRow;
+  if (appended.error || upload.offset < upload.length) {
+    return { upload, file: null, error: appended.error };
+  }
+  const file = await completeLocked(deps, tx, upload, input.userId);
+  return { upload: { ...upload, completedFileId: file.id }, file, error: null };
 }
 
 /**
@@ -521,7 +590,7 @@ export async function appendUpload(deps: UploadsDeps, input: AppendInput): Promi
  */
 async function completeLocked(
   deps: UploadsDeps,
-  tx: Tx,
+  tx: Tx | Database,
   row: UploadRow,
   userId: string | null = null,
 ): Promise<FileInfo> {

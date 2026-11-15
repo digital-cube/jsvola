@@ -23,7 +23,15 @@ import {
   pngFixture,
   waitFor,
 } from "./fixtures.js";
-import { config, type Fixture, mintKey, setupFixture, testDatabase, truncate } from "./helpers.js";
+import {
+  config,
+  type Fixture,
+  mintKey,
+  onSqlite,
+  setupFixture,
+  testDatabase,
+  truncate,
+} from "./helpers.js";
 import { httpClient } from "./http.js";
 
 /**
@@ -47,6 +55,7 @@ const prefix = `vola-test-${randomUUID().slice(0, 8)}`;
 const redisUrl = config.redisUrl as string;
 
 beforeAll(async () => {
+  if (onSqlite) return; // PostgreSQL only: the worker process and its queue
   expect(redisUrl, "VOLA_REDIS_URL is needed for the worker suite").toBeTruthy();
   await truncate(handle);
   root = await mkdtemp(join(tmpdir(), "vola-worker-"));
@@ -79,6 +88,7 @@ beforeAll(async () => {
   otherKey = (await mintKey(handle, tenant.id, "other", "live", ["files:read", "files:write"])).key;
 });
 afterAll(async () => {
+  if (onSqlite) return; // PostgreSQL only: the worker process and its queue
   await worker.close();
   await app.close();
   await queue.queue.obliterate({ force: true }).catch(() => undefined);
@@ -105,7 +115,7 @@ const settled = (fileId: string) =>
     { label: `jobs of ${fileId}`, timeoutMs: 30_000 },
   );
 
-describe("processing jobs through the worker", () => {
+describe.skipIf(onSqlite)("processing jobs through the worker", () => {
   it("queues 4 THUMBNAIL jobs for a PNG, the worker renders them, the aggregate goes PENDING → DONE", async () => {
     const received: FileEvent[] = [];
     const unsubscribe = await events.subscribe(fx.tenant.id, (event) => void received.push(event));

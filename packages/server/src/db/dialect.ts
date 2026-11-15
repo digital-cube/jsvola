@@ -6,11 +6,11 @@ import type { Database } from "./index.js";
  * Services, routes and UDC sources write their queries with drizzle's query builder and reach
  * for this interface for the rest — locks, error classification, and the handful of
  * expressions every database spells differently. One implementation per supported database
- * (today only `./postgres.ts`); nothing outside `db/` imports a driver or a dialect module.
+ * (`./postgres.ts`, `./sqlite.ts`); nothing outside `db/` imports a driver or a dialect module.
  */
 export interface Dialect {
   /** Name of the database, for logs and error messages. */
-  readonly name: "postgres";
+  readonly name: "postgres" | "sqlite";
   /** What this database can do that another might not. */
   readonly capabilities: DialectCapabilities;
 
@@ -33,13 +33,27 @@ export interface Dialect {
   jsonText(column: AnyColumn | SQL, field: string): SQL<string | null>;
   /** A JSON column equals `value` (as a JSON document, not as text). */
   jsonEquals(column: AnyColumn | SQL, value: unknown): SQL;
-  /** Case-insensitive `LIKE`. */
+  /** Case-sensitive `LIKE`, `\\` escaping `%`, `_` and itself (PostgreSQL's default). */
+  like(column: AnyColumn | SQL, pattern: string): SQL;
+  /** Case-insensitive `LIKE`, with the same escape. */
   ilike(column: AnyColumn | SQL, pattern: string): SQL;
   /**
    * The OCR search of `words` against the indexed text column `column` (all words must
    * occur). Only meaningful where `capabilities.ocrSearch` is true.
    */
   ocrMatch(column: AnyColumn | SQL, words: string): SQL;
+
+  /**
+   * `query` (a SELECT of a transaction) holding its rows until the end of the transaction,
+   * failing at once (`isLockNotAvailable`) when another transaction holds them. Where
+   * `capabilities.rowLocks` is false the query is returned as it is.
+   */
+  forUpdateNoWait<Q>(query: Q): Q;
+  /**
+   * `insert` … `on conflict (target) where … do nothing`: the conflict on a PARTIAL unique
+   * index is skipped (the row is not inserted, nothing returned).
+   */
+  onConflictDoNothing<Q>(insert: Q, config: { target: AnyColumn[]; where: SQL }): Q;
 
   /** Applies every pending migration shipped with the package (idempotent). */
   migrate(db: Database, migrationsFolder: string): Promise<void>;
@@ -50,6 +64,13 @@ export interface Dialect {
 export interface DialectCapabilities {
   /** Full-text search of OCR text (the `ocr` filter with words); off, it is refused. */
   readonly ocrSearch: boolean;
+  /**
+   * `SELECT … FOR UPDATE NOWAIT` holds rows across a long transaction while other
+   * transactions go on. Without it (SQLite: one writer at a time) the server keeps a long
+   * piece of work — a tus PATCH streaming its body — out of any transaction and guards its
+   * row in memory, which is sound because such a database has one server process.
+   */
+  readonly rowLocks: boolean;
 }
 
 /** What a lock runs on: the database or a transaction of it. */

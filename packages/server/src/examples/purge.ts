@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, like, lt, ne, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type Database, dialect } from "../db/index.js";
 import { files, folders, keyrings } from "../db/schema.js";
@@ -62,7 +62,7 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
       .where(
         and(
           eq(keyrings.tenantId, deps.tenantId),
-          like(keyrings.principal, "demo-%"),
+          dialect.like(keyrings.principal, "demo-%"),
           isNull(keyrings.deletedAt),
           lt(keyrings.createdAt, cutoff),
         ),
@@ -132,7 +132,7 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
         eq(folders.tenantId, scope.tenantId),
         eq(folders.instanceType, scope.instanceType),
         eq(folders.instanceId, scope.instanceId),
-        like(folders.createdBy, "demo-%"),
+        dialect.like(folders.createdBy, "demo-%"),
         isNull(folders.deletedAt),
         lt(folders.createdAt, cutoff),
       ),
