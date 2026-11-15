@@ -38,10 +38,14 @@ export interface Dialect {
   /** Case-insensitive `LIKE`, with the same escape. */
   ilike(column: AnyColumn | SQL, pattern: string): SQL;
   /**
-   * The OCR search of `words` against the indexed text column `column` (all words must
-   * occur). Only meaningful where `capabilities.ocrSearch` is true.
+   * The OCR search of `words`: a condition on the `vola_file_metadata` row of the query
+   * (joined, possibly NULL) that holds when its `ocr_text` contains every word — lower-cased,
+   * no stemming, no ranking. The words are data, never query syntax: what a user types
+   * cannot change the meaning of the search or fail the statement. No word at all (only
+   * punctuation, say) matches nothing. PostgreSQL: `ocr_tsv @@ plainto_tsquery('simple', …)`;
+   * SQLite: the FTS5 index `vola_file_ocr_fts` (`drizzle-sqlite/0001_ocr_fts.sql`).
    */
-  ocrMatch(column: AnyColumn | SQL, words: string): SQL;
+  ocrMatch(words: string): SQL;
 
   /**
    * `query` (a SELECT of a transaction) holding its rows until the end of the transaction,
@@ -62,7 +66,10 @@ export interface Dialect {
 }
 
 export interface DialectCapabilities {
-  /** Full-text search of OCR text (the `ocr` filter with words); off, it is refused. */
+  /**
+   * Full-text search of OCR text (the `ocr` filter with words); off, it is refused. True on
+   * both supported databases: a SQLite without FTS5 is refused when it is opened.
+   */
   readonly ocrSearch: boolean;
   /**
    * `SELECT … FOR UPDATE NOWAIT` holds rows across a long transaction while other

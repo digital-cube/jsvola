@@ -38,6 +38,8 @@ const databaseUrl = (fallback: string) =>
 
 /** `true` for a URL of a SQLite database (`file:<path>`, `:memory:`). */
 export const isSqliteUrl = (url: string): boolean => /^(file:|:memory:$)/i.test(url);
+/** `true` for SQLite in memory (`:memory:`, `file::memory:`): one process's database only. */
+export const isMemoryUrl = (url: string): boolean => /^(file:)?:memory:$/i.test(url);
 
 /** `true|false|1|0|yes|no|on|off`, case-insensitive. */
 const boolean = (fallback: boolean) =>
@@ -195,15 +197,10 @@ const ConfigSchema = z
       path: ["VOLA_DEMO_API_KEY"],
     },
   )
-  .refine((c) => !(isSqliteUrl(c.VOLA_DATABASE_URL) && c.VOLA_WORKER_ENABLED === true), {
+  .refine((c) => !(isMemoryUrl(c.VOLA_DATABASE_URL) && c.VOLA_WORKER_ENABLED === true), {
     message:
-      "VOLA_WORKER_ENABLED=true needs PostgreSQL: on SQLite (file:…) the server does everything inline and there is no worker process; unset VOLA_WORKER_ENABLED or set it to false",
+      "VOLA_WORKER_ENABLED=true cannot work on :memory:: no worker process can open another process's in-memory SQLite database; use a file:<path> URL or unset VOLA_WORKER_ENABLED",
     path: ["VOLA_WORKER_ENABLED"],
-  })
-  .refine((c) => !(isSqliteUrl(c.VOLA_DATABASE_URL) && c.VOLA_OCR_ENABLED === true), {
-    message:
-      "VOLA_OCR_ENABLED=true needs PostgreSQL: OCR does not run on SQLite (file:…); unset VOLA_OCR_ENABLED or set it to false",
-    path: ["VOLA_OCR_ENABLED"],
   })
   .refine((c) => !c.VOLA_EXAMPLES || c.VOLA_DEMO_API_KEY !== c.VOLA_DEMO_WRITE_KEY, {
     message: "VOLA_DEMO_API_KEY and VOLA_DEMO_WRITE_KEY must be two different keys",
@@ -227,8 +224,9 @@ export interface LookupsConfig {
 export interface Config {
   /**
    * `VOLA_DATABASE_URL`: `postgresql://user:password@host:5432/db` (the default, every
-   * feature), `file:<path>` / `file:///abs/path` (SQLite: one server process, everything
-   * inline, no worker, no OCR) or `:memory:` (SQLite in memory, for tests).
+   * feature), `file:<path>` / `file:///abs/path` (SQLite: one server process, and with Redis
+   * one worker process on the same host, sharing the file) or `:memory:` (SQLite in memory,
+   * for tests: no worker).
    */
   databaseUrl: string;
   /** `VOLA_DATABASE_URL_TEST`: the database of the test suites, same forms. */

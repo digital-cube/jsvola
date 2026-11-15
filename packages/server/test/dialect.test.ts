@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.js";
 import { connect, type DatabaseHandle, type Executor } from "../src/db/index.js";
 import { postgresDialect as dialect } from "../src/db/postgres.js";
-import { fileMetadata, files, keyrings, processingJobs } from "../src/db/schema.js";
-import { SqliteError, sqliteDialect, sqlitePath } from "../src/db/sqlite.js";
+import { files, keyrings, processingJobs } from "../src/db/schema.js";
+import { ocrFtsQuery, SqliteError, sqliteDialect, sqlitePath } from "../src/db/sqlite.js";
 import { onSqlite } from "./helpers.js";
 
 // The PostgreSQL dialect's helpers are pure: they render the same SQL whichever schema the
@@ -76,7 +76,7 @@ describe("postgres dialect", () => {
     expect(equals.sql).toBe('"vola_processing_job"."params" = $1::jsonb');
     expect(equals.params).toEqual(['{"size":256}']);
     expect(text(dialect.ilike(files.filename, "%a%"))).toBe('"vola_file"."filename" ilike $1');
-    const match = dialect.render(dialect.ocrMatch(fileMetadata.ocrTsv, "invoice 2026"));
+    const match = dialect.render(dialect.ocrMatch("invoice 2026"));
     expect(match.sql).toBe(`"vola_file_metadata"."ocr_tsv" @@ plainto_tsquery('simple', $1)`);
     expect(match.params).toEqual(["invoice 2026"]);
   });
@@ -157,19 +157,41 @@ describe.skipIf(onSqlite)("postgres dialect against the database", () => {
       { v: true },
     ]);
     expect(await rows(dialect.ilike(sql`'Invoice.PDF'`, "%.pdf"))).toEqual([{ v: true }]);
-    expect(
-      await rows(
-        dialect.ocrMatch(sql`to_tsvector('simple', 'the invoice of 2026')`, "invoice 2026"),
-      ),
-    ).toEqual([{ v: true }]);
+    // The match names "vola_file_metadata"."ocr_tsv": a derived table of that name stands in.
+    const matches = async (text: string, words: string) =>
+      (
+        (await handle.db.execute(
+          sql`select ${dialect.ocrMatch(words)} as v from (select to_tsvector('simple', ${text}) as ocr_tsv) as vola_file_metadata`,
+        )) as unknown as { rows: { v: unknown }[] }
+      ).rows;
+    expect(await matches("the invoice of 2026", "invoice 2026")).toEqual([{ v: true }]);
+    expect(await matches("the invoice of 2026", "invoice 2027")).toEqual([{ v: false }]);
   });
 });
 
 describe("sqlite dialect", () => {
-  it("has no OCR search and no row locks", () => {
+  it("searches OCR text (FTS5) and has no row locks", () => {
     expect(sqliteDialect.name).toBe("sqlite");
-    expect(sqliteDialect.capabilities).toEqual({ ocrSearch: false, rowLocks: false });
-    expect(() => sqliteDialect.ocrMatch(sql`x`, "words")).toThrow(/no full-text search/);
+    expect(sqliteDialect.capabilities).toEqual({ ocrSearch: true, rowLocks: false });
+    const match = sqliteDialect.render(sqliteDialect.ocrMatch("Invoice 2026"));
+    expect(match.sql).toBe(
+      '"vola_file_metadata"."file_id" in (select vola_file_ocr_fts_doc.file_id from vola_file_ocr_fts join vola_file_ocr_fts_doc on vola_file_ocr_fts_doc.id = vola_file_ocr_fts.rowid where vola_file_ocr_fts match ?)',
+    );
+    expect(match.params).toEqual(['"Invoice" AND "2026"']);
+    expect(sqliteDialect.render(sqliteDialect.ocrMatch("-- *")).sql).toBe("false");
+  });
+
+  it("quotes every word of an OCR search: FTS5 syntax typed by a user is text", () => {
+    expect(ocrFtsQuery("invoice")).toBe('"invoice"');
+    expect(ocrFtsQuery("  Račun   broj 42 ")).toBe('"Račun" AND "broj" AND "42"');
+    expect(ocrFtsQuery('a OR b NOT c NEAR(d e) "f" g* -h ^i ocr_text:j (k)')).toBe(
+      '"a" AND "OR" AND "b" AND "NOT" AND "c" AND "NEAR" AND "d" AND "e" AND "f" AND "g" AND "h" AND "i" AND "ocr" AND "text" AND "j" AND "k"',
+    );
+    expect(ocrFtsQuery("e-mail, 2026-11-15")).toBe('"e" AND "mail" AND "2026" AND "11" AND "15"');
+    // Decomposed input (c + combining caron) is composed first, as the index text is.
+    expect(ocrFtsQuery("c\u030Cačak")).toBe('"čačak"');
+    expect(ocrFtsQuery("")).toBeNull();
+    expect(ocrFtsQuery(` " * : - ( ) ' `)).toBeNull();
   });
 
   it("reads file: URLs and :memory:", () => {

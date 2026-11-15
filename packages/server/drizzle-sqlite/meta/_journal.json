@@ -8,6 +8,13 @@
       "when": 1794751925026,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794754645728,
+      "tag": "0001_ocr_fts",
+      "breakpoints": true
     }
   ]
 }

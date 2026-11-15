@@ -2,8 +2,8 @@
 
 The JSVola server: self-hosted, multi-tenant, content-addressable file storage as a **Fastify 5
 plugin** and as a **standalone server**, with its worker process, the Drizzle schema and
-migrations for PostgreSQL (and for SQLite: one process, no worker, no OCR — `file:<path>` in
-`VOLA_DATABASE_URL`), the content-addressable store on disk, encryption at rest, UDC collections and
+migrations for PostgreSQL (and for SQLite: one server process, and a worker on the same host
+with Redis — `file:<path>` in `VOLA_DATABASE_URL`), the content-addressable store on disk, encryption at rest, UDC collections and
 the real-time `subscribe` WebSocket.
 
 The usual way to run it is the Docker image, `ghcr.io/digital-cube/jsvola`

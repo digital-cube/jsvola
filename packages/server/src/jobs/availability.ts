@@ -16,10 +16,11 @@ export interface ResolveJobsModeInput {
   enabled: WorkerEnabled;
   redisUrl: string | null;
   /**
-   * The database is SQLite: one server process, no worker. `auto` is `sync` whatever Redis
-   * says, and `true` is a configuration error.
+   * The database is SQLite in memory (`:memory:`): no other process can open it, so there is
+   * no worker. `auto` is `sync` whatever Redis says, and `true` is a configuration error. A
+   * SQLite FILE is no reason: the worker opens the same file (same host).
    */
-  sqlite?: boolean | undefined;
+  memoryDatabase?: boolean | undefined;
   log?: Pick<FastifyBaseLogger, "info" | "error"> | undefined;
 }
 
@@ -28,21 +29,21 @@ export interface ResolveJobsModeInput {
  * server does the work itself (`sync`: thumbnails are rendered inline on `/thumb`, OCR does
  * not run). A deployment without a worker is a supported configuration, so `sync` is logged
  * once at INFO, never as an error; the one misconfiguration — `VOLA_WORKER_ENABLED=1`
- * without `VOLA_REDIS_URL` — is one ERROR line, and the process degrades to `sync`. On
- * SQLite it is always `sync`.
+ * without `VOLA_REDIS_URL` — is one ERROR line, and the process degrades to `sync`. On an
+ * in-memory SQLite database it is always `sync`.
  *
- * @throws ConfigError for `VOLA_WORKER_ENABLED=true` on SQLite.
+ * @throws ConfigError for `VOLA_WORKER_ENABLED=true` on an in-memory SQLite database.
  */
 export function resolveJobsMode(input: ResolveJobsModeInput): JobsMode {
-  if (input.sqlite) {
+  if (input.memoryDatabase) {
     if (input.enabled === true) {
       throw new ConfigError([
-        "VOLA_WORKER_ENABLED=true needs PostgreSQL: on SQLite there is no worker process",
+        "VOLA_WORKER_ENABLED=true cannot work on :memory:: no worker process can open this process's in-memory database",
       ]);
     }
     input.log?.info(
       {
-        reason: "SQLite database",
+        reason: "in-memory SQLite database",
         effect: "thumbnails are rendered inline on /thumb; OCR does not run",
       },
       "background jobs disabled",

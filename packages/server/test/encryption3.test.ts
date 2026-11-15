@@ -43,7 +43,6 @@ import {
   config,
   type Fixture,
   mintKey,
-  onSqlite,
   setupFixture,
   testDatabase,
   truncate,
@@ -172,8 +171,6 @@ beforeAll(async () => {
   });
   await logged.ready();
 
-  // PostgreSQL only: the worker process and its queue (`async` mode).
-  if (onSqlite) return;
   const prefix = `vola-enc3-${randomUUID().slice(0, 8)}`;
   queue = new ProcessingQueue({ redisUrl: config.redisUrl as string, prefix, backoffMs: 20 });
   asyncApp = await buildApp({
@@ -1045,121 +1042,108 @@ describe("encrypted derivatives", () => {
     await nothingPlainOnDisk();
   });
 
-  // PostgreSQL only: async mode needs the worker process.
-  it.skipIf(onSqlite)(
-    "tenant (async mode): the worker renders the four sizes sealed and the OCR lands in ocr_ct, never in ocr_text",
-    async () => {
-      const asyncHttp = httpClient(asyncApp, fx.full.key, TYPE);
-      const { response, instanceId } = await asyncHttp.upload(await pngFixture(), "w.png", {
+  it("tenant (async mode): the worker renders the four sizes sealed and the OCR lands in ocr_ct, never in ocr_text", async () => {
+    const asyncHttp = httpClient(asyncApp, fx.full.key, TYPE);
+    const { response, instanceId } = await asyncHttp.upload(await pngFixture(), "w.png", {
+      headers: { "x-vola-encryption": "tenant" },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const info = FileInfoSchema.parse(response.json());
+    expect(info.processing_status).toBe("PENDING");
+    const jobs = await waitFor(
+      async () => {
+        const all = await listProcessingJobs(handle.db, info.id);
+        return all.length > 0 && all.every((j) => j.status !== "PENDING" && j.status !== "RUNNING")
+          ? all
+          : null;
+      },
+      { label: `jobs of ${info.id}`, timeoutMs: 40_000 },
+    );
+    const thumbs = jobs.filter((j) => j.kind === "THUMBNAIL");
+    expect(thumbs.map((j) => j.status)).toEqual(["DONE", "DONE", "DONE", "DONE"]);
+    const stored = await row(info.id);
+    for (const size of THUMBNAIL_SIZES) {
+      const sealed = await storage.statDerived(
+        stored.hash,
+        encryptedThumbnailName(info.id, size, "cover"),
+      );
+      expect(sealed, `size ${size}`).not.toBeNull();
+      expect((await readFile((sealed as { path: string }).path)).includes(WEBP_MAGIC)).toBe(false);
+    }
+    // The route serves what the worker made (no 202 any more), decrypted here.
+    const thumb = await asyncHttp.get(url(instanceId, info.id, "/thumb/512"));
+    expect(thumb.statusCode, thumb.body).toBe(200);
+    expect(thumb.headers["x-thumbnail-status"]).toBe("ready");
+    expect((await decode(thumb.rawPayload)).width).toBe(512);
+    const ocr = jobs.find((j) => j.kind === "OCR");
+    expect(ocr).toBeDefined();
+    const [meta] = await handle.db
+      .select()
+      .from(fileMetadata)
+      .where(eq(fileMetadata.fileId, info.id));
+    if (tesseract) {
+      expect(ocr?.status).toBe("DONE");
+      expect(meta?.ocrCt).not.toBeNull();
+      expect(meta?.ocrText).toBeNull();
+      expect(meta?.ocrLang).toBeNull();
+      const detail = await asyncHttp.get(url(instanceId, info.id, "/info?ocr=full"));
+      expect(detail.json().ocr).toMatchObject({ status: "DONE", lang: "eng", pages: 1 });
+      expect(typeof detail.json().ocr.text).toBe("string");
+      // Not in the full-text search: the UDC `ocr` flag says "no text" for an encrypted file.
+      const udc = await asyncApp.inject({
+        method: "POST",
+        url: "/vola/udc/list",
+        headers: { ...bearer(fx.full.key), "x-udc-message-id": "m1" },
+        payload: {
+          collection: "files",
+          filter: {
+            and: [
+              { field: "instance_id", op: "eq", value: instanceId },
+              { field: "ocr", op: "eq", value: true },
+            ],
+          },
+        },
+      });
+      expect(udc.json().payload.rows).toEqual([]);
+    } else {
+      expect(ocr?.status).toBe("SKIPPED");
+    }
+  });
+
+  it("a keyring or caller file gets no job in async mode; a file above the limit gets no inline thumbnail (404)", async () => {
+    const { principal, token } = await owner("nojob");
+    const asyncHttp = httpClient(asyncApp, fx.full.key, TYPE);
+    const { response } = await asyncHttp.upload(await pngFixture(), "nj.png", {
+      headers: { "x-vola-encryption": "keyring", ...user(principal, unlockHeader(token)) },
+      fieldsFirst: true,
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const info = FileInfoSchema.parse(response.json());
+    expect(info.processing_status).toBeNull();
+    expect(await listProcessingJobs(handle.db, info.id)).toEqual([]);
+
+    const tiny = await buildApp({
+      config: { ...config, keyFile, storagePath: join(root, "storage"), encDeriveMaxBytes: 100 },
+      db: handle.db,
+      logger: false,
+      storage,
+      events: false,
+      uploadSweepIntervalMs: 0,
+    });
+    await tiny.ready();
+    try {
+      const tinyHttp = httpClient(tiny, fx.full.key, TYPE);
+      const big = await tinyHttp.upload(await pngFixture(), "big.png", {
         headers: { "x-vola-encryption": "tenant" },
       });
-      expect(response.statusCode, response.body).toBe(201);
-      const info = FileInfoSchema.parse(response.json());
-      expect(info.processing_status).toBe("PENDING");
-      const jobs = await waitFor(
-        async () => {
-          const all = await listProcessingJobs(handle.db, info.id);
-          return all.length > 0 &&
-            all.every((j) => j.status !== "PENDING" && j.status !== "RUNNING")
-            ? all
-            : null;
-        },
-        { label: `jobs of ${info.id}`, timeoutMs: 40_000 },
-      );
-      const thumbs = jobs.filter((j) => j.kind === "THUMBNAIL");
-      expect(thumbs.map((j) => j.status)).toEqual(["DONE", "DONE", "DONE", "DONE"]);
-      const stored = await row(info.id);
-      for (const size of THUMBNAIL_SIZES) {
-        const sealed = await storage.statDerived(
-          stored.hash,
-          encryptedThumbnailName(info.id, size, "cover"),
-        );
-        expect(sealed, `size ${size}`).not.toBeNull();
-        expect((await readFile((sealed as { path: string }).path)).includes(WEBP_MAGIC)).toBe(
-          false,
-        );
-      }
-      // The route serves what the worker made (no 202 any more), decrypted here.
-      const thumb = await asyncHttp.get(url(instanceId, info.id, "/thumb/512"));
-      expect(thumb.statusCode, thumb.body).toBe(200);
-      expect(thumb.headers["x-thumbnail-status"]).toBe("ready");
-      expect((await decode(thumb.rawPayload)).width).toBe(512);
-      const ocr = jobs.find((j) => j.kind === "OCR");
-      expect(ocr).toBeDefined();
-      const [meta] = await handle.db
-        .select()
-        .from(fileMetadata)
-        .where(eq(fileMetadata.fileId, info.id));
-      if (tesseract) {
-        expect(ocr?.status).toBe("DONE");
-        expect(meta?.ocrCt).not.toBeNull();
-        expect(meta?.ocrText).toBeNull();
-        expect(meta?.ocrLang).toBeNull();
-        const detail = await asyncHttp.get(url(instanceId, info.id, "/info?ocr=full"));
-        expect(detail.json().ocr).toMatchObject({ status: "DONE", lang: "eng", pages: 1 });
-        expect(typeof detail.json().ocr.text).toBe("string");
-        // Not in the full-text search: the UDC `ocr` flag says "no text" for an encrypted file.
-        const udc = await asyncApp.inject({
-          method: "POST",
-          url: "/vola/udc/list",
-          headers: { ...bearer(fx.full.key), "x-udc-message-id": "m1" },
-          payload: {
-            collection: "files",
-            filter: {
-              and: [
-                { field: "instance_id", op: "eq", value: instanceId },
-                { field: "ocr", op: "eq", value: true },
-              ],
-            },
-          },
-        });
-        expect(udc.json().payload.rows).toEqual([]);
-      } else {
-        expect(ocr?.status).toBe("SKIPPED");
-      }
-    },
-  );
-
-  // PostgreSQL only: async mode needs the worker process.
-  it.skipIf(onSqlite)(
-    "a keyring or caller file gets no job in async mode; a file above the limit gets no inline thumbnail (404)",
-    async () => {
-      const { principal, token } = await owner("nojob");
-      const asyncHttp = httpClient(asyncApp, fx.full.key, TYPE);
-      const { response } = await asyncHttp.upload(await pngFixture(), "nj.png", {
-        headers: { "x-vola-encryption": "keyring", ...user(principal, unlockHeader(token)) },
-        fieldsFirst: true,
-      });
-      expect(response.statusCode, response.body).toBe(201);
-      const info = FileInfoSchema.parse(response.json());
-      expect(info.processing_status).toBeNull();
-      expect(await listProcessingJobs(handle.db, info.id)).toEqual([]);
-
-      const tiny = await buildApp({
-        config: { ...config, keyFile, storagePath: join(root, "storage"), encDeriveMaxBytes: 100 },
-        db: handle.db,
-        logger: false,
-        storage,
-        events: false,
-        uploadSweepIntervalMs: 0,
-      });
-      await tiny.ready();
-      try {
-        const tinyHttp = httpClient(tiny, fx.full.key, TYPE);
-        const big = await tinyHttp.upload(await pngFixture(), "big.png", {
-          headers: { "x-vola-encryption": "tenant" },
-        });
-        expect(big.response.statusCode, big.response.body).toBe(201);
-        const refused = await tinyHttp.get(
-          url(big.instanceId, big.response.json().id, "/thumb/64"),
-        );
-        expect(refused.statusCode).toBe(404);
-        expect(refused.json().error.message).toContain("limit");
-      } finally {
-        await tiny.close();
-      }
-    },
-  );
+      expect(big.response.statusCode, big.response.body).toBe(201);
+      const refused = await tinyHttp.get(url(big.instanceId, big.response.json().id, "/thumb/64"));
+      expect(refused.statusCode).toBe(404);
+      expect(refused.json().error.message).toContain("limit");
+    } finally {
+      await tiny.close();
+    }
+  });
 });
 
 // --- 5. the share grant -----------------------------------------------------------------

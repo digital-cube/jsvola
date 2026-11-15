@@ -15,14 +15,30 @@ Docker image share one version.
   full-featured option. On SQLite:
   - one server process and one writer at a time (`BEGIN IMMEDIATE`; WAL, `foreign_keys = ON`,
     a busy timeout); the driver is Node's built-in `node:sqlite`, no new dependency;
-  - everything inline: thumbnails render on `/thumb`, **no OCR** (no `OCR` job is created, the
-    `ocr` text search of the files list answers `unsupported_op`), **no worker process** —
-    `VOLA_WORKER_ENABLED=true` or `VOLA_OCR_ENABLED=true` with a SQLite URL is a configuration
-    error at start, and `vola-worker` refuses a SQLite database;
+  - without Redis everything inline (thumbnails render on `/thumb`, no OCR); with Redis one
+    worker process on the same host, opening the same file, for thumbnails and OCR (next
+    entry);
   - its own migration set, `packages/server/drizzle-sqlite/`, shipped in the package and
     applied by the server at start and by `vola migrate` like the PostgreSQL one.
   The features by database are in the README and `docs/DEPLOYMENT.md` ("Running on SQLite":
   the file, the WAL files, backups with `VACUUM INTO`).
+- **OCR and the OCR text search on SQLite**, with the same API as on PostgreSQL:
+  - the worker runs on a SQLite file too: with `VOLA_REDIS_URL` set, `vola-worker` opens the
+    server's file (same host) and runs thumbnail and OCR jobs as on PostgreSQL. Its writes are
+    single statements and tesseract runs with no transaction open. Only `:memory:` refuses a
+    worker (`VOLA_WORKER_ENABLED=true` with it is a configuration error);
+  - the `ocr` filter with words searches an FTS5 index (`drizzle-sqlite/0001_ocr_fts.sql`,
+    hand-written: a contentless FTS5 table, `unicode61 remove_diacritics 0`, kept in step with
+    `vola_file_metadata` by triggers; text already there is indexed by the migration). Every
+    word must occur, case-insensitively, no stemming, diacritics kept (`č` ≠ `c`), the first
+    500 000 characters indexed — as `ocr_tsv` on PostgreSQL. The words are quoted by the
+    server, so FTS5 syntax typed by a user is plain text;
+  - the server refuses to open a SQLite database whose build lacks FTS5 (Node's built-in
+    SQLite has it);
+  - a writer waiting for the other process's write lock waits on a timer instead of inside
+    SQLite (`busy_timeout`), so the waiting process keeps serving;
+  - the expired-upload sweep stays in the server on SQLite even with a worker (the upload a
+    PATCH streams into is held in the server's memory).
 
 ### Changed
 
@@ -30,7 +46,10 @@ Docker image share one version.
   `postgres(ql)://`. The tables in `db/schema.ts` are those of the database the process
   connected to (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, same row types); a process
   speaks one dialect. The dialect seam gained `like`, `forUpdateNoWait`, `onConflictDoNothing`
-  and `capabilities.rowLocks`.
+  and `capabilities.rowLocks`; `ocrMatch(words)` is a condition on the joined
+  `vola_file_metadata` row (it no longer takes the indexed column).
+- `resolveJobsMode`'s input has `memoryDatabase` (an in-memory SQLite: always `sync`) in
+  place of `sqlite`.
 - The server and CLI test suites run on both databases (`VOLA_TEST_DIALECT=postgres|sqlite`
   runs one).
 

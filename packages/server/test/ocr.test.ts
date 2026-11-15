@@ -20,15 +20,7 @@ import { listProcessingJobs } from "../src/services/processing.js";
 import { FilesystemBackend } from "../src/storage/index.js";
 import { FilesCollectionSource } from "../src/udc/files-source.js";
 import { pngFixture, waitFor } from "./fixtures.js";
-import {
-  bearer,
-  config,
-  type Fixture,
-  onSqlite,
-  setupFixture,
-  testDatabase,
-  truncate,
-} from "./helpers.js";
+import { bearer, config, type Fixture, setupFixture, testDatabase, truncate } from "./helpers.js";
 import { httpClient } from "./http.js";
 
 /**
@@ -175,7 +167,6 @@ const inType = (...more: unknown[]) => ({
 });
 
 beforeAll(async () => {
-  if (onSqlite) return; // PostgreSQL only: OCR runs in the worker
   expect(redisUrl, "VOLA_REDIS_URL is needed for the OCR suite").toBeTruthy();
   await truncate(handle);
   root = await mkdtemp(join(tmpdir(), "vola-ocr-suite-"));
@@ -208,7 +199,6 @@ beforeAll(async () => {
   await worker.ready();
 });
 afterAll(async () => {
-  if (onSqlite) return; // PostgreSQL only: OCR runs in the worker
   await worker.close();
   for (const w of extraWorkers) await w.close();
   await app.close();
@@ -220,7 +210,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 }, 60_000);
 
-describe.skipIf(onSqlite || !hasTesseract)("OCR with tesseract", () => {
+describe.skipIf(!hasTesseract)("OCR with tesseract", () => {
   it("the worker found tesseract and the configured languages", () => {
     expect(worker.ocrAvailability()).toMatchObject({ enabled: true, langs: config.ocr.langs });
   });
@@ -358,7 +348,7 @@ describe.skipIf(onSqlite || !hasTesseract)("OCR with tesseract", () => {
   }, 60_000);
 });
 
-describe.skipIf(onSqlite)("OCR without tesseract (scripts stand in for the tools)", () => {
+describe("OCR without tesseract (scripts stand in for the tools)", () => {
   it("VOLA_OCR_ENABLED=0: no OCR job after an upload (thumbnails as before)", async () => {
     const off = new ProcessingQueue({ redisUrl, prefix: `${prefix}-off`, backoffMs: 20 });
     extraQueues.push(off);

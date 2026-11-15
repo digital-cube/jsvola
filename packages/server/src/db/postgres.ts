@@ -6,6 +6,7 @@ import pg from "pg";
 import { type Dialect, errorCode } from "./dialect.js";
 import type { Database, DatabaseHandle } from "./index.js";
 import * as schema from "./schema.js";
+import { fileMetadata } from "./schema-postgres.js";
 
 /** SQLSTATE of a unique violation. */
 const UNIQUE_VIOLATION = "23505";
@@ -39,7 +40,7 @@ export const postgresDialect: Dialect = {
   jsonEquals: (column, value) => sql`${column} = ${JSON.stringify(value)}::jsonb`,
   like: (column, pattern) => like(column as never, pattern),
   ilike: (column, pattern) => ilike(column as never, pattern),
-  ocrMatch: (column, words) => sql`${column} @@ plainto_tsquery('simple', ${words})`,
+  ocrMatch: (words) => sql`${fileMetadata.ocrTsv} @@ plainto_tsquery('simple', ${words})`,
 
   forUpdateNoWait: <Q>(query: Q): Q =>
     (query as { for(strength: "update", config: { noWait: boolean }): Q }).for("update", {

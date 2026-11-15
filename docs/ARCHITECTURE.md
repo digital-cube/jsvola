@@ -63,13 +63,13 @@ server and the CLI share: `parseApiKey` / `displayApiKey`, `missingScopes`, `par
 
 Two databases, one schema. PostgreSQL (`packages/server/src/db/schema-postgres.ts`, migrations
 in `packages/server/drizzle/`, `0000` … `0009`) is the default and has every feature; SQLite
-(`schema-sqlite.ts`, migrations in `drizzle-sqlite/`) runs a single-process installation
-without OCR and without the worker. `VOLA_DATABASE_URL` picks one (`postgres://…` or
+(`schema-sqlite.ts`, migrations in `drizzle-sqlite/`) runs a small installation on one host:
+one server process and, with Redis, one worker process opening the same file. `VOLA_DATABASE_URL` picks one (`postgres://…` or
 `file:<path>`); `connect` opens it and points the table bindings of `db/schema.ts` — what every
 service imports — at that database's tables, so a process speaks one dialect. The SQLite tables
 are the PostgreSQL ones column for column with SQLite types (UUIDs and `varchar` as TEXT,
 timestamps as INTEGER epoch milliseconds, `jsonb` and `text[]` as JSON TEXT, `bytea` as BLOB, no
-`ocr_tsv`), the CHECKs spelled with `GLOB` instead of regular expressions, the same partial
+`ocr_tsv` — the OCR search is an FTS5 index, below), the CHECKs spelled with `GLOB` instead of regular expressions, the same partial
 unique indexes; a type-level check in `schema-sqlite.ts` keeps their row types identical, so the
 services never branch on the database. The migrations of the database in use are applied by the
 server at start (`runMigrations`) and by `vola migrate`; `pnpm db:generate` writes both sets. Every table is prefixed
@@ -189,7 +189,14 @@ IMMEDIATE` and the handle runs one at a time (an in-process queue in front of th
 connection; SELECTs outside a transaction read from a second, read-only connection in WAL mode),
 so two uploads of one hash are serialised by the transaction itself. Without row locks a tus
 `PATCH` on SQLite streams its body outside any transaction and guards the upload in memory
-(`409 upload_locked` for everyone else), which is sound because SQLite serves one process. The
+(`409 upload_locked` for everyone else), which is sound because SQLite serves one server
+process; for the same reason the expired-upload sweep stays in the server there, even when a
+worker runs. The worker on SQLite is a second process on the same file (same host): `BEGIN
+IMMEDIATE` holds the file's write lock against it too, so the hash and folder locks stay
+no-ops. A writer that finds the lock taken by the other process retries on a timer
+(`SqliteState.onWriter`, up to 10 s) rather than in SQLite's `busy_timeout`, which would sleep
+inside the synchronous call and stop the event loop. The worker writes in single statements;
+tesseract and sharp run with no transaction open. The
 multipart `encryption` field (and the folder) must arrive **before** the `file` part because
 the mode decides what is written to disk while the part streams.
 
@@ -223,6 +230,7 @@ Decision 5: BullMQ on Redis, the worker a second process of the same image
 |---|---|---|
 | `auto` (default) | yes | `async`: jobs go to the queue |
 | `auto` | no | `sync`: thumbnails render inline on `/thumb`, no OCR, no stats job |
+| `auto` / `1` | yes, on SQLite `:memory:` | `sync` (`1`: a configuration error): no other process can open the database |
 | `1` | no | one ERROR line, then `sync` |
 | `0` | any | `sync` — for a deployment with Redis but no worker consuming the queue |
 
@@ -278,7 +286,15 @@ the `files` collection (`udc/files-source.ts`: the row shape, the filter → SQL
 the `menu` collection (`menu.yaml`, the examples site's sidebar). The `files` source requires a
 top-level `instance_type` filter, ANDs the tenant in, computes `download_url` / `thumb_url`,
 maps `kind` / `encryption` / `processing_status` to lookup values, exposes `ocr` as a
-full-text filter over `ocr_tsv`, and reveals an encrypted row's real name only when the
+full-text filter (`dialect.ocrMatch`) — on PostgreSQL `ocr_tsv @@ plainto_tsquery('simple',
+…)` against the GIN index; on SQLite an FTS5 index (`drizzle-sqlite/0001_ocr_fts.sql`): the
+contentless table `vola_file_ocr_fts` (`unicode61 remove_diacritics 0`, so case folded and
+diacritics kept, as `simple` does) keyed by `vola_file_ocr_fts_doc`, whose INTEGER PRIMARY KEY
+survives `VACUUM` (the implicit rowid of a TEXT-keyed table may not, which rules out an
+external-content table), maintained by triggers on `vola_file_metadata` (insert, update of
+`ocr_text`, delete — a purge's cascade included), so every write path is covered. The server
+splits the user's words into letters-and-digits runs and quotes each one (`"w1" AND "w2"`):
+FTS5 syntax in the input is text, never an operator — and reveals an encrypted row's real name only when the
 request can open it — filters, sorts and cursors always see the mask. A host that embeds the
 plugin can `decorateRow` after that.
 
@@ -340,8 +356,10 @@ over it on `@jsudc/react`'s `UdcDataView` and `/udc/subscribe` ([REACT.md](REACT
   db:migrate:test`) and against a SQLite file in the temporary directory, created and migrated
   for the run (the vitest projects `server` / `server-sqlite`, `cli` / `cli-sqlite`;
   `VOLA_TEST_DIALECT=postgres|sqlite` picks one) — with a real Redis where the feature needs one
-  (keyrings, the worker, `subscribe`) and a temporary storage directory. The suites of the worker
-  and of OCR are skipped on SQLite by name (`describe.skipIf(onSqlite)`); coverage ≥ 80 % per
+  (keyrings, the worker, `subscribe`) and a temporary storage directory. The worker and OCR
+  suites run on both (on SQLite the in-process worker shares the test file; `sqlite.test.ts`
+  adds a second connection and a second process writing to it); what only PostgreSQL has is
+  skipped on SQLite by name (`describe.skipIf(onSqlite)`); coverage ≥ 80 % per
   package is enforced in CI.
 - **E2E** (`packages/e2e`): the built server (or a running one, `VOLA_E2E_URL`) over HTTP — the
   file API, tus with `tus-js-client`, the WebSocket, encryption, the SDK, the examples site.

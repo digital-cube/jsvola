@@ -19,7 +19,8 @@ import { createTenant } from "../src/services/tenants.js";
 
 /**
  * The suite runs on SQLite (the `server-sqlite` vitest project). The tests of what SQLite
- * does not have — the worker process and its queue, OCR — are skipped there BY NAME:
+ * does not have — PostgreSQL's own locks and expressions, a database server — are skipped
+ * there BY NAME:
  * `describe.skipIf(onSqlite)` / `it.skipIf(onSqlite)` with "PostgreSQL only" in the reason
  * comment next to them, never by leaving the file out.
  */

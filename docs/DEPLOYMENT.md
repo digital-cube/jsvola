@@ -82,7 +82,7 @@ stops the process at start with one line naming every bad variable.
 
 | variable | default | |
 |---|---|---|
-| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process — see [Running on SQLite](#running-on-sqlite). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
+| `VOLA_DATABASE_URL` | `postgresql://vola:vola@localhost:5432/vola` | the database. **Set it.** `postgresql://user:password@host:5432/db` (or `postgres://…`): PostgreSQL, every feature. `file:<path>` (relative to the working directory) or `file:///abs/path.db`: SQLite, one server process (and one worker on the same host) — see [Running on SQLite](#running-on-sqlite). `:memory:`: SQLite in memory, for tests. The server migrates it at start; the CLI uses the same |
 | `VOLA_DATABASE_URL_TEST` | `postgresql://vola:vola@localhost:5432/vola_test` | the test suites only (the same forms) |
 | `VOLA_REDIS_URL` | *(unset)* | Redis: the job queue, file events across processes, unlock tokens, the share-password counter. Unset: one process, synchronous jobs, in-process events, **no keyrings** |
 | `VOLA_HOST` / `VOLA_PORT` | `0.0.0.0` / `8300` | the listener |
@@ -282,21 +282,24 @@ To turn it off everywhere: `VOLA_OCR_ENABLED=0` on the server (no job is created
 | | PostgreSQL (default) | SQLite (`file:<path>`) |
 |---|---|---|
 | files, folders, versions, slugs, shares, tenants, keys, `Range`, tus uploads, encryption (all four modes), UDC lists and `subscribe`, statistics, transfer | yes | yes |
-| thumbnails | by the worker, or inline on `/thumb` | inline on `/thumb` only |
-| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract) | **no** — no OCR job is created; the text search answers `unsupported_op` |
-| the worker process and its Redis job queue | yes | **no** — `VOLA_WORKER_ENABLED=true` is a configuration error |
-| several server processes on one database | yes | **no** — one server process, one writer at a time |
+| thumbnails | by the worker, or inline on `/thumb` | by the worker, or inline on `/thumb` |
+| OCR and the OCR text search (the `ocr` filter with words) | yes (worker + tesseract), `tsvector` + GIN | yes (worker + tesseract), FTS5 |
+| OCR search words | PostgreSQL's `simple` parser: lower-cased, no stemming, diacritics kept (`č` ≠ `c`) | FTS5 `unicode61`, `remove_diacritics 0`: the same, except that every character that is not a letter or a digit separates words (`e-mail` is `e` and `mail`; PostgreSQL also keeps `e-mail` whole) |
+| the worker process and its Redis job queue | yes, on any host | yes, **on the server's host**, opening the same file (`VOLA_REDIS_URL` set) |
+| several server processes on one database | yes | **no** — one server process (and one worker) per file, one writer at a time |
 | Redis for file events, keyring unlock tokens, the share-password counter | yes | yes |
 
 ## Running on SQLite
 
 For a small installation that must not depend on a database service: one server process, no
-worker, no PostgreSQL. Point `VOLA_DATABASE_URL` at a file:
+PostgreSQL — and, when you want OCR or thumbnails off the request path, Redis and one worker
+process on the same host. Point `VOLA_DATABASE_URL` at a file:
 
 ```sh
 VOLA_DATABASE_URL=file:/var/lib/vola/vola.db   # or file:var/vola.db, relative to the working directory
 VOLA_STORAGE_PATH=/var/lib/vola/storage
-# VOLA_WORKER_ENABLED and VOLA_OCR_ENABLED unset (or false): `true` stops the server at start
+# Optional: the worker (thumbnails, OCR). Without VOLA_REDIS_URL everything runs inline.
+VOLA_REDIS_URL=redis://localhost:6379/0
 ```
 
 - **The file.** The server creates it (and its directory) at the first start and applies the
@@ -306,13 +309,31 @@ VOLA_STORAGE_PATH=/var/lib/vola/storage
 - **WAL.** The database runs in WAL mode: next to `vola.db` you will see `vola.db-wal` and
   `vola.db-shm` while it is open. They are part of the database — never delete them while the
   server runs, and copy them with the file when you copy it stopped.
-- **One process.** One server process opens the file. Its transactions take turns at one
-  writer (`BEGIN IMMEDIATE`); reads outside a transaction go to a second, read-only connection
-  and do not wait. A `vola` CLI command may run next to the server (it waits up to 10 s for
-  the writer). Do not start a second server — or the worker (it refuses SQLite) — on the file.
-- **Everything inline.** Thumbnails are rendered on the first `/thumb` request and stored next to
-  the blob, as without a worker on PostgreSQL. No `OCR` job is ever created, and the `ocr`
-  filter with words answers `unsupported_op` (the yes/no `ocr` flag still works).
+- **One server process.** One server process opens the file. Its transactions take turns at
+  one writer (`BEGIN IMMEDIATE`); reads outside a transaction go to a second, read-only
+  connection and do not wait. A `vola` CLI command may run next to the server. Do not start a
+  second server on the file.
+- **Without Redis: everything inline.** Thumbnails are rendered on the first `/thumb` request
+  and stored next to the blob, as without a worker on PostgreSQL; no `OCR` job is created, so
+  the `ocr` filter finds nothing (the search itself works on whatever text is there).
+- **With Redis: the worker, on the same host.** With `VOLA_REDIS_URL` set (and
+  `VOLA_WORKER_ENABLED` `auto` or `true`) the server queues thumbnail and OCR jobs, and
+  `node dist/worker.js` (`pnpm start:worker`) runs them as on PostgreSQL — started with the SAME
+  `VOLA_DATABASE_URL` and `VOLA_STORAGE_PATH`, on the same machine: SQLite's locks and the WAL's
+  shared memory do not cross hosts, so two containers of one host sharing the `/data` volume
+  work, a worker on another machine (or the file on NFS) does not. Server and worker take
+  turns at the file's write lock; every write of the worker is one short statement, and
+  tesseract runs with no transaction open. A process waiting for the other's lock waits on a
+  timer (up to 10 s), so it keeps serving meanwhile. The expired-upload sweep stays in the
+  server (the upload a PATCH is streaming is held in the server's memory). `:memory:` has no
+  worker.
+- **OCR search.** The `ocr` filter with words searches an FTS5 index of the OCR text
+  (`unicode61`, `remove_diacritics 0`), kept in step with `vola_file_metadata` by triggers.
+  Every word must occur, case-insensitively, with no stemming and no ranking, and `č` and `c`
+  stay different letters — as PostgreSQL's `simple` configuration does. A word is a run of
+  letters and digits; any other character separates words, and FTS5's own query syntax (`"`,
+  `*`, `:`, `OR`, `NEAR`, `-`) typed by a user is plain text. The server refuses to start on a
+  Node.js whose SQLite lacks FTS5 (Node's built-in one has it).
 - **Case-insensitive search** (`ilike`) folds every letter, not only ASCII (`Ž` matches `ž`);
   `LIKE` is case-sensitive, as on PostgreSQL.
 
@@ -323,6 +344,9 @@ consistent copy of the running database with `VACUUM INTO`:
 ```sh
 sqlite3 /var/lib/vola/vola.db "VACUUM INTO '/backup/vola-$(date +%F).db'"
 ```
+
+The copy carries the OCR index with it (its tables are part of the file); to look into the
+index by hand, use a `sqlite3` built with FTS5 (Debian's and Ubuntu's are).
 
 To restore, stop the server, put the copy in place as `vola.db` (with no stale `-wal` / `-shm`
 next to it), restore `storage/` and start the server. There is no move of data between

@@ -13,13 +13,18 @@ import { migrate } from "drizzle-orm/sqlite-proxy/migrator";
 import { ConfigError } from "../config.js";
 import { type Dialect, errorCode } from "./dialect.js";
 import type { Database, DatabaseHandle } from "./index.js";
+import { fileMetadata as sqliteFileMetadata } from "./schema-sqlite.js";
 
 /**
  * How long a statement waits for the database: in this process for the transaction that
- * holds the writer, in SQLite (`busy_timeout`) for another process (a `vola` CLI command next
- * to the running server).
+ * holds the writer, and for another process holding the file's write lock (the worker, a
+ * `vola` CLI command next to the running server). The second wait is asynchronous — the
+ * writer retries `SQLITE_BUSY` on a timer (`SqliteState.onWriter`) instead of SQLite's
+ * `busy_timeout`, which would sleep inside the call and stop this process's event loop.
  */
 export const SQLITE_BUSY_TIMEOUT_MS = 10_000;
+/** The longest pause between two tries at a write lock another process holds. */
+const BUSY_RETRY_MAX_MS = 50;
 
 /** SQLite's extended result codes the server tells apart, by the name SQLite gives them. */
 const RESULT_CODES: Record<number, string> = {
@@ -34,6 +39,14 @@ const RESULT_CODES: Record<number, string> = {
   2067: "SQLITE_CONSTRAINT_UNIQUE",
 };
 const UNIQUE_CODES = new Set(["SQLITE_CONSTRAINT_UNIQUE", "SQLITE_CONSTRAINT_PRIMARYKEY"]);
+/**
+ * Another connection holds the write lock: `SQLITE_BUSY` or one of its extended codes, such
+ * as `SQLITE_BUSY_SNAPSHOT` (a write outside a transaction whose snapshot another process's
+ * commit made stale — SQLite never waits on that one). A statement failing so changed
+ * nothing and may be tried again.
+ */
+const isBusy = (error: unknown): boolean =>
+  error instanceof SqliteError && (error.errcode & 0xff) === 5;
 /** A JSON key spelled into the SQL as a literal, never a parameter (as on PostgreSQL). */
 const JSON_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /**
@@ -57,15 +70,44 @@ export class SqliteError extends Error {
 const renderer = new SQLiteAsyncDialect();
 
 /**
- * SQLite: one server process and one writer. No advisory locks — every transaction starts
- * with `BEGIN IMMEDIATE` and the handle runs one at a time, so the writers of a content hash
- * are serialised by the transaction itself. `LIKE` is case-sensitive on these connections
- * (`PRAGMA case_sensitive_like`) and escapes with `\`, as on PostgreSQL; `ilike` folds case
- * with JavaScript's `toLowerCase`, so it is not ASCII-only. No full-text search of OCR text.
+ * The FTS5 tables of the OCR search (`drizzle-sqlite/0001_ocr_fts.sql`): the contentless
+ * index and the stable integer key of each indexed file.
+ */
+const OCR_FTS = "vola_file_ocr_fts";
+const OCR_FTS_DOC = "vola_file_ocr_fts_doc";
+/**
+ * The characters of a word, as the index's `unicode61` tokenizer sees them: letters,
+ * numbers and private-use code points (its default `categories`, `L* N* Co`); anything else
+ * separates two words.
+ */
+const NOT_TOKEN = /[^\p{L}\p{N}\p{Co}]+/u;
+
+/**
+ * The FTS5 query of a user's `words`: each word quoted as an FTS5 string, joined with `AND`
+ * — every word must occur. Nothing the user types is FTS5 syntax: a word holds letters and
+ * digits only (so never a `"`), and `OR`, `NEAR`, `*`, `:`, `-`, `^` or parentheses are plain
+ * text or a separator. `null` when there is no word.
+ */
+export function ocrFtsQuery(words: string): string | null {
+  const tokens = words
+    .normalize("NFC")
+    .split(NOT_TOKEN)
+    .filter((t) => t !== "");
+  return tokens.length === 0 ? null : tokens.map((t) => `"${t}"`).join(" AND ");
+}
+
+/**
+ * SQLite: one server process (and, with Redis, one worker process on the same host) over one
+ * file. No advisory locks — every transaction starts with `BEGIN IMMEDIATE`, which holds the
+ * file's write lock against every connection, and the handle runs one at a time, so the
+ * writers of a content hash are serialised by the transaction itself. `LIKE` is
+ * case-sensitive on these connections (`PRAGMA case_sensitive_like`) and escapes with `\`, as
+ * on PostgreSQL; `ilike` folds case with JavaScript's `toLowerCase`, so it is not ASCII-only.
+ * The OCR search is FTS5 (`unicode61`, diacritics kept).
  */
 export const sqliteDialect: Dialect = {
   name: "sqlite",
-  capabilities: { ocrSearch: false, rowLocks: false },
+  capabilities: { ocrSearch: true, rowLocks: false },
 
   // The transaction already holds the only writer (`BEGIN IMMEDIATE`, one at a time).
   lockContentHash: async () => {},
@@ -84,8 +126,11 @@ export const sqliteDialect: Dialect = {
   like: (column, pattern) => sql`${column} like ${pattern} escape '\\'`,
   ilike: (column, pattern) =>
     sql`${sql.raw(CASEFOLD)}(${column}) like ${sql.raw(CASEFOLD)}(${pattern}) escape '\\'`,
-  ocrMatch() {
-    throw new Error("SQLite has no full-text search of OCR text (capabilities.ocrSearch)");
+  ocrMatch(words) {
+    const query = ocrFtsQuery(words);
+    if (query === null) return sql`false`;
+    // One FTS5 lookup for the statement (an uncorrelated IN), then a key lookup per row.
+    return sql`${sqliteFileMetadata.fileId} in (select ${sql.raw(OCR_FTS_DOC)}.file_id from ${sql.raw(OCR_FTS)} join ${sql.raw(OCR_FTS_DOC)} on ${sql.raw(OCR_FTS_DOC)}.id = ${sql.raw(OCR_FTS)}.rowid where ${sql.raw(OCR_FTS)} match ${query})`;
   },
   forUpdateNoWait: (query) => query,
   // drizzle spells a target's WHERE after `do nothing` on SQLite, which SQLite refuses; a
@@ -270,9 +315,27 @@ class SqliteState {
     if (this.reader && READ_ONLY.test(text)) return this.exec(text, params, mode, this.reader);
     await this.gate.acquire(SQLITE_BUSY_TIMEOUT_MS);
     try {
-      return this.exec(text, params, mode);
+      return await this.onWriter(() => this.exec(text, params, mode));
     } finally {
       this.gate.release();
+    }
+  }
+
+  /**
+   * `run` on the writer, tried again while another process holds the file's write lock
+   * (`SQLITE_BUSY`): a pause on a timer (1 ms, doubling up to 50 ms), so this process goes on
+   * serving meanwhile, until `SQLITE_BUSY_TIMEOUT_MS` have passed. Only for what changes
+   * nothing when it fails busy — a `BEGIN IMMEDIATE`, a statement outside a transaction.
+   */
+  async onWriter<T>(run: () => T): Promise<T> {
+    const deadline = Date.now() + SQLITE_BUSY_TIMEOUT_MS;
+    for (let pause = 1; ; pause = Math.min(pause * 2, BUSY_RETRY_MAX_MS)) {
+      try {
+        return run();
+      } catch (error) {
+        if (!isBusy(error) || Date.now() + pause > deadline) throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pause));
     }
   }
 
@@ -282,7 +345,7 @@ class SqliteState {
     const store: TxContext = ctx ?? { owner: this, active: true };
     try {
       return await context.run(store, async () => {
-        this.exec("begin immediate", [], "run");
+        await this.onWriter(() => this.exec("begin immediate", [], "run"));
         try {
           const result = await work();
           this.exec("commit", [], "run");
@@ -313,7 +376,10 @@ class SqliteState {
 
 function openConnection(path: string, readOnly: boolean): DatabaseSync {
   const conn = new DatabaseSync(path, { readOnly });
-  conn.exec(`pragma busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  // The writer waits for another process's write lock on a timer (`onWriter`), not inside
+  // SQLite; the reader keeps SQLite's wait for the rare moment a WAL read has to (a
+  // checkpoint resetting the log), which is short.
+  conn.exec(`pragma busy_timeout = ${readOnly ? SQLITE_BUSY_TIMEOUT_MS : 0}`);
   if (!readOnly) {
     if (path !== ":memory:") conn.exec("pragma journal_mode = wal");
     conn.exec("pragma synchronous = normal");
@@ -327,15 +393,47 @@ function openConnection(path: string, readOnly: boolean): DatabaseSync {
 }
 
 /**
+ * The OCR search needs FTS5 with contentless-delete tables (SQLite 3.43 or later, built with
+ * FTS5). Node's built-in SQLite has both; a build without them is refused here, at start,
+ * rather than at the first migration or search.
+ *
+ * @throws ConfigError naming the SQLite version when the probe table cannot be created.
+ */
+function assertFts5(conn: DatabaseSync): void {
+  try {
+    conn.exec(
+      "create virtual table temp.vola_fts5_probe using fts5(x, content = '', contentless_delete = 1, tokenize = 'unicode61 remove_diacritics 0');" +
+        " drop table temp.vola_fts5_probe;",
+    );
+  } catch (error) {
+    let version = "unknown";
+    try {
+      version = String(
+        (conn.prepare("select sqlite_version() as v").get() as { v: unknown } | undefined)?.v,
+      );
+    } catch {}
+    throw new ConfigError([
+      `database URL: the SQLite of this Node.js (${version}) has no FTS5 with contentless-delete tables (${(error as Error).message}); the OCR search needs SQLite 3.43 or later built with FTS5`,
+    ]);
+  }
+}
+
+/**
  * Opens the SQLite database `url` names (`file:<path>`, `file:///abs/path`, `:memory:`),
  * creating the file and its directory when missing: a writer connection in WAL mode with
- * `foreign_keys = ON` and a busy timeout, and a read-only connection for the SELECTs that run
+ * `foreign_keys = ON` (refused without FTS5, `assertFts5`), and a read-only connection for the SELECTs that run
  * outside a transaction. Statements and transactions of the handle take turns at the writer.
  */
 export function openSqlite(url: string): DatabaseHandle {
   const path = sqlitePath(url);
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const writer = openConnection(path, false);
+  try {
+    assertFts5(writer);
+  } catch (error) {
+    writer.close();
+    throw error;
+  }
   const reader = path === ":memory:" ? null : openConnection(path, true);
   const state = new SqliteState(writer, reader);
 
