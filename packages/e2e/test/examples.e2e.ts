@@ -216,7 +216,7 @@ describe.skipIf(!examples)("the examples site (built server)", () => {
       const mine = await fetch(`${write()}/${instance()}/${info.id}`, {
         method: "PATCH",
         headers: { "x-user-id": visitor, "content-type": "application/json" },
-        body: JSON.stringify({ filename: "renamed.png" }),
+        body: JSON.stringify({ filename: `renamed-${visitor}.png` }),
       });
       expect(mine.status).toBe(200);
 

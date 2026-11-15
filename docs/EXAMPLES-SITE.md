@@ -126,6 +126,9 @@ The demo pack and the seeder: [`apps/examples/ASSETS.md`](../apps/examples/ASSET
 
 The examples stack runs at `https://examples.stage.vol-a.com/`. `https://stage.vol-a.com/` is the
 website, a different thing with its own checkout: [DEPLOYMENT.md](DEPLOYMENT.md#the-website).
+The examples stack runs on PostgreSQL, not SQLite: it has a separate worker process (thumbnails,
+OCR) next to the server and the seeder, and the OCR example searches PostgreSQL's full-text index —
+SQLite is for one process on one machine, see [SQLITE.md](SQLITE.md).
 
 | | |
 |---|---|
@@ -172,7 +175,11 @@ from your sub-uid range, not you. A `secrets/` you own is not writable from ther
 container's uid. On the host the directory then shows an owner like `100999`, which is expected.
 `up --wait` also fails on podman, because the worker runs without a health check
 (`unexpected health status ""`), even though the stack is fine: leave out `--wait` and poll
-`/vola/health/ready`.
+`/vola/health/ready`. And `docker compose build` refuses to start (`checking context: can't stat
+'…/secrets'`): compose walks the whole build context before it reads `.dockerignore`, and the
+container-owned `secrets/` is not readable for you. Build with podman itself, which honours
+`.dockerignore` (`secrets` is in it): `podman build -t localhost/jsvola-stage:latest .`, then `up`
+as usual.
 
 The stage `.env`, next to `docker-compose.yaml`:
 
@@ -201,7 +208,10 @@ VOLA_OCR_ENABLED=auto
 Another host works the same way: the reverse proxy forwards the hostname to `VOLA_HOST_PORT` with
 WebSocket upgrades allowed (`/vola/udc/subscribe`) and a body limit of at least 6 MiB. After every
 later change:
-`git pull && docker compose -f docker-compose.yaml build vola && docker compose -f docker-compose.yaml --profile demo up -d`.
+`git pull && docker compose -f docker-compose.yaml build vola && docker compose -f docker-compose.yaml --profile demo up -d`
+(on rootless podman `podman build -t localhost/jsvola-stage:latest .` instead of the `build`). Before an
+upgrade, keep a way back: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > vola-<date>.dump`
+and `podman tag localhost/jsvola-stage:latest localhost/jsvola-stage:pre-<version>`.
 
 ## Verification
 

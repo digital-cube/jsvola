@@ -12,3 +12,5 @@
 !**/.env.example
 var
 apps/tutorial
+# the stage's key and pepper files (docs/EXAMPLES-SITE.md): never in the build context
+secrets
