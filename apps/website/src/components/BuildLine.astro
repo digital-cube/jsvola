@@ -51,13 +51,14 @@ const releaseTag = release && release.version !== version ? (release.tag ?? `v${
   span {
     white-space: nowrap;
   }
-  a {
+  /* .build-line: Astro scopes with :where(), and home.css's `a` would win otherwise. */
+  .build-line a {
     color: var(--vola-ink-3);
     text-decoration: underline;
     text-decoration-color: var(--vola-rule-strong);
     text-underline-offset: 0.2em;
   }
-  a:hover {
+  .build-line a:hover {
     color: var(--vola-ink);
   }
 </style>
