@@ -46,8 +46,8 @@ docker run -d -p 8300:8300 \
   -e VOLA_DATABASE_URL=postgresql://vola:vola@db:5432/vola \
   -e VOLA_REDIS_URL=redis://redis:6379/0 \
   -v vola-data:/data -v ./secrets:/run/secrets/vola:ro \
-  ghcr.io/digital-cube/jsvola:1.0.0
-docker run … ghcr.io/digital-cube/jsvola:1.0.0 node dist/worker.js     # the worker
+  ghcr.io/digital-cube/jsvola:1.1.0
+docker run … ghcr.io/digital-cube/jsvola:1.1.0 node dist/worker.js     # the worker
 ```
 
 - Base `node:24-bookworm-slim`; runs as the unprivileged `node` user; `WORKDIR /app`.

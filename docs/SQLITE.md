@@ -11,11 +11,8 @@ Contents: [SQLite or PostgreSQL](#sqlite-or-postgresql) · [Quick start](#quick-
 [Operations](#operations) · [Limits](#limits-and-known-differences) ·
 [Moving between the databases](#moving-between-the-databases)
 
-> SQLite support is in the release after 1.0.1 (`CHANGELOG.md`, `[Unreleased]`). `@vol-a/server`
-> 1.0.1 from npm refuses a `file:` URL. Until the next release is published, install the
-> packages from a checkout (`pnpm build`, then `pnpm pack` in `packages/core`, `lookups`,
-> `client`, `server` and `cli`) and install the tarballs, with `overrides` in `package.json`
-> pointing each `@vol-a/*` package at its tarball. The commands below were run that way.
+> SQLite support is in **1.1.0** and later (`CHANGELOG.md`, `[1.1.0]`): the `@vol-a/*` packages
+> and the image `ghcr.io/digital-cube/jsvola:1.1.0`. `@vol-a/server` 1.0.1 refuses a `file:` URL.
 
 ## SQLite or PostgreSQL
 

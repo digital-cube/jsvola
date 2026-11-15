@@ -7,12 +7,22 @@ Docker image share one version.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
+**SQLite as a database option.** A small installation on one host can run vola on a single
+SQLite file (`VOLA_DATABASE_URL=file:<path>`), with no database service and, if it does
+without background jobs, no Redis. PostgreSQL stays the default and the full-featured option.
+Every API route, answer and error code is the same on both. For the HTTP API, the CLI, the
+image and their configuration, this release only adds things. Code that embeds
+`@vol-a/server` and reaches into its database handle has two type changes, listed under
+*Breaking for code that embeds the server* below. The version is still minor because no
+`@vol-a/*` package had been published to npm before this release.
+
 ### Added
 
-- **SQLite as a database option**, for a small installation on one host that must not depend
-  on a database service. Set `VOLA_DATABASE_URL=file:<path>` (relative to the working
-  directory), `file:///abs/path`, or `:memory:` for tests, in place of `postgresql://…`.
-  PostgreSQL stays the default and the full-featured option. The guide is
+- **SQLite as a database option.** Set `VOLA_DATABASE_URL=file:<path>` (relative to the
+  working directory), `file:///abs/path`, or `:memory:` for tests, in place of
+  `postgresql://…`. The guide is
   **[docs/SQLITE.md](docs/SQLITE.md)**: which database fits, the quick start without Docker,
   embedding the plugin, the worker, backups, the limits. The features by database are also
   in the README. What SQLite gives:
@@ -48,6 +58,18 @@ Docker image share one version.
     server applies it at start, and `vola migrate` by hand, as with the PostgreSQL set.
     `pnpm db:generate` writes both.
 
+### Breaking for code that embeds the server
+
+These are two exports of `@vol-a/server`. They do not affect the HTTP API, the CLI, the
+image or the configuration.
+
+- `DatabaseHandle` carries `dialect` instead of `pool` (node-postgres' `pg.Pool`).
+- `Database` is drizzle's query builder without the driver: `PgDatabase<PgQueryResultHKT, …>`
+  instead of `NodePgDatabase`, so its type no longer has `$client`.
+
+Code that reached for `handle.pool` or `db.$client` uses `handle.db` for queries and
+`handle.close()` on shutdown.
+
 ### Changed
 
 - `VOLA_DATABASE_URL` / `VOLA_DATABASE_URL_TEST` accept `file:<path>` and `:memory:` next to
@@ -61,10 +83,7 @@ Docker image share one version.
   what a dialect has (`rowLocks`, `ocrSearch`). On PostgreSQL the SQL is the same as in 1.0.1.
 - The tables exported from `db/schema.ts` are those of the database the process connected to
   (`db/schema-postgres.ts` or `db/schema-sqlite.ts`, with the same row types), so a process
-  speaks one dialect. **For code that embeds the server:** `Database` is drizzle's query
-  builder without the driver (`PgDatabase<PgQueryResultHKT, …>` instead of `NodePgDatabase`).
-  `DatabaseHandle` carries `dialect` instead of `pool`, so code that reached for
-  `handle.pool` or `db.$client` uses `handle.db` and `handle.close()`.
+  speaks one dialect.
 - `resolveJobsMode`'s input takes `memoryDatabase`: an in-memory SQLite is always `sync`.
 - The server and CLI test suites run on both databases (Vitest projects `server` /
   `server-sqlite`, `cli` / `cli-sqlite`). `VOLA_TEST_DIALECT=postgres|sqlite` runs one
@@ -708,6 +727,7 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
   timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
   The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
-[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/digital-cube/jsvola/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/digital-cube/jsvola/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0

@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/examples",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "JSVola examples site: one page per capability (browse, upload, thumbnails, Range & streaming, share, encrypted files, API) over a demo instance, with a read-only visitor key; served by @vol-a/server at / and /en/ (VOLA_UI_DIR).",
   "type": "module",

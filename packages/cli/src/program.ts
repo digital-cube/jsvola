@@ -52,7 +52,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import { eq } from "drizzle-orm";
 import { seedDemo } from "./seed.js";
 
-export const CLI_VERSION = "1.0.1";
+export const CLI_VERSION = "1.1.0";
 
 export interface CliIo {
   out: (line: string) => void;

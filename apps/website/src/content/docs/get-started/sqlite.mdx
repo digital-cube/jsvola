@@ -19,8 +19,8 @@ import upload from "../../../../snippets/sqlite/6-upload.sh?raw";
 
 vola runs on PostgreSQL or on a single SQLite file. On SQLite the server needs Node 24 and a local disk, nothing else: no Docker, no database service, no Redis. The driver is Node's built-in `node:sqlite`, and the `vola` command line opens the same file directly.
 
-<Aside type="caution" title="In the release after 1.0.1">
-SQLite support is in the changelog's [Unreleased](/packages/changelog/) section, and `@vol-a/server` 1.0.1 from npm refuses a `file:` URL. Until the next release is out, build the packages from a checkout (`pnpm build`, then `pnpm pack` in `packages/core`, `lookups`, `client`, `server` and `cli`) and install the tarballs. The commands below were run that way.
+<Aside type="note" title="Since 1.1.0">
+SQLite support is in 1.1.0 and later ([Changelog](/packages/changelog/)): the `@vol-a/*` packages and the image `ghcr.io/digital-cube/jsvola:1.1.0`. `@vol-a/server` 1.0.1 refuses a `file:` URL.
 </Aside>
 
 <Steps>
