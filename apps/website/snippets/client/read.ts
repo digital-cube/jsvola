@@ -1,7 +1,7 @@
 import { VolaClient } from "@vol-a/client";
 
 // The examples instance's read-only key, the one its site hands to every visitor.
-const baseUrl = "https://examples.stage.vol-a.com/vola";
+const baseUrl = "https://examples.vol-a.com/vola";
 const config = (await (await fetch(`${baseUrl}/examples/config`)).json()) as {
   api_key: string;
   instance_type: string;

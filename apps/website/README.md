@@ -161,9 +161,11 @@ host. The defaults are production's:
 | variable | | default |
 |---|---|---|
 | `SITE_URL` | the site's own origin (Astro's `site`: canonical links, sitemap) | `https://vol-a.com` |
-| `EXAMPLE_URL` | the examples site every "live example" link opens | `https://examples.stage.vol-a.com` |
+| `EXAMPLE_URL` | the examples site every "live example" link opens | `https://examples.vol-a.com` |
 
-No production examples instance exists yet; that default moves when one does.
+`deploy/website/stage.sh` passes `EXAMPLE_URL=https://examples.stage.vol-a.com`, so stage links to
+the stage examples; `deploy/website/prod.sh` leaves it to this default. The screenshots of
+`scripts/shots.mjs` were shot on stage (the same pack); set `SHOTS_BASE` to choose.
 
 ## Build info: the footer line and "On npm"
 
