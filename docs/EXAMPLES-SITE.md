@@ -80,12 +80,14 @@ the Thumbnails page's button. `POST /vola/examples/purge` (an admin key) runs th
 
 Every `VOLA_DEMO_PURGE_INTERVAL_MIN` (15) minutes, and once at start, everything a visitor
 made more than `VOLA_DEMO_TTL_HOURS` (24) ago goes, each row going by its own `created_at` (not
-by the visitor's first upload or last visit), with one exception below: their **keyrings** (a crypto-shred, as
+by the visitor's first upload or last visit): their **keyrings** (a crypto-shred, as
 `POST /keyrings/me/reset` — the files under them go first), their **files** in the demo
 instance (every version, soft-deleted rows too; a blob no other row cites is removed from
-disk), then their **folders**. The seeder's files are never selected. Shares die with their
-capped expiry. The exception: a folder past its age is deleted recursively, so a younger file in
-it is soft-deleted with it, and goes for good when its own time comes.
+disk), then their **folders**, deepest first and only once nothing is left in them. A folder
+past its age that still holds a younger row — another visitor's file in the Upload page's
+shared `uploads`, a younger subfolder — is left alone and counted as `kept` (not `failed`); a
+later run deletes it when it is empty, and the next upload re-creates it. The seeder's files are
+never selected. Shares die with their capped expiry.
 
 ### The site (`apps/examples`)
 

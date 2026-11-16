@@ -7,6 +7,13 @@ Docker image share one version.
 
 ## [Unreleased]
 
+### Fixed
+
+- The examples site's purge no longer soft-deletes a younger visitor's file with a folder past
+  its age: a visitor folder is deleted only once it is empty (not recursively, deepest first),
+  so another visitor's fresh upload in the shared `uploads` folder stays its full
+  `VOLA_DEMO_TTL_HOURS`. The purge result gains `kept`, the folders left for a later run.
+
 ## [1.1.1] - 2026-11-16
 
 **The first release on npm.** `@vol-a/core`, `@vol-a/lookups`, `@vol-a/server`,

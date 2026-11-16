@@ -14,7 +14,7 @@ import {
   ShareCreatedSchema,
   thumbnailDerivedName,
 } from "@vol-a/core";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { generateApiKey } from "../src/apikey.js";
@@ -1127,7 +1127,14 @@ describe("the purge", () => {
       headers: bearer(fx.admin.key),
     });
     expect(ran.statusCode).toBe(200);
-    expect(ran.json()).toMatchObject({ files: 1, blobs: 1, folders: 1, keyrings: 0, failed: 0 });
+    expect(ran.json()).toMatchObject({
+      files: 1,
+      blobs: 1,
+      folders: 1,
+      kept: 0,
+      keyrings: 0,
+      failed: 0,
+    });
     expect(await handle.db.select().from(files).where(eq(files.id, mine.id))).toEqual([]);
     expect(await storage.exists(mine.hash)).toBe(false);
     expect((await handle.db.select().from(files).where(eq(files.id, fresh.id))).length).toBe(1);
@@ -1135,6 +1142,70 @@ describe("the purge", () => {
     expect(await storage.exists(seeded.hash)).toBe(true);
     const [stale] = await handle.db.select().from(folders).where(eq(folders.path, "stale"));
     expect(stale?.deletedAt).toBeTruthy();
+  });
+
+  it("leaves a folder past its age that still holds a younger file, and deletes it once emptied", async () => {
+    const OTHER = "demo-purgeother7";
+    const old = new Date(Date.now() - 25 * 3_600_000);
+    // The first visitor makes the shared folder (as the Upload page's `uploads`), with an old file in it…
+    const first = FileInfoSchema.parse(
+      (
+        await uploadVia(`${WRITE}/${DEMO}`, Buffer.from("first visitor text"), "first.txt", {
+          contentType: "text/plain",
+          fields: { folder_path: "shared-uploads/deep" },
+        })
+      ).json(),
+    );
+    // …and a second visitor drops a file in it minutes ago.
+    const younger = await uploadVia(
+      `${WRITE}/${DEMO}`,
+      Buffer.from("younger visitor text"),
+      "younger.txt",
+      {
+        contentType: "text/plain",
+        headers: { "x-user-id": OTHER },
+        fields: { folder_path: "shared-uploads" },
+      },
+    );
+    expect(younger.statusCode).toBe(201);
+    const second = FileInfoSchema.parse(younger.json());
+    await handle.db.update(files).set({ createdAt: old }).where(eq(files.id, first.id));
+    await handle.db
+      .update(folders)
+      .set({ createdAt: old })
+      .where(inArray(folders.path, ["shared-uploads", "shared-uploads/deep"]));
+    const folderOf = async (path: string) =>
+      (await handle.db.select().from(folders).where(eq(folders.path, path)))[0];
+
+    const ran = await app.inject({
+      method: "POST",
+      url: "/vola/examples/purge",
+      headers: bearer(fx.admin.key),
+    });
+    expect(ran.statusCode).toBe(200);
+    // The old file and the emptied subfolder go; the folder holding the younger file stays, and
+    // that is not a failure.
+    expect(ran.json()).toMatchObject({ files: 1, folders: 1, kept: 1, failed: 0 });
+    const [kept] = await handle.db.select().from(files).where(eq(files.id, second.id));
+    expect(kept?.deletedAt).toBeNull();
+    expect((await folderOf("shared-uploads"))?.deletedAt).toBeNull();
+    expect((await folderOf("shared-uploads/deep"))?.deletedAt).toBeTruthy();
+    const browse = await app.inject({
+      method: "GET",
+      url: `/vola/${DEMO}/${second.id}/info`,
+      headers: bearer(READ_KEY),
+    });
+    expect(browse.statusCode).toBe(200);
+
+    // When the younger file's own time comes, the file and then the folder go on that run.
+    await handle.db.update(files).set({ createdAt: old }).where(eq(files.id, second.id));
+    const later = await app.inject({
+      method: "POST",
+      url: "/vola/examples/purge",
+      headers: bearer(fx.admin.key),
+    });
+    expect(later.json()).toMatchObject({ files: 1, folders: 1, kept: 0, failed: 0 });
+    expect((await folderOf("shared-uploads"))?.deletedAt).toBeTruthy();
   });
 });
 

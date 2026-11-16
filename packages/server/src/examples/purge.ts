@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { type Database, dialect } from "../db/index.js";
 import { files, folders, keyrings } from "../db/schema.js";
+import { VolaError } from "../errors.js";
 import { type FileEventBus, publishFileEvents } from "../events/bus.js";
 import { deleteFolder, type FoldersDeps } from "../services/folders.js";
 import { type KeyringsDeps, resetKeyring } from "../services/keyrings.js";
@@ -32,6 +33,12 @@ export interface DemoPurgeResult {
   keyrings: number;
   /** Visitor folders deleted. */
   folders: number;
+  /**
+   * Visitor folders past their age left in place because something is still in them (a younger
+   * visitor's file or folder, a seeded file someone moved there); a later run deletes them once
+   * they are empty. Not a failure.
+   */
+  kept: number;
   /** Things that could not be removed this time (logged; tried again on the next run). */
   failed: number;
 }
@@ -41,13 +48,22 @@ export interface DemoPurgeResult {
  * its own `created_at` —
  * their files (`created_by` is not the seeder's; the whole version chain is theirs too, a
  * visitor cannot write to a seeded file), their keyrings (a crypto-shred, exactly as
- * `POST /keyrings/me/reset`), then their folders. The seeder's files are never touched, so
- * the site always has its pack. A removal that fails is logged and counted, never raised.
+ * `POST /keyrings/me/reset`), then their folders — each only once it is empty, so a folder
+ * past its age never takes a younger file (another visitor's, in a shared folder such as the
+ * Upload page's `uploads`) with it. The seeder's files are never touched, so the site always
+ * has its pack. A removal that fails is logged and counted, never raised.
  */
 export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
   const now = (deps.now ?? (() => new Date()))();
   const cutoff = new Date(now.getTime() - deps.ttlMs);
-  const result: DemoPurgeResult = { files: 0, blobs: 0, keyrings: 0, folders: 0, failed: 0 };
+  const result: DemoPurgeResult = {
+    files: 0,
+    blobs: 0,
+    keyrings: 0,
+    folders: 0,
+    kept: 0,
+    failed: 0,
+  };
   const scope = {
     tenantId: deps.tenantId,
     instanceType: deps.instanceType,
@@ -123,7 +139,9 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
     }
   }
 
-  // 3. Visitor folders, deepest first (a parent's delete would take the children anyway).
+  // 3. Visitor folders, deepest first, each only when nothing is left in it: not recursively,
+  // so a folder past its age keeps whatever younger rows it holds (a later run takes it once
+  // they are gone). Its subfolders past their age go first, so an emptied subtree goes at once.
   const dirs = await deps.db
     .select({ path: folders.path })
     .from(folders)
@@ -140,10 +158,14 @@ export async function purgeDemo(deps: DemoPurgeDeps): Promise<DemoPurgeResult> {
   const folderDeps: FoldersDeps = { db: deps.db, events: deps.events, logger: deps.logger };
   for (const dir of dirs.sort((a, b) => b.path.length - a.path.length)) {
     try {
-      await deleteFolder(folderDeps, scope, dir.path, { recursive: true, userId: "examples" });
+      await deleteFolder(folderDeps, scope, dir.path, { recursive: false, userId: "examples" });
       result.folders++;
     } catch (error) {
-      // Already gone with its parent, or holding a seeded file someone moved: leave it.
+      if (error instanceof VolaError && error.code === "folder_not_empty") {
+        // A younger file or folder (or a seeded file someone moved) is still in it: on purpose.
+        result.kept++;
+        continue;
+      }
       result.failed++;
       deps.logger?.warn({ err: error, path: dir.path }, "demo purge: folder not deleted");
     }
