@@ -175,8 +175,8 @@ the stage examples; `deploy/website/prod.sh` leaves it to this default. The scre
 
 | shown | where it comes from |
 |---|---|
-| `v1.1.0` | the root `package.json` |
-| `released 2026-11-15` | the commit date of the newest `v<x.y.z>` tag reachable from the built commit (`git describe`, then `git log -1 --format=%cI <tag>`); without git history or tags (a tarball, a shallow clone) the `## [x.y.z] - <date>` heading of `CHANGELOG.md` for that version. Also beside *The image* on the home page |
+| `v1.1.1` | the root `package.json` |
+| `released 2026-11-16` | the commit date of the newest `v<x.y.z>` tag reachable from the built commit (`git describe`, then `git log -1 --format=%cI <tag>`); without git history or tags (a tarball, a shallow clone) the `## [x.y.z] - <date>` heading of `CHANGELOG.md` for that version. Also beside *The image* on the home page |
 | `built 2026-11-15 17:01 UTC` | the clock of the build, UTC (`SOURCE_DATE_EPOCH` when set) |
 | `92179c3` | `git rev-parse HEAD`, linked to the commit on GitHub; left out without git |
 | *On npm* | `https://registry.npmjs.org/<name>`: `dist-tags.latest` and its `time`, asked once per package in parallel during the build, with npm's version under the date when it differs from the repository's |

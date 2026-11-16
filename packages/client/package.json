@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/client",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "JSVola client SDK: a fetch-based, dependency-light client for the @vol-a/server API — files, folders, resumable uploads, shares, keyrings, stats — for Node 24+ and browsers.",
   "license": "MIT",
   "repository": {

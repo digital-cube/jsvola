@@ -92,10 +92,11 @@ Redom, jedan runner, na jsvola worktree-u. Brojevi su `<faza>.<deo>`; svaki tike
 | 10.3 | TCKRMHJ9HJ | npm scope `@vola` → `@vol-a` (organizacija `vol-a`; `vola` je zauzet), verzija `1.0.1`, tag `v1.0.1` (npm opet preskočen, nije bilo `NPM_TOKEN`); tutorijal i video tiketi na novim imenima |
 | 11.1–11.4 | TCKXKRRF3Y, TCK93PXDDR, TCKHJE99TW, TCKC6FYCUY | SQLite kao opcija baze: jedan dialect seam (`db/dialect.ts`), SQLite fajl (jedan server proces), OCR i OCR pretraga na SQLite (FTS5, worker na istom hostu), vodič [SQLITE.md](SQLITE.md) |
 | 11.5 | TCK22QUN5X | Release `v1.1.0` (SQLite, minor: API se samo proširuje; `DatabaseHandle`/`Database` za ugrađeni server menjaju tip, u CHANGELOG-u pod *Breaking for code that embeds the server*, a pošto `@vol-a/*` dotad nisu bili na npm, ostaje minor): fast-forward `jsvola` → `main`, tag, slike `ghcr.io/digital-cube/jsvola:1.1.0` / `1.1` / `1` / `latest` i GitHub release; npm samo uz `NPM_TOKEN` (TCK2J3WUWW) |
+| 11.6 | TCKK65FFMJ | Release `v1.1.1`, prvo izdanje na npm: `@jsudc/*` 0.3, `pnpm test:full`, footer sa izdanjem i build-om, produkcija `vol-a.com` i `examples.vol-a.com`; merge `jsvola` → `main`, tag, slika `ghcr.io/digital-cube/jsvola:1.1.1`, GitHub release i šest `@vol-a/*` paketa na npm (`NPM_TOKEN` iz TCK2J3WUWW); oba sajta ponovo deployovana sa `main` |
 
 NON-AI: TCK3X3K3UM (deploy ključ `github_jsvola`), TCK9D5KENM (stage hostname, DNS i `.env` za examples), TCK2J3WUWW (npm organizacija `vol-a` sa scope-om `@vol-a`, jer je `vola` zauzet; `NPM_TOKEN`; tag `v1.0.0`).
 
-Stanje (2026-11-15): `main` = tag `v1.1.0`, svi paketi i slika su na `1.1.0`. Dok TCK2J3WUWW nije urađen, `@vol-a/*` nisu na npm (ni 1.0.1 ni 1.1.0): Release workflow preskače npm korak bez `NPM_TOKEN`, a *Re-run all jobs* na runu taga `v1.1.0` ih objavljuje kad secret postoji. Stage sajtovi su na 1.1.0 (TCKHJFU2P3, ispod).
+Stanje (2026-11-16): `main` = tag `v1.1.1`, svi paketi i slika su na `1.1.1`. Od 1.1.1 su `@vol-a/core`, `lookups`, `server`, `client`, `react` i `cli` na npm (TCK2J3WUWW dao je `NPM_TOKEN`); 1.0.0, 1.0.1 i 1.1.0 postoje samo kao tagovi, slike i GitHub release-ovi. `vol-a.com`, `stage.vol-a.com` i produkcioni examples su posle izdanja ponovo izgrađeni sa `main` (TCKK65FFMJ).
 
 ## Stage (2026-11-02)
 

@@ -7,8 +7,23 @@ Docker image share one version.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-16
+
+**The first release on npm.** `@vol-a/core`, `@vol-a/lookups`, `@vol-a/server`,
+`@vol-a/client`, `@vol-a/react` and `@vol-a/cli` are published to npm from this version on
+(`pnpm add @vol-a/client`); 1.0.0, 1.0.1 and 1.1.0 exist only as tags, images and GitHub
+releases. Since 1.1.0: `@jsudc/*` 0.3, one command for the whole test suite, a footer that
+says which release and build a page is, and the production sites `https://vol-a.com` and
+`https://examples.vol-a.com`. Nothing changes on the wire, in the CLI or in configuration.
+
 ### Added
 
+- **`pnpm test:full`**: `test:cov` and `test:e2e` in one command with one merged coverage
+  report (`tools/test-full.mjs`), the command `thilo.toml` `[testing]` names for the board's
+  Testing engine ([docs/CONTRIBUTING.md](docs/CONTRIBUTING.md#the-full-suite)).
+- **Production of the website**: `https://vol-a.com` is `apps/website`, built by
+  `deploy/website/prod.sh` with its nginx vhost
+  ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#production-deploywebsiteprodsh)).
 - **The website says how fresh it is.** The footer of every page, the docs' included, shows
   the version, the date of its release tag, when the site was built (UTC) and the commit;
   the Packages table has an *On npm* column with the date each package's newest version
@@ -761,7 +776,8 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
   timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
   The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
-[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/digital-cube/jsvola/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/digital-cube/jsvola/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/digital-cube/jsvola/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/digital-cube/jsvola/releases/tag/v1.0.0
