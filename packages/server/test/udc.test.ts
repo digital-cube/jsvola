@@ -230,6 +230,8 @@ describe("UDC collections and describe", () => {
 
   it("describes the columns and their types", async () => {
     const d = await ok("describe", { collection: "files" });
+    // `UdcDataView` reads this to decide whether to offer Pages mode (it asks for an offset).
+    expect(d.capabilities.paging).toEqual(["cursor"]);
     const f = d.schema.fields;
     expect(d.schema.field_order.slice(0, 9)).toEqual([
       "id",
