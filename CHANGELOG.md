@@ -16,6 +16,12 @@ Docker image share one version.
   while a package has never been published). Read once per build
   (`apps/website/src/build-info.mjs`); the registry never fails the build, and `SITE_NPM=off`
   builds without asking it ([apps/website/README.md](apps/website/README.md#build-info-the-footer-line-and-on-npm)).
+- **Running without the image is documented**: `node dist/server.js` and `node dist/worker.js`
+  of a built checkout as two services, and what the image would otherwise set
+  ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#without-the-image-node-distserverjs-as-a-service)).
+  `https://examples.vol-a.com`, the production examples site, runs that way
+  (`deploy/examples/prod.sh`, two systemd user units); the website's "live examples" links
+  now open it.
 
 ### Changed
 

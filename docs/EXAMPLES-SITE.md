@@ -213,6 +213,127 @@ later change:
 upgrade, keep a way back: `docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > vola-<date>.dump`
 and `podman tag localhost/jsvola-stage:latest localhost/jsvola-stage:pre-<version>`.
 
+## Production deploy
+
+The examples stack runs at `https://examples.vol-a.com/`, the production of what stage is above;
+`https://vol-a.com/` (the website) links to it ("Open the live examples"). It runs on PostgreSQL,
+for the reasons stage does.
+
+| | |
+|---|---|
+| VM | `digitalcube-production-websites` (Ubuntu, nginx), behind the edge `hetzner2`, which ends TLS (Let's Encrypt lineage `examples.vol-a.com`) and forwards to the VM's `:80` with `Host` unchanged, WebSocket upgrades and a 50m body |
+| script | [`deploy/examples/prod.sh`](../deploy/examples/prod.sh) (refuses any other machine, root or another user than `digital`) |
+| root | `/home/digital/sites/examples.vol-a.com` |
+| processes | two systemd **user** units, linked from the checkout: [`vola-prod.service`](../deploy/examples/systemd/vola-prod.service) (`node dist/server.js`, `127.0.0.1:8300`) and [`vola-prod-worker.service`](../deploy/examples/systemd/vola-prod-worker.service) (`node dist/worker.js`; `Requires=` + `PartOf=` the server) |
+| database | the VM's PostgreSQL 18 (`127.0.0.1:5432`), role and database `vola` |
+| queue | the VM's Redis (`127.0.0.1:6379`), database `2`, `VOLA_QUEUE_PREFIX=vola-prod` (the VM's other apps share that Redis) |
+| vhost | [`deploy/examples/nginx/examples.vol-a.com.conf`](../deploy/examples/nginx/examples.vol-a.com.conf): stage's with `server_name examples.vol-a.com;` |
+
+**Why not the image.** Nothing on that VM runs in a container, and it has neither docker nor
+podman: `jsudc.dev`, `examples.jsudc.dev` and `vol-a.com` are a checkout, a user unit (linger on)
+and the VM's own PostgreSQL and Redis. The examples stack follows the same pattern instead of
+bringing a container runtime for one site. What the image adds is reproduced by hand: the build
+(the Dockerfile's `pnpm turbo run build --filter=@vol-a/server... --filter=@vol-a/cli...
+--filter=@vol-a/examples`), the system tools (`tesseract-ocr`, `tesseract-ocr-eng`, `poppler-utils`
+from apt; sharp ships its own libvips) and the variables the image sets (the paths below).
+
+Under the root:
+
+| path | |
+|---|---|
+| `src/` | the checkout, detached at `origin/<branch>`, built in place; the units run `src/packages/server/dist/{server,worker}.js` |
+| `data/storage/` | `VOLA_STORAGE_PATH`: the blobs and the thumbnails; the script never removes it |
+| `data/candidates/` | `VOLA_CANDIDATES_DIR` (outside `src/`, which a deploy cleans) |
+| `secrets/` | mode 700: `vola.key` and `vola.pepper`, generated once by `--install` |
+| `.env` | mode 600: the units' `EnvironmentFile` and what `bin/vola` loads |
+| `bin/vola` | the CLI (`src/packages/cli/dist/main.js`) with `.env`: `~/sites/examples.vol-a.com/bin/vola keys-status` |
+| `node` | `-> ~/.nvm/versions/node/v24.<newest>/bin`: the units' `ExecStart` and `PATH` go through it |
+| `corepack/` | corepack's pnpm shim, first on `PATH` (the version `packageManager` pins) |
+| `.built` | the commit `src/` was last built at |
+
+`.env` (written by `--install`; a variable already there is never changed, a missing one is added):
+
+| variable | value |
+|---|---|
+| `VOLA_DATABASE_URL` | `postgresql://vola:<generated>@127.0.0.1:5432/vola` (`openssl rand -hex 24`) |
+| `VOLA_REDIS_URL` / `VOLA_QUEUE_PREFIX` | `redis://127.0.0.1:6379/2` / `vola-prod` |
+| `VOLA_HOST` / `VOLA_PORT` / `VOLA_PREFIX` | `127.0.0.1` / `8300` / `/vola` |
+| `VOLA_PUBLIC_URL` / `VOLA_TRUST_PROXY` | `https://examples.vol-a.com` / `true` |
+| `VOLA_EXAMPLES` | `true` |
+| `VOLA_DEMO_API_KEY` / `VOLA_DEMO_WRITE_KEY` | `vola demo-keys` (a pair; both are replaced when one is missing) |
+| `VOLA_DEMO_TTL_HOURS` / `VOLA_DEMO_RATE_LIMIT` | `24` / `60` |
+| `VOLA_UI_DIR` | `…/src/apps/examples/dist` |
+| `VOLA_STORAGE_PATH` / `VOLA_CANDIDATES_DIR` | `…/data/storage` / `…/data/candidates` |
+| `VOLA_KEY_FILE` / `VOLA_PEPPER_FILE` | `…/secrets/vola.key` / `…/secrets/vola.pepper` |
+| `VOLA_OCR_ENABLED` / `VOLA_OCR_LANGS` | `auto` / `eng` (only `tesseract-ocr-eng` is installed, and the worker stops at start on a language it lacks) |
+| `VOLA_WORKER_CONCURRENCY` / `VOLA_LOG_LEVEL` / `NODE_ENV` | `2` / `info` / `production` |
+| `VOLA_URL` / `VOLA_DEMO_ASSETS` | `http://127.0.0.1:8300/vola` / `…/src/apps/examples/assets`: `vola demo-seed` (the CLI only) |
+
+`lookups.yaml`, `i18n/` and `menu.yaml` are the checkout's (the server's defaults point at the
+repository root).
+
+The first time, from a copy of the repository (the script deploys what the remote branch has, not
+the copy it is started from):
+
+```bash
+scp deploy/examples/prod.sh digitalcube-production-websites:/tmp/
+ssh digitalcube-production-websites 'bash /tmp/prod.sh --install'      # once; harmless to repeat
+```
+
+Every later deploy, and the rest:
+
+```bash
+ssh digitalcube-production-websites 'bash ~/sites/examples.vol-a.com/src/deploy/examples/prod.sh'                  # origin/main
+ssh digitalcube-production-websites 'bash ~/sites/examples.vol-a.com/src/deploy/examples/prod.sh --branch <name>'  # a branch before it is merged
+ssh digitalcube-production-websites 'bash ~/sites/examples.vol-a.com/src/deploy/examples/prod.sh --reseed'         # only the seed and the checks
+ssh digitalcube-production-websites 'systemctl --user status vola-prod vola-prod-worker; journalctl --user -u vola-prod -n 50'
+```
+
+`--install` does, each step only when it is missing: `apt-get install tesseract-ocr
+tesseract-ocr-eng poppler-utils`; the PostgreSQL role and database `vola` (the password goes to
+psql on stdin and into `.env`, nowhere else); `vola keys-generate` and `vola pepper-generate` into
+`secrets/`; `vola demo-keys` into `.env`; the rest of `.env`; `loginctl enable-linger digital`; the
+units linked into `~/.config/systemd/user/` and enabled; the vhost — a hand-written
+`sites-available/examples.vol-a.com` (the "coming soon" placeholder) is kept as
+`sites-available/examples.vol-a.com.coming-soon`, then
+`sites-available/examples.vol-a.com -> src/deploy/examples/nginx/examples.vol-a.com.conf`,
+`sites-enabled/examples.vol-a.com -> sites-available/examples.vol-a.com`, `nginx -t`, reload.
+
+Every deploy: fetch, check out `origin/<branch>` (refused when the commit lacks the vhost or a
+unit, which the links point at), `git clean` except `node_modules` and `dist`, then — only when the
+commit differs from `.built`, or with `--force` — `pnpm install --frozen-lockfile` and the build,
+which fails unless `packages/server/dist/{server,worker}.js`, `packages/cli/dist/main.js` and
+`apps/examples/dist/index.html` are there. Then `systemctl --user restart vola-prod
+vola-prod-worker` (the server applies pending migrations at start), `GET
+http://127.0.0.1:8300/vola/health/ready` 200 within two minutes, both units active, a reload when
+the vhost changed, `vola demo-seed` ("N uploaded, M unchanged"), and the checks: through nginx on
+127.0.0.1 with `Host: examples.vol-a.com`, `/vola/health/live` the server's 200 and `/` with
+`<title>vola examples</title>`; through the edge, `https://examples.vol-a.com/vola/examples/config`
+200. The build runs while the old processes serve; the restart is a few seconds of 502.
+`prod.sh --help` has the options and the exit codes:
+
+```text
+Usage: deploy/examples/prod.sh [--install] [--branch <name>] [--force] [--reseed]
+
+  --install        the one-time steps, harmless to repeat (what exists is kept)
+  --branch <name>  branch to deploy (default: main; e.g. jsvola before it is merged)
+  --force          install and build even when src/ was already built at this commit
+  --reseed         only run `vola demo-seed` again and the checks (no fetch, no build, no restart)
+  -h, --help       this text
+
+Exit codes: 0 deployed, 1 a step failed, 2 usage, 3 refused (root, another host or user,
+a missing tool, no passwordless sudo, not installed yet), 4 the server did not get ready,
+5 nginx on this VM does not answer as expected, 6 this VM answers but https://examples.vol-a.com
+does not (the edge).
+```
+
+Going back to the placeholder:
+`sudo ln -sfn /etc/nginx/sites-available/examples.vol-a.com.coming-soon /etc/nginx/sites-enabled/examples.vol-a.com`,
+a reload, `systemctl --user disable --now vola-prod vola-prod-worker`. The content is the demo pack
+and what visitors leave for a day, so the database and `data/storage` are not backed up: a lost
+instance is a new `--install` and a seed. `secrets/` matters only to the files encrypted with it,
+which are the same kind of content.
+
 ## Verification
 
 - `pnpm test` — `packages/server/test/examples.test.ts` (the configuration, the tenant and
@@ -229,4 +350,5 @@ and `podman tag localhost/jsvola-stage:latest localhost/jsvola-stage:pre-<versio
 
 ## Out of scope
 
-The production site; self-service registration (memento's `service.`).
+Self-service registration (memento's `service.`); a backup of the production instance (its
+content is the demo pack, restored by a seed).

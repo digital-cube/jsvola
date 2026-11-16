@@ -5,6 +5,7 @@ upgrades and a reverse proxy. The routes: [API.md](API.md); the CLI inside the c
 [CLI.md](CLI.md); encryption and what the key files protect: [CRYPTO.md](CRYPTO.md).
 
 Contents: [Quick start](#quick-start-docker-composeyaml) · [The image](#the-image) ·
+[Without the image](#without-the-image-node-distserverjs-as-a-service) ·
 [Environment variables](#environment-variables) · [The key file and the pepper file](#the-key-file-and-the-pepper-file) ·
 [Volumes](#volumes) · [The worker](#the-worker) · [OCR](#ocr) · [Reverse proxy](#behind-a-reverse-proxy) ·
 [SQLite](#running-on-sqlite) · [Backups](#backups) · [Upgrades](#upgrades-and-migrations) · [Scaling](#scaling) ·
@@ -72,6 +73,27 @@ Set in the image: `VOLA_HOST=0.0.0.0`, `VOLA_PORT=8300`, `VOLA_PREFIX=/vola`,
 `VOLA_STORAGE_PATH=/data/storage`, `VOLA_LOOKUPS_PATH=/app/config/lookups.yaml`,
 `VOLA_MENU_PATH=/app/config/menu.yaml`, `VOLA_CANDIDATES_DIR=/data/candidates`,
 `VOLA_UI_DIR=/app/ui`, `VOLA_DEMO_ASSETS=/app/demo-assets`, `NODE_ENV=production`.
+
+## Without the image: `node dist/server.js` as a service
+
+The image is one way to run the two processes; a host with Node 24 runs them from a built
+checkout just as well, e.g. as two systemd units:
+
+```sh
+corepack pnpm install --frozen-lockfile
+corepack pnpm turbo run build --filter=@vol-a/server... --filter=@vol-a/cli... --filter=@vol-a/examples
+cd packages/server && node dist/server.js        # the server: migrations, then listens
+cd packages/server && node dist/worker.js        # the worker, after the server is ready
+node packages/cli/dist/main.js --help            # the CLI
+```
+
+What the image sets has to be set by hand then: `VOLA_STORAGE_PATH` (outside the checkout), the
+key and pepper files, `VOLA_UI_DIR=<checkout>/apps/examples/dist` for the examples site, and the
+system tools of the worker (`poppler-utils`, `tesseract-ocr` with the `VOLA_OCR_LANGS` languages).
+`lookups.yaml`, `i18n/` and `menu.yaml` default to the checkout's root. A unit has no shell
+profile: give it an absolute `node` and a `PATH` with `/usr/bin` (tesseract, pdftoppm).
+`https://examples.vol-a.com` runs this way — two systemd user units, the host's PostgreSQL and
+Redis, no container: [EXAMPLES-SITE.md § Production deploy](EXAMPLES-SITE.md#production-deploy).
 
 ## Environment variables
 
@@ -378,7 +400,8 @@ docker compose -f docker-compose.yaml --profile demo up -d --wait
 curl -s localhost:8300/vola/examples/config | jq .tenant                           # "demo"
 ```
 
-Design, limits, the purge and the stage deploy: [EXAMPLES-SITE.md](EXAMPLES-SITE.md).
+Design, limits, the purge, the stage deploy and the production one (`https://examples.vol-a.com`,
+native, `deploy/examples/prod.sh`): [EXAMPLES-SITE.md](EXAMPLES-SITE.md).
 
 On podman, `--wait` (here and in the upgrade steps) fails on the worker, which runs without a
 health check, even though the stack is fine; leave it out and poll `/vola/health/ready`, as the
@@ -402,19 +425,20 @@ swapped in under a symlink. Both are built the same way, by two scripts on two m
 | vhost | `deploy/website/nginx/vol-a.com.conf` | `deploy/website/nginx/stage.vol-a.com.conf` |
 | Node | the newest `~/.nvm/versions/node/v24.*` (or `NODE_BIN`), linked as `node/` | `NODE_BIN` (the nvm Node 24) |
 
-The examples stack is separate and lives at `https://examples.stage.vol-a.com/`
-([EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
+The examples stack is separate: `https://examples.vol-a.com/` (production,
+[EXAMPLES-SITE.md](EXAMPLES-SITE.md#production-deploy)) and `https://examples.stage.vol-a.com/`
+(stage, [EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
 
 The build reads two variables (`apps/website/src/site.mjs`); the defaults are production's:
 
 | variable | | default | production (`prod.sh`) | stage (`stage.sh`) |
 |---|---|---|---|---|
 | `SITE_URL` | the site's own origin (canonical links, sitemap) | `https://vol-a.com` | `https://vol-a.com` | `https://stage.vol-a.com` |
-| `EXAMPLE_URL` | the examples site ("Open the live examples") | `https://examples.stage.vol-a.com` | the default, unless set in the environment | `https://examples.stage.vol-a.com` unless set |
+| `EXAMPLE_URL` | the examples site ("Open the live examples") | `https://examples.vol-a.com` | the default, unless set in the environment | `https://examples.stage.vol-a.com` unless set |
 
-No production examples instance exists yet, so `EXAMPLE_URL` defaults to stage; the default moves
-when one does. `prod.sh` does not spell it: it passes `EXAMPLE_URL` to the build only when it is set,
-so production follows `site.mjs`.
+`EXAMPLE_URL` defaults to the production examples stack (since 9.3); `stage.sh` passes stage's
+explicitly, so stage keeps linking to stage. `prod.sh` does not spell it: it passes `EXAMPLE_URL` to
+the build only when it is set, so production follows `site.mjs`.
 
 The footer and the Packages table are read during the build (`apps/website/src/build-info.mjs`):
 the commit and the release date from git, so both scripts build from a full clone with the tags, and
