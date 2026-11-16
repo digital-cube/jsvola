@@ -1,0 +1,32 @@
+# vola worker, PRODUCTION examples stack: the processing queue (thumbnails, OCR, stats) of
+# vola-prod.service, packages/server/dist/worker.js of the same deploy checkout and the same
+# .env (VOLA_REDIS_URL + VOLA_QUEUE_PREFIX must match the server's; VOLA_STORAGE_PATH is
+# where it reads blobs and writes thumbnails; VOLA_KEY_FILE opens encrypted files).
+# tesseract (eng) and pdftoppm come from apt (tesseract-ocr, tesseract-ocr-eng, poppler-utils),
+# found on PATH; VOLA_OCR_LANGS=eng, because the worker refuses to start when a language it is
+# told to use is not installed.
+#
+# Requires + PartOf vola-prod.service: starting the worker starts the server, and stopping or
+# restarting the server does the same to the worker. After= orders the start only; a worker
+# started before the server's migrations ran exits and Restart=on-failure brings it back.
+#
+# Installed by deploy/examples/prod.sh as a symlink in ~/.config/systemd/user/ (see vola-prod.service).
+# Logs: journalctl --user -u vola-prod-worker -f
+[Unit]
+Description=vola worker (thumbnails, OCR) for examples.vol-a.com
+After=vola-prod.service
+Requires=vola-prod.service
+PartOf=vola-prod.service
+
+[Service]
+WorkingDirectory=/home/digital/sites/examples.vol-a.com/src/packages/server
+EnvironmentFile=/home/digital/sites/examples.vol-a.com/.env
+Environment=PATH=/home/digital/sites/examples.vol-a.com/node:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/digital/sites/examples.vol-a.com/node/node dist/worker.js
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,6 @@
 # @vol-a/website
 
-The website of vola: **vol-a.com** (stage: <https://stage.vol-a.com>). Astro, with Starlight under
+The website of vola: **<https://vol-a.com>** (stage: <https://stage.vol-a.com>). Astro, with Starlight under
 the documentation only; the home page and the 404 are the site's own pages. MDX content under
 `src/content/docs` (the sidebar is in `astro.config.mjs`), Pagefind search in the docs. Private,
 static, not part of the Docker image.
@@ -161,9 +161,11 @@ host. The defaults are production's:
 | variable | | default |
 |---|---|---|
 | `SITE_URL` | the site's own origin (Astro's `site`: canonical links, sitemap) | `https://vol-a.com` |
-| `EXAMPLE_URL` | the examples site every "live example" link opens | `https://examples.stage.vol-a.com` |
+| `EXAMPLE_URL` | the examples site every "live example" link opens | `https://examples.vol-a.com` |
 
-No production examples instance exists yet; that default moves when one does.
+`deploy/website/stage.sh` passes `EXAMPLE_URL=https://examples.stage.vol-a.com`, so stage links to
+the stage examples; `deploy/website/prod.sh` leaves it to this default. The screenshots of
+`scripts/shots.mjs` were shot on stage (the same pack); set `SHOTS_BASE` to choose.
 
 ## Build info: the footer line and "On npm"
 
@@ -173,8 +175,8 @@ No production examples instance exists yet; that default moves when one does.
 
 | shown | where it comes from |
 |---|---|
-| `v1.1.0` | the root `package.json` |
-| `released 2026-11-15` | the commit date of the newest `v<x.y.z>` tag reachable from the built commit (`git describe`, then `git log -1 --format=%cI <tag>`); without git history or tags (a tarball, a shallow clone) the `## [x.y.z] - <date>` heading of `CHANGELOG.md` for that version. Also beside *The image* on the home page |
+| `v1.1.1` | the root `package.json` |
+| `released 2026-11-16` | the commit date of the newest `v<x.y.z>` tag reachable from the built commit (`git describe`, then `git log -1 --format=%cI <tag>`); without git history or tags (a tarball, a shallow clone) the `## [x.y.z] - <date>` heading of `CHANGELOG.md` for that version. Also beside *The image* on the home page |
 | `built 2026-11-15 17:01 UTC` | the clock of the build, UTC (`SOURCE_DATE_EPOCH` when set) |
 | `92179c3` | `git rev-parse HEAD`, linked to the commit on GitHub; left out without git |
 | *On npm* | `https://registry.npmjs.org/<name>`: `dist-tags.latest` and its `time`, asked once per package in parallel during the build, with npm's version under the date when it differs from the repository's |
@@ -196,10 +198,10 @@ SITE_NPM=test/fixtures/npm-published.json pnpm --filter @vol-a/website dev      
 
 Everything is read when the site is built, so the dates are as fresh as the build:
 `deploy/website/stage.sh` rebuilds only for a new commit (or with `--force`), and a `turbo run build`
-served from the cache keeps the build time of the cached run. `stage.sh` clones the whole
-repository, tags included, so stage's release date comes from git.
+served from the cache keeps the build time of the cached run. `stage.sh` and `prod.sh` clone the
+whole repository, tags included, so the release date comes from git on stage and in production.
 
-## Deploy: stage
+## Deploy: stage and production
 
 On the stage VM, from any copy of the repository:
 
@@ -211,4 +213,16 @@ deploy/website/stage.sh --branch <name>     # a branch before review
 
 Build-and-swap into `/home/digital/sites/stage.vol-a.com/releases/<short sha>`, the `current` symlink
 nginx serves (`deploy/website/nginx/stage.vol-a.com.conf`), three releases kept, checked through
-nginx and the edge. Details: [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-website).
+nginx and the edge.
+
+Production, `https://vol-a.com`, is the same build on the VM `digitalcube-production-websites`
+(`/home/digital/sites/vol-a.com`, vhost `deploy/website/nginx/vol-a.com.conf`); the script refuses
+any other machine and runs from any copy, so from a workstation:
+
+```sh
+scp deploy/website/prod.sh digitalcube-production-websites:/tmp/
+ssh digitalcube-production-websites 'bash /tmp/prod.sh --install'                         # once
+ssh digitalcube-production-websites 'bash ~/sites/vol-a.com/src/deploy/website/prod.sh'   # every deploy: origin/main
+```
+
+Details: [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-website).

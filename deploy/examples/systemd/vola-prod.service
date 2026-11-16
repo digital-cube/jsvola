@@ -1,0 +1,37 @@
+# vola server, PRODUCTION examples stack behind the nginx vhost examples.vol-a.com
+# (deploy/examples/nginx/examples.vol-a.com.conf -> 127.0.0.1:8300): the API under /vola
+# and the examples site (apps/examples/dist, VOLA_UI_DIR) at /. Runs the built
+# packages/server/dist/server.js of the deploy checkout /home/digital/sites/examples.vol-a.com/src,
+# detached at origin/main by deploy/examples/prod.sh. Applies pending Drizzle migrations at start.
+# Its sibling vola-prod-worker.service (thumbnails, OCR) follows it.
+#
+# Configuration: /home/digital/sites/examples.vol-a.com/.env (mode 600, written by
+# `deploy/examples/prod.sh --install`; the variables are in docs/EXAMPLES-SITE.md).
+# Node: a unit has no shell profile, so no `nvm use`. prod.sh points the symlink
+# /home/digital/sites/examples.vol-a.com/node at the newest installed nvm v24 bin dir;
+# PATH and ExecStart go through that link, so this file never names a version.
+# PATH also has /usr/bin for tesseract and pdftoppm (OCR, the PDF thumbnails).
+#
+# Installed by prod.sh: ~/.config/systemd/user/vola-prod.service is a symlink to this file
+# (edit here, then `systemctl --user daemon-reload`). Starts at boot via linger
+# (loginctl enable-linger digital) + WantedBy=default.target. PostgreSQL and Redis are system
+# units a user unit cannot order itself after; at boot Restart=on-failure covers that.
+# Restart: systemctl --user restart vola-prod vola-prod-worker
+# Logs:    journalctl --user -u vola-prod -f
+[Unit]
+Description=vola server (127.0.0.1:8300) for examples.vol-a.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/digital/sites/examples.vol-a.com/src/packages/server
+EnvironmentFile=/home/digital/sites/examples.vol-a.com/.env
+Environment=PATH=/home/digital/sites/examples.vol-a.com/node:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/digital/sites/examples.vol-a.com/node/node dist/server.js
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

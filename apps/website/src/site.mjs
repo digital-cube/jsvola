@@ -6,12 +6,12 @@
  *
  *   SITE_URL     the site's own origin, Astro's `site` (default https://vol-a.com; stage:
  *                https://stage.vol-a.com)
- *   EXAMPLE_URL  the examples site every "live example" link opens
- *                (default https://examples.stage.vol-a.com: no production examples instance
- *                exists yet; the default moves when one does)
+ *   EXAMPLE_URL  the examples site every "live example" link opens (default
+ *                https://examples.vol-a.com, the production examples stack; stage:
+ *                https://examples.stage.vol-a.com, which deploy/website/stage.sh passes)
  */
 const origin = (value, fallback) => (value || fallback).replace(/\/+$/, "");
 
 export const SITE_URL = origin(process.env.SITE_URL, "https://vol-a.com");
-export const EXAMPLE_URL = origin(process.env.EXAMPLE_URL, "https://examples.stage.vol-a.com");
+export const EXAMPLE_URL = origin(process.env.EXAMPLE_URL, "https://examples.vol-a.com");
 export const REPO_URL = "https://github.com/digital-cube/jsvola";

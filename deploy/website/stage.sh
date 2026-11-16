@@ -182,6 +182,7 @@ main() {
   echo "==> prune (keep $KEEP)"
   local old
   # newest first by the time each release became current; never the current one
+  # shellcheck disable=SC2012 # release names are short shas, ls -t sorts them by mtime
   ls -1dt "$RELEASES"/*/ 2>/dev/null | sed 's:/$::' | tail -n +$((KEEP + 1)) | while read -r old; do
     [[ "$old" == "$RELEASES/$sha" ]] && continue
     echo "    removing releases/${old##*/}"
