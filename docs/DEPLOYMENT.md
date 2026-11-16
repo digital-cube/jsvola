@@ -388,21 +388,38 @@ quick start does. Rootless podman also needs
 
 ## The website
 
-`https://stage.vol-a.com/` is `apps/website` (`@vol-a/website`): vola's own website, Astro +
-Starlight, static files served by nginx on the stage VM. It is **not part of the image** (the
-Dockerfile's turbo filters leave it out) and has no server: one build, swapped in under a symlink.
+`https://vol-a.com/` (production) and `https://stage.vol-a.com/` (stage) are `apps/website`
+(`@vol-a/website`): vola's own website, Astro + Starlight, static files served by nginx. It is **not
+part of the image** (the Dockerfile's turbo filters leave it out) and has no server: one build,
+swapped in under a symlink. Both are built the same way, by two scripts on two machines:
+
+| | production | stage |
+|---|---|---|
+| site | `https://vol-a.com/` | `https://stage.vol-a.com/` |
+| script | `deploy/website/prod.sh` | `deploy/website/stage.sh` |
+| VM | `digitalcube-production-websites` (behind the edge `hetzner2`) | `igor.digitalcube.work` (behind the edge `hetzner4`) |
+| root | `/home/digital/sites/vol-a.com` | `/home/digital/sites/stage.vol-a.com` |
+| vhost | `deploy/website/nginx/vol-a.com.conf` | `deploy/website/nginx/stage.vol-a.com.conf` |
+| Node | the newest `~/.nvm/versions/node/v24.*` (or `NODE_BIN`), linked as `node/` | `NODE_BIN` (the nvm Node 24) |
+
 The examples stack is separate and lives at `https://examples.stage.vol-a.com/`
 ([EXAMPLES-SITE.md](EXAMPLES-SITE.md#stage-deploy)).
 
 The build reads two variables (`apps/website/src/site.mjs`); the defaults are production's:
 
-| variable | | default | stage |
-|---|---|---|---|
-| `SITE_URL` | the site's own origin (canonical links, sitemap) | `https://vol-a.com` | `https://stage.vol-a.com` |
-| `EXAMPLE_URL` | the examples site ("Open the live examples") | `https://examples.stage.vol-a.com` | the same |
+| variable | | default | production (`prod.sh`) | stage (`stage.sh`) |
+|---|---|---|---|---|
+| `SITE_URL` | the site's own origin (canonical links, sitemap) | `https://vol-a.com` | `https://vol-a.com` | `https://stage.vol-a.com` |
+| `EXAMPLE_URL` | the examples site ("Open the live examples") | `https://examples.stage.vol-a.com` | the default, unless set in the environment | `https://examples.stage.vol-a.com` unless set |
 
 No production examples instance exists yet, so `EXAMPLE_URL` defaults to stage; the default moves
-when one does.
+when one does. `prod.sh` does not spell it: it passes `EXAMPLE_URL` to the build only when it is set,
+so production follows `site.mjs`.
+
+The footer and the Packages table are read during the build (`apps/website/src/build-info.mjs`):
+the commit and the release date from git, so both scripts build from a full clone with the tags, and
+the packages from `registry.npmjs.org`, so the VM needs a way out to it (without one the build still
+succeeds and the column is left empty).
 
 On the stage VM, from any copy of the repository:
 
@@ -426,6 +443,43 @@ The vhost is `deploy/website/nginx/stage.vol-a.com.conf`, linked into
 `/etc/nginx/sites-enabled/stage.vol-a.com` from the deployed checkout: `:80` only (TLS ends at the
 edge), `server_name stage.vol-a.com;`, `root …/current`, `/_astro/` cached for a year
 (content-hashed), the rest `no-cache`, `error_page 404 /404.html`, `absolute_redirect off`.
+
+### Production: `deploy/website/prod.sh`
+
+The same steps on the production VM `digitalcube-production-websites` (Ubuntu, nginx, no
+containers; `jsudc.dev` and `examples.jsudc.dev` live there by the same pattern). The edge `hetzner2`
+terminates TLS for `vol-a.com` (Let's Encrypt lineage `vol-a.com`) and forwards to the VM's `:80`
+with the `Host` unchanged. `www.vol-a.com` has no DNS record and no vhost block.
+
+The script refuses to run anywhere else (exit 3: another host, root, another user than `digital`,
+no passwordless sudo, a missing tool). It works from any copy, so the first run is from `/tmp`:
+
+```bash
+scp deploy/website/prod.sh digitalcube-production-websites:/tmp/
+ssh digitalcube-production-websites 'bash /tmp/prod.sh --install'                 # once
+ssh digitalcube-production-websites 'bash ~/sites/vol-a.com/src/deploy/website/prod.sh'   # every deploy: origin/main
+ssh digitalcube-production-websites 'bash ~/sites/vol-a.com/src/deploy/website/prod.sh --branch <name>'
+```
+
+Under `/home/digital/sites/vol-a.com`: `src/` (the checkout, with the tags), `releases/<short sha>/`
+(three kept), `current`, `node -> ~/.nvm/versions/node/v24.<newest>/bin`, and `corepack/`, corepack's
+pnpm shim put first on `PATH` (the VM's nvm has a global pnpm of another version, and the website's
+`build` runs `pnpm run gen` itself). A release is reused when it was built from the same commit with
+the same `EXAMPLE_URL`.
+
+`--install` keeps the hand-written "coming soon" vhost as
+`/etc/nginx/sites-available/vol-a.com.coming-soon` (its page in `/var/www/vol-a.com` is left
+alone), links `sites-available/vol-a.com -> src/deploy/website/nginx/vol-a.com.conf` and
+`sites-enabled/vol-a.com -> sites-available/vol-a.com` (two links, as every site on that VM), then
+`nginx -t` and a reload. Going back to the coming-soon page is
+`sudo ln -sfn /etc/nginx/sites-available/vol-a.com.coming-soon /etc/nginx/sites-enabled/vol-a.com`
+and a reload. The checks at the end are stage's: `/` 200 and the site's 404 through nginx on
+127.0.0.1 with `Host: vol-a.com`, then `https://vol-a.com/` 200 with
+`<link rel="canonical" href="https://vol-a.com/">` through the edge (exit 5 and 6 as in `stage.sh`).
+`deploy/website/prod.sh --help` has the rest.
+
+The vhost `deploy/website/nginx/vol-a.com.conf` is stage's with `server_name vol-a.com;`,
+`root /home/digital/sites/vol-a.com/current` and the `vol-a.com.*` logs.
 
 How the site is put together, and how to record its snippets and screenshots:
 [`apps/website/README.md`](../apps/website/README.md).

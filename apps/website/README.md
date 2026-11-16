@@ -1,6 +1,6 @@
 # @vol-a/website
 
-The website of vola: **vol-a.com** (stage: <https://stage.vol-a.com>). Astro, with Starlight under
+The website of vola: **<https://vol-a.com>** (stage: <https://stage.vol-a.com>). Astro, with Starlight under
 the documentation only; the home page and the 404 are the site's own pages. MDX content under
 `src/content/docs` (the sidebar is in `astro.config.mjs`), Pagefind search in the docs. Private,
 static, not part of the Docker image.
@@ -196,10 +196,10 @@ SITE_NPM=test/fixtures/npm-published.json pnpm --filter @vol-a/website dev      
 
 Everything is read when the site is built, so the dates are as fresh as the build:
 `deploy/website/stage.sh` rebuilds only for a new commit (or with `--force`), and a `turbo run build`
-served from the cache keeps the build time of the cached run. `stage.sh` clones the whole
-repository, tags included, so stage's release date comes from git.
+served from the cache keeps the build time of the cached run. `stage.sh` and `prod.sh` clone the
+whole repository, tags included, so the release date comes from git on stage and in production.
 
-## Deploy: stage
+## Deploy: stage and production
 
 On the stage VM, from any copy of the repository:
 
@@ -211,4 +211,16 @@ deploy/website/stage.sh --branch <name>     # a branch before review
 
 Build-and-swap into `/home/digital/sites/stage.vol-a.com/releases/<short sha>`, the `current` symlink
 nginx serves (`deploy/website/nginx/stage.vol-a.com.conf`), three releases kept, checked through
-nginx and the edge. Details: [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-website).
+nginx and the edge.
+
+Production, `https://vol-a.com`, is the same build on the VM `digitalcube-production-websites`
+(`/home/digital/sites/vol-a.com`, vhost `deploy/website/nginx/vol-a.com.conf`); the script refuses
+any other machine and runs from any copy, so from a workstation:
+
+```sh
+scp deploy/website/prod.sh digitalcube-production-websites:/tmp/
+ssh digitalcube-production-websites 'bash /tmp/prod.sh --install'                         # once
+ssh digitalcube-production-websites 'bash ~/sites/vol-a.com/src/deploy/website/prod.sh'   # every deploy: origin/main
+```
+
+Details: [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#the-website).
