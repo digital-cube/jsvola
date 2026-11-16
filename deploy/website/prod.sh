@@ -123,14 +123,16 @@ main() {
 
   echo "==> node"
   pick_node
+  export PATH="$NODE_LINK:$PATH"
   export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
   [[ -x "$NODE_LINK/corepack" ]] || die 1 "no corepack in $(readlink "$NODE_LINK")"
   # The nvm bin dir on this VM has a global pnpm of its own; the website's build script runs
   # `pnpm run gen`, which must be the pinned packageManager too, so corepack's pnpm shim goes
   # first on PATH.
   mkdir -p "$SHIMS"
-  "$NODE_LINK/corepack" enable --install-directory "$SHIMS" pnpm
-  export PATH="$SHIMS:$NODE_LINK:$PATH"
+  corepack enable --install-directory "$SHIMS" pnpm
+  export PATH="$SHIMS:$PATH"
+  [[ "$(command -v pnpm)" == "$SHIMS/pnpm" ]] || die 1 "pnpm on PATH is $(command -v pnpm), not $SHIMS/pnpm"
   echo "    $NODE_LINK -> $(readlink "$NODE_LINK") ($(node --version))"
 
   echo "==> source ($SRC)"
