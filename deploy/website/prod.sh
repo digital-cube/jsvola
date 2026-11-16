@@ -28,6 +28,7 @@ SRC="$ROOT/src"
 RELEASES="$ROOT/releases"
 CURRENT="$ROOT/current"
 NODE_LINK="$ROOT/node" # -> the nvm bin dir the build runs with
+SHIMS="$ROOT/corepack" # corepack's pnpm shim: the version package.json pins
 REPO_URL="${REPO_URL:-https://github.com/digital-cube/jsvola.git}"
 HOST=vol-a.com
 SITE_URL="https://$HOST"
@@ -50,6 +51,7 @@ into $ROOT:
   releases/<short sha>/  one built $APP/dist per commit, the last $KEEP kept
   current -> releases/…  what nginx serves, swapped atomically
   node -> ~/.nvm/…/bin   the Node the build runs with (newest installed v24)
+  corepack/              corepack's pnpm shim, first on PATH (the pnpm package.json pins)
 then checks / (200) and a missing page (the site's 404) through nginx on 127.0.0.1, and /
 through the edge (200 with this build's canonical link).
 
@@ -121,9 +123,14 @@ main() {
 
   echo "==> node"
   pick_node
-  export PATH="$NODE_LINK:$PATH"
   export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
   [[ -x "$NODE_LINK/corepack" ]] || die 1 "no corepack in $(readlink "$NODE_LINK")"
+  # The nvm bin dir on this VM has a global pnpm of its own; the website's build script runs
+  # `pnpm run gen`, which must be the pinned packageManager too, so corepack's pnpm shim goes
+  # first on PATH.
+  mkdir -p "$SHIMS"
+  "$NODE_LINK/corepack" enable --install-directory "$SHIMS" pnpm
+  export PATH="$SHIMS:$NODE_LINK:$PATH"
   echo "    $NODE_LINK -> $(readlink "$NODE_LINK") ($(node --version))"
 
   echo "==> source ($SRC)"
