@@ -110,6 +110,12 @@ export interface ProcessingWorkerOptions {
    */
   audit?: AuditSink | undefined;
   /**
+   * `VOLA_AUDIT_DOWNLOADS` (1.2): `false` drops queued `VOLA_FILE_DOWNLOADED` events (one DEBUG
+   * line each) — a server switched off after queueing them, or a server and worker configured
+   * apart. Default `true`: the server alone decides what is queued.
+   */
+  auditDownloads?: boolean | undefined;
+  /**
    * Encryption (plan 6.3): the `tenant` provider on the key file, so the worker can render
    * the thumbnails and run the OCR of `tenant`-encrypted files (decrypted into memory, the
    * results sealed under the file key). Without it, or for any other encrypted mode, such
@@ -271,6 +277,13 @@ export class ProcessingWorker {
   private async audit(job: Job<AuditJobData>): Promise<void> {
     const sink = this.options.audit;
     const log = this.options.logger;
+    if (job.data.event_type === "VOLA_FILE_DOWNLOADED" && this.options.auditDownloads === false) {
+      log?.debug(
+        { instance: job.data.instance_id },
+        "download event dropped: VOLA_AUDIT_DOWNLOADS is off",
+      );
+      return;
+    }
     if (!sink) {
       if (!this.warnedNoAudit) {
         this.warnedNoAudit = true;

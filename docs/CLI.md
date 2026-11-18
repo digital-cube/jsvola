@@ -93,8 +93,8 @@ vola revoke-key vola_live…k3Qz            # or the id
 `vola_test_`): both work against the same server and tenant, the prefix tells deployments
 apart in logs. `--scopes` defaults to `files:read,files:write,folders:read,folders:write`; the
 scopes are `files:read`, `files:write`, `folders:read`, `folders:write`, `shares:write`,
-`keys:write`, `keyrings:write`, `encryption:caller` (and `admin`, which only
-`create-admin-key` gives). A key with `keys:write` can mint further keys over HTTP
+`keys:write`, `keyrings:write`, `encryption:caller`, `access:grant` (issuing
+[access tokens](API.md#access-tokens), 1.2) (and `admin`, which only `create-admin-key` gives). A key with `keys:write` can mint further keys over HTTP
 (`POST /keys`), limited to the scopes it holds itself. `list-keys` marks `[ADMIN]`,
 `[REVOKED]`, `[EXPIRED]`.
 

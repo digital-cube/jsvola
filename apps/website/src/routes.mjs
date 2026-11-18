@@ -36,6 +36,11 @@ export const ROUTES = [
   },
   { doc: "GET\\|HEAD /s/:token", route: "GET /s/:token", does: "Open a share, no key" },
   {
+    doc: "POST /access-tokens",
+    route: "POST /access-tokens",
+    does: "A short-lived token for one user's rows",
+  },
+  {
     doc: "POST /udc/list",
     route: "POST /udc/list",
     does: "Filter, sort and page the files collection",

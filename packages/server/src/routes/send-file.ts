@@ -1,5 +1,7 @@
 import { ENCRYPTION_RESPONSE_HEADER, errorResponse, FORCE_DOWNLOAD_QUERY } from "@vol-a/core";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import type { AuditLog } from "../audit/log.js";
+import { fileAuditPayload } from "../audit/memento.js";
 import { type CiphertextSource, createDecryptStream } from "../crypto/index.js";
 import type { FileRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
@@ -13,6 +15,7 @@ import {
 import { contentDisposition, dispositionFor } from "../files/content-disposition.js";
 import { encryptionUnavailable, type OpenedFile } from "../services/encryption.js";
 import { type FilesDeps, openFile, touchLastAccessed } from "../services/files.js";
+import { startsDownload } from "../services/shares.js";
 import { BlobNotFoundError } from "../storage/index.js";
 
 export interface DownloadQuery {
@@ -29,6 +32,52 @@ export interface SendFileOptions {
    * under the link secret, not under the request's material. Absent: `crypto.open(row)`.
    */
   opened?: OpenedFile | undefined;
+  /** `VOLA_AUDIT_DOWNLOADS` on: how a started download is recorded (`downloadAudit`). */
+  audit?: DownloadAudit | undefined;
+}
+
+/** How the download went out: the credential of the request. */
+export type DownloadVia = "api_key" | "access_token" | "share";
+
+/** Where and how a download that STARTS is recorded as `VOLA_FILE_DOWNLOADED`. */
+export interface DownloadAudit {
+  log: AuditLog;
+  via: DownloadVia;
+  /** `access_token_id`, `share_id`, `tenant` (a share has no request context): ids only, never a secret. */
+  extra: Record<string, string | undefined>;
+}
+
+/**
+ * The `audit` of `SendFileOptions` — `undefined` unless the deployment records downloads
+ * (`VOLA_AUDIT_DOWNLOADS`) and has an audit trail.
+ */
+export function downloadAudit(
+  deps: { audit?: AuditLog | undefined; auditDownloads?: boolean | undefined },
+  via: DownloadVia,
+  extra: Record<string, string | undefined> = {},
+): DownloadAudit | undefined {
+  if (!deps.auditDownloads || !deps.audit) return undefined;
+  return { log: deps.audit, via, extra };
+}
+
+/**
+ * `VOLA_FILE_DOWNLOADED` for a request that STARTS a download (`startsDownload`: a `GET`
+ * without `Range` or from byte 0) and is about to receive bytes — never a `HEAD`, a `Range`
+ * continuation, a `304` or a `416`. The actor is the request's (`actorOf`: the token's
+ * principal, `X-User-Id`, else the key); nothing secret goes in.
+ */
+function recordDownload(request: FastifyRequest, row: FileRow, options: SendFileOptions): void {
+  const audit = options.audit;
+  if (!audit || !startsDownload(request.method, request.headers.range)) return;
+  const extra = Object.fromEntries(
+    Object.entries(audit.extra).filter(([, value]) => value !== undefined),
+  );
+  audit.log.emit({
+    event_type: "VOLA_FILE_DOWNLOADED",
+    instance_type: "vola_file",
+    instance_id: row.id,
+    payload: { ...fileAuditPayload(row), via: audit.via, ...extra },
+  });
 }
 
 export const flag = (value: string | undefined): boolean => value === "1" || value === "true";
@@ -62,7 +111,8 @@ export function ifNoneMatchMatches(header: string | string[] | undefined, etag: 
  * The body (or, for HEAD, only the headers) of `row`: `ETag`/`304`, `Accept-Ranges` and one
  * `Range` → `206` (`416` outside the file), `Content-Disposition` (inline for media and PDF,
  * `?download=1` forces attachment), `X-Content-Type-Options: nosniff`. A GET records
- * `last_accessed_*` (throttled); a HEAD never does. An encrypted row takes `sendEncryptedFile`.
+ * `last_accessed_*` (throttled) and, with `options.audit`, `VOLA_FILE_DOWNLOADED` when it
+ * starts a download; a HEAD never does. An encrypted row takes `sendEncryptedFile`.
  */
 export async function sendFile(
   service: FilesDeps,
@@ -97,7 +147,10 @@ export async function sendFile(
   const range = resolveRange(request, reply, size);
   if (range === "unsatisfiable") return reply.send(isHead ? undefined : unsatisfiable(size));
 
-  if (!isHead) touchLastAccessed(service, row.id, options.userId);
+  if (!isHead) {
+    touchLastAccessed(service, row.id, options.userId);
+    recordDownload(request, row, options);
+  }
   reply.type(row.mimeType);
   if (range) {
     reply
@@ -198,6 +251,7 @@ export async function sendEncryptedFile(
         throw crypto.translate(error, row.encryption, row.id);
       }
       touchLastAccessed(service, row.id, options.userId);
+      recordDownload(request, row, options);
     }
     reply.type(meta.mime);
     if (range) {
@@ -247,7 +301,10 @@ export async function sendOpaqueCiphertext(
   }
   const range = resolveRange(request, reply, size);
   if (range === "unsatisfiable") return reply.send(isHead ? undefined : unsatisfiable(size));
-  if (!isHead) touchLastAccessed(service, row.id, options.userId);
+  if (!isHead) {
+    touchLastAccessed(service, row.id, options.userId);
+    recordDownload(request, row, options);
+  }
   reply.type("application/octet-stream");
   if (range) {
     reply

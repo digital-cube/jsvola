@@ -25,4 +25,6 @@ The [Browse example](/examples/browse/) is this component running against a demo
 | `VolaPinGate`, `useVolaKeyring` | PIN setup with the recovery key shown once, unlock, wrong attempts, the lock-out countdown, recovery and reset |
 | `VolaShareDialog` | Password, expiry, download cap, copy, list and revoke |
 
+With a client on an [access token](/get-started/client/#in-a-browser-an-access-token-not-a-key) instead of a key, `VolaThumb` and downloads work for the rows the token names; the file browser, uploads, shares and keyrings need a key, because a token only reads its rows.
+
 The peers and every prop are in the [package README](https://github.com/digital-cube/jsvola/blob/main/packages/react/README.md).

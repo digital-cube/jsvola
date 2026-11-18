@@ -1,3 +1,4 @@
+export { AccessTokensApi } from "./access-tokens.js";
 export type {
   ByteSource,
   MultipartBody,

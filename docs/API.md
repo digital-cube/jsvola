@@ -32,6 +32,10 @@ X-Api-Key: vola_live_…
 Sec-WebSocket-Protocol: vola.v1, bearer.vola_live_…      (the WebSocket)
 ```
 
+A browser of a multi-user host does not get a key: the host's backend gives it an
+[access token](#access-tokens) (`Authorization: Bearer vola_at_…`) for the rows its user may
+read, and that token reads those rows and nothing else.
+
 A key is `vola_live_…`, `vola_test_…` (a tenant key) or `vola_admin_…` (an admin key); only its
 SHA-256 is stored, the plaintext is printed once by `vola create-key` / `POST /keys`. A tenant
 key belongs to one tenant and holds **scopes**; an admin key belongs to no tenant and selects
@@ -47,6 +51,7 @@ one per request with `X-Tenant-Slug`.
 | `keys:write` | `POST` / `GET /keys`, `DELETE /keys/:id` — a key may only grant scopes its creator holds |
 | `keyrings:write` | every `/keyrings/me/…` route |
 | `encryption:caller` | sending `X-Vola-Content-Key` (the `caller` encryption mode) |
+| `access:grant` | `POST /access-tokens`, `DELETE /access-tokens/:id` — issuing and revoking [access tokens](#access-tokens) |
 | `admin` | an admin key: everything above for the tenant named in `X-Tenant-Slug`, plus `POST /admin/transfer`, `/keyrings/by-principal/…`, the deployment-wide `GET /stats/storage`, `POST /examples/purge` |
 
 `X-User-Id` names the **principal** of the host application (at most 255 characters): recorded
@@ -56,7 +61,7 @@ of a [keyring](#keyrings). It is optional everywhere except the keyring routes
 
 | answer | when |
 |---|---|
-| `401 unauthorized` | no key, an unknown key, a revoked or expired one — one message for every case |
+| `401 unauthorized` | no key, an unknown key, a revoked or expired one — one message for every case; also an access token that is unknown, expired or revoked, and ANY access token on a route other than the four it reads |
 | `403 forbidden` + `required: [scope…]` | the key lacks a scope the route needs |
 | `404 tenant_not_found` | an admin key named an unknown tenant in `X-Tenant-Slug` |
 | `400 tenant_required` | an admin key on a tenant route without `X-Tenant-Slug` |
@@ -82,16 +87,18 @@ Codes are snake_case and stable; some answers add fields next to `code` and `mes
 | 400 | `user_required` | a keyring route without `X-User-Id` |
 | 400 | `upload_overflow` | a tus `PATCH` body past `Upload-Length` |
 | 400 | `caller_key_from_browser` | `X-Vola-Content-Key` together with an `Origin` header |
-| 401 | `unauthorized` | the API key |
+| 401 | `unauthorized` | the API key; an access token (see [Access tokens](#access-tokens)) |
 | 401 | `share_password_required`, `share_secret_required` | a share link |
 | 403 | `forbidden` | a missing scope (`required`), a tenant key on an admin route |
 | 403 | `pin_wrong`, `recovery_wrong` | keyrings |
 | 403 | `demo_forbidden` | the examples write proxy on something the visitor does not own |
 | 404 | `file_not_found`, `folder_not_found`, `upload_not_found`, `share_not_found`, `keyring_not_found`, `tenant_not_found`, `not_found` | another tenant's row is `404`, never `403` |
 | 404 | `no_thumbnail` | a file that has no thumbnail by nature |
+| 404 | `access_token_not_found` | `DELETE /access-tokens/:id` of another tenant's or an unknown token |
 | 409 | `file_exists`, `folder_exists`, `folder_not_empty` | names and folders |
 | 409 | `upload_completed`, `upload_offset_mismatch`, `upload_locked`, `uploads_in_progress` | resumable uploads |
 | 409 | `encrypted_not_public`, `encrypted_share_requires_grant`, `encrypted_transfer_unsupported`, `client_opaque` | what an encrypted file cannot do |
+| 409 | `access_token_encryption_unsupported` | a `keyring`, `caller` or `client` file read with an access token |
 | 409 | `vola_integrity` | "The file could not be decrypted." — a wrong key or secret, or damaged bytes ([CRYPTO.md § 7](CRYPTO.md#7-troubleshooting)) |
 | 409 | `keyring_exists` | `POST /keyrings/me` twice |
 | 410 | `share_gone` | a revoked or expired share |
@@ -118,6 +125,7 @@ The names are constants of `@vol-a/core` (`USER_ID_HEADER`, `UNLOCK_HEADER`, …
 | | direction | meaning |
 |---|---|---|
 | `Authorization: Bearer`, `X-Api-Key` | request | the API key |
+| `Authorization: Bearer vola_at_…` | request | an [access token](#access-tokens) (never as `X-Api-Key`) |
 | `X-Tenant-Slug` | request | the tenant an admin key acts for |
 | `X-User-Id` | request | the principal of the host application |
 | `X-Vola-Encryption` | request | the encryption mode of an upload (`none`, `tenant`, `keyring`, `caller`); the alternative to the `encryption` multipart field |
@@ -169,6 +177,68 @@ curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json"
      -d '{"name":"ci","scopes":["files:read"],"env":"test"}' localhost:8300/vola/keys
 curl -H "X-Api-Key: $ADMIN" -H "X-Tenant-Slug: acme" localhost:8300/vola/keys
 ```
+
+## Access tokens
+
+Scope `access:grant` to issue and revoke (1.2). A multi-user host — an e-mail service whose
+attachment sent to five addresses is five or six rows of one blob — must not hand its API key
+to a browser, and with a key every row of the tenant is readable. An **access token** is what
+the browser gets instead: short-lived, read-only, and bound to **rows** of `vola_file` (or to
+one instance), never to content. Vola has no notion of a row's owner or of user accounts: the
+host decides who its user is and which rows are theirs, and vola enforces what the host
+granted.
+
+| route | body → answer |
+|---|---|
+| `POST /access-tokens` | `{file_ids: [uuid…] (1–100) \| instance: {instance_type, instance_id}, principal, expires_in?}` (`AccessTokenCreateSchema`) → `201 {id, token, expires_at}` (`AccessTokenCreatedSchema`): `token` (`vola_at_` + 40 base62) in plain text **this once**; only its SHA-256 is stored. Exactly one of `file_ids` / `instance`. `principal` follows the rules of `X-User-Id` and becomes `last_accessed_by` and the audit actor. `expires_in` seconds, default `300`, at most `VOLA_ACCESS_TOKEN_MAX_TTL_S` (default `3600`) — more is `422`. Every `file_id` must be a live row of the caller's tenant, else `404 file_not_found` for the whole request |
+| `DELETE /access-tokens/:id` | revoke before expiry → `204`; idempotent; another tenant's token (or an unknown id) is `404 access_token_not_found` |
+
+What a token reads — **only** these four routes, and only as `Authorization: Bearer`:
+
+```
+GET|HEAD /files/:type/:id/:fileId
+GET|HEAD /files/:type/:id/:fileId/thumb/:size
+```
+
+- A row the token does not name is `404 file_not_found` — also when it shares the blob (or the
+  thumbnail) with a row it does name. A token for rows covers exactly those `fileId`s, not the
+  other versions of their `parent_id` chain; a token for an instance covers the rows of that
+  instance as they are at each request, those added after it was issued included.
+- A soft-deleted row is `404`; another tenant's `is_public` file is `404` (a token reads its
+  tenant's rows only).
+- `Range`, `If-None-Match` / `304`, `HEAD` and the `202` of a thumbnail being rendered behave as
+  with a key. `X-User-Id` (and `X-Tenant-Slug`, `X-Vola-Unlock`, `X-Vola-Content-Key`) are not
+  read: the principal is the token's.
+- Encrypted files: `none` and `tenant` are served; `keyring`, `caller` and `client` are
+  `409 access_token_encryption_unsupported` (a token carries no unlock and no content key).
+- Every other route — lists, `info`, versions, slug and path downloads, uploads, `PATCH`,
+  delete, keys, shares, folders, stats, UDC, `subscribe` — answers a token with
+  `401 unauthorized`, the answer of a bad key. So does an unknown, expired or revoked token, and
+  every token of a key that has since been revoked or expired.
+- Issuing and revoking are not audit events (they are frequent); downloads are, with
+  `VOLA_AUDIT_DOWNLOADS` ([AUDIT.md](AUDIT.md)). Expired tokens are deleted when the tenant
+  issues its next one.
+
+The flow — the backend issues, the browser downloads:
+
+```sh
+# the host's backend, with its API key (scope access:grant), for the row user-42 may read
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"file_ids":["'$FILE'"],"principal":"user-42","expires_in":300}' \
+     localhost:8300/vola/access-tokens
+#   {"id":"…","token":"vola_at_…","expires_at":"2026-11-18T12:05:00.000Z"}
+
+# the browser (or anything holding only the token)
+curl -H "Authorization: Bearer vola_at_…" -o photo.jpg localhost:8300/vola/files/mail/$MSG/$FILE
+curl -H "Authorization: Bearer vola_at_…" localhost:8300/vola/files/mail/$MSG/$OTHER   # 404
+curl -H "Authorization: Bearer vola_at_…" localhost:8300/vola/files/mail/$MSG          # 401
+```
+
+In the SDK: `backend.accessTokens.create({file_ids, principal})` on the server,
+`new VolaClient({baseUrl, accessToken, getAccessToken})` in the browser — `getAccessToken` is
+called after a `401` on those routes and the request is sent once more
+([REACT.md](REACT.md#access-tokens)). The token is never part of a URL in this version (an
+`<img src>` needs `fetch` + a blob URL, which `VolaThumb` does).
 
 ## Files
 

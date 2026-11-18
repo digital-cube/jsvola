@@ -25,7 +25,7 @@ live lists over WebSocket, OCR, encryption, keyrings, an audit trail.
 | header | `X-API-Key: <key>` | `Authorization: Bearer <key>` — **`X-Api-Key: <key>` is accepted too** (header names are case-insensitive, so an existing `X-API-Key` keeps working); for WebSockets the subprotocol `bearer.<key>` |
 | key format | `vola_live_…` / `vola_test_…` / `vola_admin_…` | the same prefixes; only the SHA-256 is stored; the display form is `vola_live…k3Qz` |
 | the keys themselves | | **new keys**: a clean start means the key table is empty — issue new keys with `vola create-key` and put them in each consumer's configuration ([CLI.md](CLI.md)) |
-| scopes | a JSON list on the key | `files:read`, `files:write`, `folders:read`, `folders:write`, `shares:write`, `keys:write`, `keyrings:write`, `encryption:caller`, `admin` — finer than before; a consumer that uploads and lists needs `files:read,files:write`, one that makes folders `folders:*`, one that shares `shares:write` |
+| scopes | a JSON list on the key | `files:read`, `files:write`, `folders:read`, `folders:write`, `shares:write`, `keys:write`, `keyrings:write`, `encryption:caller`, `access:grant` (1.2), `admin` — finer than before; a consumer that uploads and lists needs `files:read,files:write`, one that makes folders `folders:*`, one that shares `shares:write` |
 | admin key | `X-Tenant-Slug` selects the tenant | the same |
 | the acting user | `X-User-Id` | the same header, now also the owner of a keyring |
 | a tenant key on another tenant's file | 404 / 403 | always `404` |

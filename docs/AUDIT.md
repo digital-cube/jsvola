@@ -12,6 +12,9 @@ VOLA_MEMENTO_URL=https://memento.example.com/memento   # the memento API base; v
 VOLA_MEMENTO_API_KEY=mem_…                             # a memento API key with the `write` scope
 ```
 
+Downloads are recorded only with `VOLA_AUDIT_DOWNLOADS=true` as well (default off: they are
+frequent) — on the server and the worker alike.
+
 Both or neither: one without the other is a configuration error at start. Without them the
 audit is off — one INFO line (`audit disabled`), nothing logged as an error, no request ever
 made. The same two variables go to the **worker** container: with Redis the server only queues
@@ -58,6 +61,8 @@ with one.
 | situation | `payload.actor_type` | `actor_id` |
 |---|---|---|
 | request with `X-User-Id` | `user` | the header's value (the host application's principal) |
+| request with an access token | `user` | the token's `principal` (an `X-User-Id` sent with a token is ignored) |
+| a share link (`/s/…`, no credential) | — | `null` (`actor_type` absent) |
 | request without it | `api_key` | `key:<prefix>…<last4>`, e.g. `key:vola_live…k3Qz` |
 | the CLI | `cli` | `cli:<$USER>` (`cli:cli` when unknown) |
 
@@ -65,7 +70,7 @@ with one.
 
 `instance_type` is what the event happened to; `instance_id` its id. Every payload carries
 `tenant` (the vola tenant slug), `actor_type` when the actor is known, and the ids it is about. What a payload **never** carries: a
-share token, a password (or its hash), an API key (plaintext or hash), a file key — and the
+share token, an access token, a password (or its hash), an API key (plaintext or hash), a file key — and the
 `filename` of an encrypted file (`encryption != none`; the name of such a file is protected
 content, plan 6).
 
@@ -74,6 +79,7 @@ content, plan 6).
 | `VOLA_FILE_DELETED` | `vola_file` | `DELETE …/:fileId` (soft delete); every file a recursive `DELETE /folders/…?recursive=1` soft-deletes (then also `folder_path`, `recursive: true`); not on the idempotent repeat | `file_id`, `instance_type`, `instance_id`, `folder_id`, `slug`, `size`, `mime_type`, `kind`, `encryption`, `filename`* |
 | `VOLA_FILE_PURGED` | `vola_file` | `DELETE …/:fileId/purge` | the file facts above, `versions` (the ids of the whole chain removed), `files` (rows removed), `blobs` (blobs removed from disk) |
 | `VOLA_FILE_VISIBILITY_CHANGED` | `vola_file` | `PATCH …/:fileId` changed `is_public` or `is_global_public` (a move or rename alone does not) | the file facts, `is_public`, `is_global_public`, `previous: {is_public, is_global_public}` |
+| `VOLA_FILE_DOWNLOADED` | `vola_file` | 1.2, **only with `VOLA_AUDIT_DOWNLOADS=true`**: a download that STARTS — a `GET` without `Range` or from byte 0 that is about to send bytes — of `GET …/:fileId`, `…/slug/:slug`, `…/path/*`, `GET /s/:token[/path/*]`. Never `HEAD`, a `Range` continuation, a `304`, a `416`, a thumbnail (the rule of `startsDownload` for share links). Issuing and revoking access tokens are not events | the file facts, `via` (`api_key`, `access_token` or `share`), `access_token_id` (via a token), `share_id` (via a share) |
 | `VOLA_SHARE_CREATED` | `vola_share` | `POST /shares` | `share_id`, `file_id` / `folder_id`, `scope`, `has_password`, `expires_at`, `max_downloads`, `download_count`, `created_at` |
 | `VOLA_SHARE_REVOKED` | `vola_share` | `DELETE /shares/:id` (the first time) | the same, with `revoked_at` |
 | `VOLA_KEY_CREATED` | `vola_key` | `POST /keys`; `vola create-key`, `vola create-admin-key` | `key_id`, `name`, `prefix`, `last4`, `scopes`, `is_admin`, `expires_at`, `created_at`, `created_by` (`tenant: null` for an admin key) |
@@ -97,6 +103,7 @@ EventTypes:
   - VOLA_FILE_DELETED
   - VOLA_FILE_PURGED
   - VOLA_FILE_VISIBILITY_CHANGED
+  - VOLA_FILE_DOWNLOADED
   - VOLA_SHARE_CREATED
   - VOLA_SHARE_REVOKED
   - VOLA_KEY_CREATED
@@ -116,6 +123,7 @@ Suggested template lines (EN / SR), one per event type, in memento's template sy
 | `VOLA_FILE_DELETED` | `{{actor_id}} deleted file {{default payload.filename "(encrypted)"}} ({{payload.size}} B) in {{payload.tenant}}` | `{{actor_id}} je obrisao fajl {{default payload.filename "(šifrovan)"}} ({{payload.size}} B) u {{payload.tenant}}` |
 | `VOLA_FILE_PURGED` | `{{actor_id}} purged file {{default payload.filename "(encrypted)"}}: {{payload.files}} row(s), {{payload.blobs}} blob(s)` | `{{actor_id}} je trajno obrisao fajl {{default payload.filename "(šifrovan)"}}: {{payload.files}} red(ova), {{payload.blobs}} blob(ova)` |
 | `VOLA_FILE_VISIBILITY_CHANGED` | `{{actor_id}} set public={{payload.is_public}} global={{payload.is_global_public}} on {{default payload.filename "(encrypted)"}}` | `{{actor_id}} je postavio public={{payload.is_public}} global={{payload.is_global_public}} na {{default payload.filename "(šifrovan)"}}` |
+| `VOLA_FILE_DOWNLOADED` | `{{default actor_id "a share link"}} downloaded {{default payload.filename "(encrypted)"}} ({{payload.size}} B) via {{payload.via}} in {{payload.tenant}}` | `{{default actor_id "link za deljenje"}} je preuzeo {{default payload.filename "(šifrovan)"}} ({{payload.size}} B) preko {{payload.via}} u {{payload.tenant}}` |
 | `VOLA_SHARE_CREATED` | `{{actor_id}} created share {{instance_id}} (password: {{payload.has_password}}, max downloads: {{payload.max_downloads}})` | `{{actor_id}} je napravio share {{instance_id}} (lozinka: {{payload.has_password}}, max preuzimanja: {{payload.max_downloads}})` |
 | `VOLA_SHARE_REVOKED` | `{{actor_id}} revoked share {{instance_id}} after {{payload.download_count}} download(s)` | `{{actor_id}} je povukao share {{instance_id}} posle {{payload.download_count}} preuzimanja` |
 | `VOLA_KEY_CREATED` | `{{actor_id}} created API key {{payload.prefix}}…{{payload.last4}} "{{payload.name}}" ({{join payload.scopes ", "}})` | `{{actor_id}} je napravio API ključ {{payload.prefix}}…{{payload.last4}} "{{payload.name}}" ({{join payload.scopes ", "}})` |
@@ -131,9 +139,14 @@ Suggested template lines (EN / SR), one per event type, in memento's template sy
   request; queue first, direct fallback), `actorOf`, `createAuditSink` (the INFO line).
 - `packages/server/src/jobs/queue.ts` — `AUDIT_JOB`, `AUDIT_MAX_ATTEMPTS`, `enqueueAudit`;
   `jobs/worker.ts` — the `audit` job handler.
-- Writers: `services/files.ts` (delete, purge, visibility), `services/folders.ts` (recursive
+- Writers: `services/files.ts` (delete, purge, visibility), `routes/send-file.ts`
+  (`VOLA_FILE_DOWNLOADED`, `downloadAudit` / `recordDownload`, used by `routes/files.ts` and
+  `routes/share-public.ts`), `services/folders.ts` (recursive
   delete), `services/shares.ts` (create, revoke), `routes/keys.ts` and `packages/cli`
   (keys), `services/transfer.ts` (transfer).
 - Tests: `packages/server/test/audit.test.ts` (a fake memento HTTP server receives the exact
   events; memento down or `500` never fails a vola request; an encrypted file has no
-  `filename`; the queued path retries through a real worker), `packages/cli/test/transfer.test.ts`.
+  `filename`; the queued path retries through a real worker; a worker with
+  `VOLA_AUDIT_DOWNLOADS` off drops download events), `packages/server/test/access-tokens.test.ts`
+  (`VOLA_FILE_DOWNLOADED` by token, key and share; nothing for `HEAD`, a continuation, a
+  thumbnail, or without the setting), `packages/cli/test/transfer.test.ts`.

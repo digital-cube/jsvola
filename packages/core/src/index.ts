@@ -1,4 +1,20 @@
 export {
+  ACCESS_TOKEN_ENCRYPTION_UNSUPPORTED_CODE,
+  ACCESS_TOKEN_MAX_FILES,
+  ACCESS_TOKEN_PREFIX,
+  ACCESS_TOKEN_READABLE_ENCRYPTIONS,
+  ACCESS_TOKEN_SECRET_LENGTH,
+  type AccessTokenCreate,
+  type AccessTokenCreated,
+  AccessTokenCreatedSchema,
+  AccessTokenCreateSchema,
+  type AccessTokenInstance,
+  AccessTokenInstanceSchema,
+  DEFAULT_ACCESS_TOKEN_MAX_TTL_S,
+  DEFAULT_ACCESS_TOKEN_TTL_S,
+  isAccessToken,
+} from "./access-tokens.js";
+export {
   API_KEY_HEADER,
   type ApiKey,
   type ApiKeyCreate,

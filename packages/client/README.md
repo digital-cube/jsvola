@@ -25,6 +25,36 @@ Every answer is typed by the `@vol-a/core` schema of its route (`FileInfo`, `Fol
 `ShareCreated`, `KeyringStatus`, …). `validate: true` also parses it (a mismatch is a
 `VolaError` with code `invalid_response`); off by default.
 
+## Access tokens (a browser of a multi-user host)
+
+A page should not hold an API key: a key reads every row of its tenant. The host's backend
+issues an **access token** (`vola_at_…`) for the rows its user may read, and the page uses it
+instead of `apiKey` (never both):
+
+```ts
+// backend, key with `access:grant`
+const { id, token, expires_at } = await backend.accessTokens.create({
+  file_ids: [fileId],          // or instance: { instance_type, instance_id }
+  principal: "user-42",        // last_accessed_by and the audit actor
+  expires_in: 300,             // default 300, at most VOLA_ACCESS_TOKEN_MAX_TTL_S
+});
+await backend.accessTokens.revoke(id); // early, idempotent
+
+// page
+const vola = new VolaClient({
+  baseUrl: "/vola",
+  accessToken: token,
+  getAccessToken: () => fetch("/api/vola-token").then((r) => r.text()),
+});
+await vola.files.download("mail", messageId, fileId); // and files.head, files.thumb
+```
+
+A token reads `files.download`, `files.head` and `files.thumb` of its rows and nothing else
+(another row is `404`, any other route `401`). After a `401` on those calls the client asks
+`getAccessToken` once (concurrent `401`s share the call) and repeats the request;
+`getAccessToken` alone (no `accessToken`) is asked before the first request.
+[docs/API.md](../../docs/API.md#access-tokens) has every rule.
+
 ## Errors
 
 A non-2xx answer throws a `VolaError` carrying the server's envelope:

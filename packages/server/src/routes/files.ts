@@ -26,6 +26,7 @@ import { VolaError } from "../errors.js";
 import type { FileEventBus } from "../events/bus.js";
 import type { JobDispatcher } from "../jobs/dispatcher.js";
 import type { Lookups } from "../lookups.js";
+import { findGrantedFile } from "../services/access-tokens.js";
 import type { LastUsedThrottle } from "../services/apikeys.js";
 import type { EncryptionService } from "../services/encryption.js";
 import {
@@ -57,7 +58,13 @@ import {
 } from "../services/folders.js";
 import { ocrInfoOf } from "../services/ocr.js";
 import type { StorageBackend } from "../storage/index.js";
-import { type DownloadQuery, flag, sendFile } from "./send-file.js";
+import {
+  type DownloadQuery,
+  downloadAudit,
+  flag,
+  type SendFileOptions,
+  sendFile,
+} from "./send-file.js";
 
 export { ifNoneMatchMatches } from "./send-file.js";
 
@@ -74,8 +81,10 @@ export interface FileRoutesDeps {
   events?: FileEventBus | undefined;
   /** Background jobs of a new file (`async` mode); absent in `sync` mode. */
   jobs?: JobDispatcher | undefined;
-  /** The audit trail: soft delete, purge, visibility change. */
+  /** The audit trail: soft delete, purge, visibility change — and downloads with `auditDownloads`. */
   audit?: AuditLog | undefined;
+  /** `VOLA_AUDIT_DOWNLOADS`: a `VOLA_FILE_DOWNLOADED` event for every download that starts. */
+  auditDownloads?: boolean | undefined;
   /** Encryption (plan 6.1): providers and the row-level open; absent → encrypted files are `503`. */
   crypto?: EncryptionService | undefined;
   now?: (() => Date) | undefined;
@@ -118,7 +127,8 @@ interface InfoQuery {
  *   the upload a `keyring` one — `423` without the owner's `X-Vola-Unlock`) and
  *   `PUT /files/:type/:id/slug/:slug` (upsert of a named file) — `files:write`;
  * - `GET|HEAD …/:fileId`, `…/slug/:slug`, `…/path/*` — `files:read`: `Range`/`206`,
- *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`;
+ *   `ETag`/`304`, `Content-Disposition` (inline for media and PDF), `nosniff`; `…/:fileId`
+ *   (and its thumbnail) also answers an access token for the rows it names;
  * - `GET …/:fileId/info` (with the aggregate `processing_status` of its jobs and the `ocr`
  *   block: status, language, pages, the first 500 characters; `?ocr=full` the whole text),
  *   `…/:fileId/versions`, `GET /files/:type/:id` (cursor list) — `files:read`;
@@ -350,15 +360,31 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     (request, reply) => handleUpload(request, reply, parseSlug(request.params.slug)),
   );
 
-  const download = { userId: () => requireTenant().userId };
+  const download = (): SendFileOptions => {
+    const tenant = requireTenant();
+    return {
+      userId: tenant.userId,
+      audit: downloadAudit(deps, tenant.accessToken ? "access_token" : "api_key", {
+        access_token_id: tenant.accessToken?.id,
+      }),
+    };
+  };
 
+  /**
+   * The one download route an ACCESS TOKEN also reads (`config.accessToken`): with a token the
+   * row must be one the token names (or of its instance), the tenant's own, live, and `none`
+   * or `tenant` encrypted — otherwise `404` (`409` for the other encryptions).
+   */
   app.route<{ Params: FileParams; Querystring: DownloadQuery }>({
     method: ["GET", "HEAD"],
     url: "/files/:type/:id/:fileId",
-    config: READ,
+    config: { ...READ, accessToken: true },
     handler: async (request, reply) => {
-      const row = await findReadableFile(service, scopeOf(request), request.params.fileId);
-      return sendFile(service, request, reply, row, { userId: download.userId() });
+      const grant = requireTenant().accessToken;
+      const row = grant
+        ? await findGrantedFile(deps.db, grant, scopeOf(request), request.params.fileId)
+        : await findReadableFile(service, scopeOf(request), request.params.fileId);
+      return sendFile(service, request, reply, row, download());
     },
   });
 
@@ -368,7 +394,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
     config: READ,
     handler: async (request, reply) => {
       const row = await findFileBySlug(service, scopeOf(request), parseSlug(request.params.slug));
-      return sendFile(service, request, reply, row, { userId: download.userId() });
+      return sendFile(service, request, reply, row, download());
     },
   });
 
@@ -383,7 +409,7 @@ export const fileRoutes: FastifyPluginAsync<FileRoutesDeps> = async (app, deps) 
       const path = parsePath(folderPath);
       const folderId = path === "" ? null : (await findFolder(folderService, scope, path)).id;
       const row = await findFileInFolder(service, scope, folderId, filename);
-      return sendFile(service, request, reply, row, { userId: download.userId() });
+      return sendFile(service, request, reply, row, download());
     },
   });
 

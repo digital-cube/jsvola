@@ -7,6 +7,59 @@ Docker image share one version.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-18
+
+**Access tokens: a user of the host application reads ITS rows, not the content.** A
+multi-user host (an e-mail service whose attachment sent to five addresses is six rows of one
+blob) no longer has to proxy every download through its backend nor hand a key to a browser:
+its backend issues a short-lived, read-only token for named rows of `vola_file` (or one
+instance), and the browser reads exactly those. Plus an optional audit event per download, and
+tests that lock what content addressing already guaranteed. Minor: the API only grows; one
+database migration (a new table) on both dialects, applied at start as always.
+
+### Added
+
+- **Access tokens** ([docs/API.md](docs/API.md#access-tokens)): the scope `access:grant`;
+  `POST /access-tokens` `{file_ids (1–100) | instance, principal, expires_in?}` → `201 {id,
+  token, expires_at}` — the token (`vola_at_…`) once, only its SHA-256 stored (new table
+  `vola_access_token`); `DELETE /access-tokens/:id` revokes it (idempotent). The token is
+  `Authorization: Bearer` on `GET|HEAD /files/:type/:id/:fileId` and `…/thumb/:size` ONLY:
+  a row it does not name is `404` even when it shares the blob or the thumbnail; another
+  tenant's `is_public` file is `404`; a soft-deleted row is `404`; an instance token covers the
+  instance's rows as they are at each request; `Range`, `If-None-Match`, `HEAD` and the
+  thumbnail's `202` work as with a key; `X-User-Id` is ignored (the principal is the token's).
+  `keyring`, `caller` and `client` files answer `409 access_token_encryption_unsupported`.
+  Every other route — UDC included — answers a token `401 unauthorized`, as does an
+  unknown, expired or revoked token, or one whose issuing key was revoked. Expired tokens are
+  deleted when the tenant issues its next one.
+- **`VOLA_ACCESS_TOKEN_MAX_TTL_S`** (default 3600): the longest `expires_in`; more is `422`,
+  none asked is 300 s.
+- **`VOLA_FILE_DOWNLOADED`** ([docs/AUDIT.md](docs/AUDIT.md)), only with
+  **`VOLA_AUDIT_DOWNLOADS=true`** (default off; set it on the server and the worker): a
+  download that STARTS (a `GET` without `Range` or from byte 0) by API key, access token or
+  share link, with `via`, `access_token_id` / `share_id` and the file facts; the actor is the
+  token's principal or the usual `X-User-Id` / key rule. `HEAD`, `Range` continuations,
+  `304`s and thumbnails are never recorded; neither are issuing and revoking tokens.
+- **`@vol-a/client`**: `new VolaClient({accessToken, getAccessToken})` instead of `apiKey`
+  (never both) — after a `401` on a route a token reads, `getAccessToken` is called once and
+  the request repeated (concurrent `401`s share one call); `client.accessTokens.create()` /
+  `.revoke()` for the host's backend. `@vol-a/core` has `AccessTokenCreateSchema`,
+  `AccessTokenCreatedSchema`, `isAccessToken` and the constants. `VolaThumb` works on a token
+  client; `VolaFileBrowser`, uploads, shares and keyrings need a key
+  ([docs/REACT.md](docs/REACT.md#access-tokens)).
+- Tests that lock existing behaviour (`packages/server/test/content-addressing.test.ts`): no
+  route serves bytes by hash or storage path (every registered `GET`/`HEAD` probed with a
+  stored file's hash and blob path), uploading stored content answers exactly like new
+  content (`POST /files` and tus), and deleting or purging one row leaves the other rows of
+  its blob readable while the purge of the last one removes the blob.
+
+### Fixed
+
+- The examples site's purge no longer soft-deletes a younger visitor's file with a folder past
+  its age: a visitor folder is deleted only once it is empty (not recursively, deepest first),
+  so another visitor's fresh upload in the shared `uploads` folder stays its full
+  `VOLA_DEMO_TTL_HOURS`. The purge result gains `kept`, the folders left for a later run.
+
 ## [1.1.1] - 2026-11-16
 
 **The first release on npm.** `@vol-a/core`, `@vol-a/lookups`, `@vol-a/server`,
@@ -776,7 +829,8 @@ in eight phases, one ticket each; the detailed entries below follow them, newest
   timeouts, the demo's type list (Markdown), and what the purge goes by (each row's `created_at`).
   The quick starts poll `/vola/health/ready`: `up --wait` fails on podman.
 
-[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/digital-cube/jsvola/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/digital-cube/jsvola/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/digital-cube/jsvola/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/digital-cube/jsvola/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/digital-cube/jsvola/compare/v1.0.0...v1.0.1

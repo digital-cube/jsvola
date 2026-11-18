@@ -307,6 +307,35 @@ export const shareLinks = sqliteTable(
   ],
 );
 
+export const accessTokens = sqliteTable(
+  "vola_access_token",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    apiKeyId: uuid("api_key_id")
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: "cascade" }),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    principal: varchar("principal", { length: 255 }).notNull(),
+    fileIds: json<string[]>("file_ids"),
+    instanceType: varchar("instance_type", { length: 100 }),
+    instanceId: uuid("instance_id"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: createdAt(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (t) => [
+    index("vola_access_token_tenant_expires_idx").on(t.tenantId, t.expiresAt),
+    index("vola_access_token_apikey_idx").on(t.apiKeyId),
+    check(
+      "vola_access_token_target_check",
+      sql`(${t.fileIds} is null) <> (${t.instanceType} is null) and (${t.instanceType} is null) = (${t.instanceId} is null)`,
+    ),
+  ],
+);
+
 export const tenantStats = sqliteTable(
   "vola_tenant_stats",
   {
@@ -393,6 +422,7 @@ export const SAME_ROWS: {
   processingJobs: true,
   fileMetadata: true,
   shareLinks: true,
+  accessTokens: true,
   tenantStats: true,
   keyrings: true,
 };
@@ -406,6 +436,7 @@ interface SqliteTables {
   processingJobs: typeof processingJobs;
   fileMetadata: typeof fileMetadata;
   shareLinks: typeof shareLinks;
+  accessTokens: typeof accessTokens;
   tenantStats: typeof tenantStats;
   keyrings: typeof keyrings;
 }
