@@ -47,8 +47,8 @@ docker run -d -p 8300:8300 \
   -e VOLA_DATABASE_URL=postgresql://vola:vola@db:5432/vola \
   -e VOLA_REDIS_URL=redis://redis:6379/0 \
   -v vola-data:/data -v ./secrets:/run/secrets/vola:ro \
-  ghcr.io/digital-cube/jsvola:1.1.1
-docker run … ghcr.io/digital-cube/jsvola:1.1.1 node dist/worker.js     # the worker
+  ghcr.io/digital-cube/jsvola:1.2.0
+docker run … ghcr.io/digital-cube/jsvola:1.2.0 node dist/worker.js     # the worker
 ```
 
 - Base `node:24-bookworm-slim`; runs as the unprivileged `node` user; `WORKDIR /app`.
@@ -167,6 +167,13 @@ stops the process at start with one line naming every bad variable.
 |---|---|---|
 | `VOLA_MEMENTO_URL` | *(unset)* | the memento API base (`https://memento.example.com/memento`). **Both or neither** with the key |
 | `VOLA_MEMENTO_API_KEY` | *(unset)* | a memento key with the `write` scope. With both set, destructive and security-relevant operations become memento events ([AUDIT.md](AUDIT.md)); the worker pushes them (give it the same two variables), or the server does, fire-and-forget, without Redis |
+| `VOLA_AUDIT_DOWNLOADS` | `false` | 1.2: also record every download that starts (`GET` without `Range` or from byte 0 — never `HEAD`, a continuation or a thumbnail) as `VOLA_FILE_DOWNLOADED`, whether by API key, access token or share link ([AUDIT.md](AUDIT.md)). Downloads are frequent: switch it on deliberately. **Set it on the server and the worker alike**: a worker with it off drops the download events the server queued |
+
+### Access tokens
+
+| variable | default | |
+|---|---|---|
+| `VOLA_ACCESS_TOKEN_MAX_TTL_S` | `3600` | 1.2: the longest `expires_in` (seconds, 1 … 604800) `POST /access-tokens` grants; more is `422`, none asked is `300` ([API.md](API.md#access-tokens)). The server only — the worker never sees a token |
 
 ### The examples site
 

@@ -102,6 +102,7 @@ describe.runIf(onSqlite)("SQLite database", () => {
         sql`select name from sqlite_master where type = 'table' and name like 'vola\\_%' escape '\\' order by name`,
       )) as unknown as { rows: { name: string }[] };
       expect(tables.rows.map((r) => r.name)).toEqual([
+        "vola_access_token",
         "vola_apikey",
         "vola_file",
         "vola_file_metadata",

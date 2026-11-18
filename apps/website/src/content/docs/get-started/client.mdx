@@ -9,6 +9,7 @@ import { Code } from "@astrojs/starlight/components";
 import install from "../../../../snippets/client/install.sh?raw";
 import output from "../../../../snippets/client/output.txt?raw";
 import read from "../../../../snippets/client/read.ts?raw";
+import accessToken from "../../../../snippets/client/access-token.ts?raw";
 
 `@vol-a/client` wraps every route in a typed call. It runs in Node 24 and in browsers, and it never puts a key, a token or a secret in a URL.
 
@@ -24,6 +25,14 @@ This program reads the live examples instance, using the read-only key that inst
 **A thumbnail can answer 202.** That status counts as success, and its body is a grey placeholder, so `vola.files.thumb` tells you which one you got through `status`: `ready`, `generating` or `failed`. Retry `generating` with a backoff, and don't cache it.
 
 **A failed call throws a `VolaError`** carrying the server's `status`, `code` and `message`. A file that needs an unlock it doesn't have throws `VolaLockedError`, and a wrong key or damaged bytes throw `VolaIntegrityError`.
+
+## In a browser: an access token, not a key
+
+A page of a multi-user application should not hold an API key. Let your backend issue an [access token](/concepts/files-and-storage/#access-tokens-one-user-their-rows) for the rows the user may read, and build the page's client on it:
+
+<Code code={accessToken} lang="ts" title="access-token.ts" />
+
+The token reads downloads and thumbnails of its rows only. When it expires, the next download answers `401`, the client calls `getAccessToken` once and repeats the request.
 
 ## What else it covers
 

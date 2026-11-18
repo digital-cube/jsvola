@@ -62,7 +62,7 @@ server and the CLI share: `parseApiKey` / `displayApiKey`, `missingScopes`, `par
 ## 3. Database schema (PostgreSQL or SQLite + Drizzle)
 
 Two databases, one schema. PostgreSQL (`packages/server/src/db/schema-postgres.ts`, migrations
-in `packages/server/drizzle/`, `0000` … `0009`) is the default and has every feature; SQLite
+in `packages/server/drizzle/`, `0000` … `0010`) is the default and has every feature; SQLite
 (`schema-sqlite.ts`, migrations in `drizzle-sqlite/`) runs a small installation on one host:
 one server process and, with Redis, one worker process opening the same file. `VOLA_DATABASE_URL` picks one (`postgres://…` or
 `file:<path>`); `connect` opens it and points the table bindings of `db/schema.ts` — what every
@@ -87,6 +87,7 @@ it — another tenant's row does not exist (`404`).
 | `vola_processing_job` | `file_id`, `kind` (`THUMBNAIL`, `OCR`), `params` (size, crop), `status` (`PENDING` → `RUNNING` → `DONE` / `FAILED` / `SKIPPED`), `error`, timestamps | `processing_status` of a file is the aggregate |
 | `vola_file_metadata` | `file_id` (PK, cascade), `ocr_text`, `ocr_lang`, `ocr_pages`, `ocr_at`, `ocr_tsv` (generated `tsvector`, GIN; on SQLite the FTS5 table `vola_file_ocr_fts` instead), `ocr_ct` (the sealed text of an encrypted file) | the full-text search of the UDC `ocr` filter |
 | `vola_share_link` | `file_id` XOR `folder_id`, `token_hash`, `scope`, `password_hash` (argon2id), `expires_at`, `max_downloads`, `download_count`, `created_by`, `revoked_at`, `fk_share_ct` (the share grant) | the token's plaintext is answered once |
+| `vola_access_token` | `tenant_id`, `api_key_id` (the issuing key, cascade), `token_hash` (SHA-256 of `vola_at_…`), `principal`, `file_ids` (jsonb array) XOR `instance_type` + `instance_id`, `expires_at`, `created_at`, `revoked_at` | 1.2: a read-only grant of ROWS (or one instance), never of a blob; the plaintext is answered once; a revoked or expired issuing key voids its tokens; expired rows are deleted when the tenant issues its next token ([API.md](API.md#access-tokens)) |
 | `vola_tenant_stats` | one snapshot per `(tenant, scope tenant\|instance, instance_type, instance_id)`: `total_files`, `total_bytes`, `by_kind`, `oldest_at`, `newest_at`, `computed_at` | refreshed by the worker, or lazily |
 | `vola_keyring` | `tenant_id`, `principal`, `kdf` (Argon2id parameters per keyring), `mk_pin_ct`, `mk_recovery_ct`, `recovery_salt`, `attempts`, `locked_until`, `pin_set_at`, soft delete | [CRYPTO.md § 8](CRYPTO.md#8-the-keyring-provider-phase-62) |
 
@@ -105,11 +106,11 @@ src/
 ├── config.ts          every VOLA_* variable, validated with Zod → Config
 ├── auth.ts, apikey.ts, context.ts   the API key, scopes, X-Tenant-Slug, the per-request TenantContext (AsyncLocalStorage)
 ├── errors.ts          VolaError → {error: {code, message, …}}; the framework's own errors mapped to codes
-├── routes/            one file per area: health, keys, files, thumbnails, uploads, folders, shares,
+├── routes/            one file per area: health, keys, access-tokens, files, thumbnails, uploads, folders, shares,
 │                      share-public, public, stats, admin, keyrings, lookups; send-file.ts (the download sender)
 ├── services/          the logic, testable without HTTP: files (stage/finalize/list/patch/purge), folders,
 │                      uploads (tus), upload-crypto, thumbnails, ocr, pdf-pages, processing, shares,
-│                      share-password, stats, transfer, tenants, apikeys, encryption, keyrings, unlock, derivatives
+│                      share-password, stats, transfer, tenants, apikeys, access-tokens, encryption, keyrings, unlock, derivatives
 ├── storage/           StorageBackend interface + FilesystemBackend (the CAS)
 ├── uploads/           PartStore: the part files of resumable uploads
 ├── files/             byte-range parsing, content-disposition, filename sanitising, MIME detection
@@ -132,7 +133,12 @@ src/
    checked. An admin key resolves `X-Tenant-Slug` to a tenant. The result is a `TenantContext`
    — tenant id and slug, scopes, the principal from `X-User-Id`, the unlock token, the content
    key, whether the request came from a browser (`Origin`) — kept in an `AsyncLocalStorage`
-   so services call `requireTenant()` instead of threading it through.
+   so services call `requireTenant()` instead of threading it through. An **access token**
+   (`vola_at_…`, 1.2) is accepted only as `Authorization: Bearer` and only on a route with
+   `config.accessToken` (the file download and its thumbnail; UDC refuses it in its own
+   hook): its context has the tenant, `files:read` alone, the token's principal as the user
+   and the grant (`accessToken`: rows or instance), which those routes resolve through
+   `findGrantedFile` instead of `findReadableFile`.
 2. **The handler** parses params and body with the `@vol-a/core` schema (`422 validation_error`
    with the Zod issues) and calls a service.
 3. **Services** are plain async functions over `FilesDeps` / `UploadsDeps` / … (`db`, `storage`,
@@ -349,10 +355,11 @@ configured. Every command: [CLI.md](CLI.md).
 ## 12. `@vol-a/client` and `@vol-a/react`
 
 `@vol-a/client` is a thin, typed layer over `fetch`: one method per route grouped like the API
-(`files`, `folders`, `uploads`, `shares`, `keyrings`, `stats`, `keys`, `admin`, `udc`), errors
+(`files`, `folders`, `uploads`, `shares`, `keyrings`, `stats`, `keys`, `accessTokens`, `admin`, `udc`), errors
 as `VolaError` / `VolaLockedError` / `VolaIntegrityError`, the resumable protocol with a
 fingerprint store, the unlock token held in memory and never in a URL, the share-grant fragment
-turned into the header, and `contentKey` refused in a browser. `@vol-a/react` puts components
+turned into the header, and `contentKey` refused in a browser. A client holds an API key or an
+access token (with `getAccessToken` to renew it after a `401`), never both. `@vol-a/react` puts components
 over it on `@jsudc/react`'s `UdcDataView` and `/udc/subscribe` ([REACT.md](REACT.md)).
 
 ## 13. Testing

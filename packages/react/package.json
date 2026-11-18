@@ -1,6 +1,6 @@
 {
   "name": "@vol-a/react",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "JSVola React UI: VolaProvider, a live file browser on @jsudc/react, uploads with resumable progress, thumbnails, the keyring PIN gate with auto-lock, and the share dialog.",
   "license": "MIT",
   "repository": {

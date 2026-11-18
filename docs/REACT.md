@@ -13,7 +13,7 @@ import "@vol-a/react/styles.css";
 import { VolaClient } from "@vol-a/client";
 import { VolaFileBrowser, VolaPinGate, VolaProvider } from "@vol-a/react";
 
-const vola = new VolaClient({ baseUrl: "/vola", apiKey, userId: "user-42" });
+const vola = new VolaClient({ baseUrl: "/vola", apiKey, userId: "user-42" }); // or an access token, see below
 
 <VolaProvider client={vola} locale="sr">
   <VolaPinGate>
@@ -55,6 +55,35 @@ the view's own filters (which the person can edit).
 A lock comes from the Lock button, the auto-lock (120 s idle + 10 s countdown, a slept tab, a
 tab away for 30 s), `pagehide`, a status read that says the token expired, or any `423` a
 component sees. An unlock makes every locked thumbnail ask again.
+
+## Access tokens
+
+A multi-user host does not put its API key in the page. Its backend issues an
+[access token](API.md#access-tokens) for the rows the signed-in user may read
+(`backend.accessTokens.create({file_ids | instance, principal})`, scope `access:grant`) and
+the page builds its client on that token:
+
+```tsx
+const vola = new VolaClient({
+  baseUrl: "/vola",
+  accessToken: initialToken, // optional: without it getAccessToken is asked before the first request
+  getAccessToken: () => fetch("/api/vola-token").then((r) => r.text()), // the host's own route
+});
+```
+
+After a `401` on a route a token reads, the client calls `getAccessToken` once (concurrent
+`401`s share the call) and sends the request again. `apiKey` and a token exclude each other.
+
+| | with a token |
+|---|---|
+| `VolaThumb` | **works** — it loads through `fetch` with the `Authorization` header and shows a `blob:` URL (tested with a token client) |
+| `client.files.download` / `head` | **works** for the rows the token names (or its instance) |
+| `VolaFileBrowser`, `VolaFilesTable` | **does not work**: lists, UDC (`describe`, `list`) and `subscribe` are `401` for a token |
+| `useVolaUpload`, `VolaUploadButton`, `VolaShareDialog` | **do not work**: a token only reads |
+| `VolaPinGate`, `useVolaKeyring` | **do not work**, and `keyring` files are refused to a token (`409 access_token_encryption_unsupported`); `VolaProvider`'s keyring status read gets a `401`, which it tolerates |
+
+So with a token the host renders its own list (it knows the rows: it granted them) and uses
+`VolaThumb` and `client.files.download` for the bytes.
 
 ## Styling
 

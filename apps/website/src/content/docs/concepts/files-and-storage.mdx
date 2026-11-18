@@ -26,6 +26,8 @@ The rest of the storage directory holds work in progress:
 | `uploads/<upload id>.part` | The bytes of a resumable upload so far |
 | `uploads/<upload id>.partial` | The sealed incomplete segment of an encrypted resumable upload |
 
+A reader never reaches a blob, only a row: no route serves bytes by hash or by storage path, an upload of bytes that are already stored answers exactly like new bytes, and deleting or purging one row leaves the other rows of its blob readable. The blob leaves the disk with the purge of its last row.
+
 Every path is derived from a validated hash or a validated derived name, so no input from a request reaches the file system. The filesystem is the only storage backend in v1.0. The interface it implements is what an S3 backend would implement later.
 
 ## PostgreSQL or SQLite
@@ -96,7 +98,20 @@ The previous version stays live. A download by path answers the newest file of t
 | `is_public` | Any authenticated tenant, by its full `(type, id, fileId)` |
 | `is_global_public` | Anyone, without a key, through `GET /vola/public/:fileId` |
 
-An encrypted file can never be `is_global_public`. Share links are a separate mechanism: a token that opens one file or one folder, with an optional password, expiry and download cap. The [Share example](/examples/share/) shows them.
+An encrypted file can never be `is_global_public`. Access tokens let a user of your application read only their own rows; see the next section. Share links are a separate mechanism: a token that opens one file or one folder, with an optional password, expiry and download cap. The [Share example](/examples/share/) shows them.
+
+## Access tokens: one user, their rows
+
+A key with `files:read` reads every row of its tenant, so it does not belong in a browser. When your application has many users (an e-mail service whose attachment sent to five addresses is six rows of one blob, one per mailbox), your backend issues an **access token** for the rows the signed-in user may read, and the browser uses that:
+
+```sh
+curl -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"file_ids":["'$FILE'"],"principal":"user-42","expires_in":300}' \
+     https://files.example.com/vola/access-tokens
+# {"id":"…","token":"vola_at_…","expires_at":"…"}
+```
+
+The token (scope `access:grant` to issue it) is short-lived, read-only and bound to rows, or to one instance. It reads `GET`/`HEAD` of those rows and their thumbnails, and nothing else: another row is `404` even when it holds the same bytes, and every other route is `401`. vola has no idea who owns a row; your application decides, and vola enforces what it granted. `keyring`, `caller` and `client` files cannot be read with a token in this version. The [API reference](/reference/api/#access-tokens) has every rule.
 
 ## Tenants and keys
 
@@ -112,6 +127,7 @@ An API key looks like `vola_live_…`, `vola_test_…` or `vola_admin_…`. The 
 | `keys:write` | Managing API keys |
 | `keyrings:write` | The PIN routes of a keyring |
 | `encryption:caller` | Sending a per-request content key |
+| `access:grant` | Issuing and revoking access tokens |
 | `admin` | Admin routes |
 
 Two headers complete the picture:

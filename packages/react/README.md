@@ -129,6 +129,11 @@ The rules of the thumbnail route:
 - `failed`, `404 no_thumbnail` → a placeholder saying so;
 - `423` → a "locked" placeholder, and the keyring store is told (the page locks).
 
+With a client on an **access token** (`new VolaClient({accessToken, getAccessToken})`) it
+works for the rows the token names: the token is the `Authorization` header and a `401` gets a
+fresh token once. `VolaFileBrowser`, uploads, shares and keyrings need an API key
+([docs/REACT.md](../../docs/REACT.md#access-tokens)).
+
 An encrypted file's thumbnail is decrypted per request under the unlock token. A lock
 revokes every `blob:` URL, and a generation counter drops an answer that arrives after it.
 
