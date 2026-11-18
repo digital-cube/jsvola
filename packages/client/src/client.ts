@@ -17,6 +17,7 @@ import {
   UNLOCK_HEADER,
   USER_ID_HEADER,
 } from "@vol-a/core";
+import { AccessTokensApi } from "./access-tokens.js";
 import { bytesToBase64, isBrowser } from "./env.js";
 import { errorFromResponse, VolaError } from "./errors.js";
 import { FilesApi } from "./files.js";
@@ -34,6 +35,19 @@ export interface VolaClientOptions {
   baseUrl: string;
   /** API key, sent as `Authorization: Bearer …`. Optional only for the public routes (`health`, `lookups`, `/s/…`, `/public/…`). */
   apiKey?: string | undefined;
+  /**
+   * An ACCESS TOKEN (`vola_at_…`, 1.2) instead of an API key — what a browser holds: issued
+   * by the host's backend (`accessTokens.create`) for the rows its user may read. It reads
+   * `files.download` / `files.thumb` of those rows and nothing else (every other route is
+   * `401`). Give `apiKey` OR a token (`accessToken` and/or `getAccessToken`), never both.
+   */
+  accessToken?: string | undefined;
+  /**
+   * Called for a fresh token when the server answers `401` to a request made with a token
+   * (it expired, or was revoked), and before the first request when no `accessToken` was
+   * given; the request is then sent ONCE more. Concurrent `401`s share one call.
+   */
+  getAccessToken?: (() => string | Promise<string>) | undefined;
   /** `fetch` to use; default: the global one. Tests inject a fake; a host may inject one with retries or a proxy. */
   fetch?: typeof fetch | undefined;
   /** `X-User-Id`: the principal of the host application — attribution, and the owner of a keyring. */
@@ -98,6 +112,15 @@ export interface ResponseSchema<T> {
     | { success: false; error: { issues: readonly { path: PropertyKey[]; message: string }[] } };
 }
 
+/** `GET|HEAD /files/:type/:id/:fileId[/thumb/:size]`: the only routes an access token reads. */
+const TOKEN_ROUTE = /^\/files\/[^/]+\/[^/]+\/[^/]+(\/thumb\/[^/]+)?$/;
+const tokenReadable = (method: string, path: string): boolean =>
+  (method === "GET" || method === "HEAD") && TOKEN_ROUTE.test(path.split("?")[0] ?? path);
+
+/** `true` for a body that can be sent only once. */
+const isStream = (body: BodyInit | null | undefined): boolean =>
+  typeof ReadableStream !== "undefined" && body instanceof ReadableStream;
+
 /** `true` for a `2xx`. */
 export const ok2xx = (status: number): boolean => status >= 200 && status < 300;
 
@@ -114,8 +137,9 @@ function contentKeyHeader(key: ContentKey): string {
 }
 
 /**
- * The SDK: one instance per API key (and per principal). Groups mirror the routes —
- * `files`, `folders`, `uploads`, `shares`, `keyrings`, `stats`, `keys`, `admin`, `udc` —
+ * The SDK: one instance per API key (and per principal) — or per ACCESS TOKEN, in a browser
+ * that reads the rows its host granted. Groups mirror the routes — `files`, `folders`,
+ * `uploads`, `shares`, `keyrings`, `stats`, `keys`, `accessTokens`, `admin`, `udc` —
  * and `request()` / `json()` are the escape hatch they are built on.
  *
  * Secrets: the API key, the unlock token, the content key, a share secret and a PIN travel
@@ -131,16 +155,28 @@ export class VolaClient {
   readonly stats: StatsApi;
   readonly keys: KeysApi;
   readonly admin: AdminApi;
+  readonly accessTokens: AccessTokensApi;
 
-  /** The options the instance was made with (the unlock token is NOT in here; see `withUnlock`). */
-  readonly options: Readonly<Omit<VolaClientOptions, "unlock">>;
+  /** The options the instance was made with (neither the unlock token nor the access token is in here). */
+  readonly options: Readonly<Omit<VolaClientOptions, "unlock" | "accessToken">>;
   private readonly fetchImpl: typeof fetch;
   private readonly validate: boolean;
   private unlockToken: string | null;
   private udcClient: UdcClient | undefined;
+  private token: string | null;
+  private refreshing: Promise<string> | null = null;
 
   constructor(options: VolaClientOptions) {
-    const { unlock, ...rest } = options;
+    const { unlock, accessToken, ...rest } = options;
+    if (options.apiKey && (accessToken || options.getAccessToken)) {
+      throw new VolaError({
+        status: 0,
+        code: "bad_request",
+        message:
+          "VolaClient: give apiKey or an access token (accessToken / getAccessToken), not both",
+      });
+    }
+    this.token = accessToken ?? null;
     this.options = Object.freeze({ ...rest });
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.fetchImpl = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
@@ -154,13 +190,46 @@ export class VolaClient {
     this.stats = new StatsApi(this);
     this.keys = new KeysApi(this);
     this.admin = new AdminApi(this);
+    this.accessTokens = new AccessTokensApi(this);
+  }
+
+  // --- access token state -----------------------------------------------------------------------
+
+  /** The access token the instance sends (`null`: none yet, or an API-key client). */
+  get accessToken(): string | null {
+    return this.token;
+  }
+
+  /** Replaces the access token the instance sends (a host that refreshes on its own schedule). */
+  setAccessToken(token: string | null): void {
+    this.token = token;
+  }
+
+  /** `getAccessToken()` once for every caller waiting at the same time. */
+  private refreshAccessToken(): Promise<string> {
+    const get = this.options.getAccessToken;
+    if (!get) return Promise.reject(new Error("no getAccessToken"));
+    this.refreshing ??= (async () => {
+      try {
+        const token = await get();
+        this.token = token;
+        return token;
+      } finally {
+        this.refreshing = null;
+      }
+    })();
+    return this.refreshing;
   }
 
   // --- unlock state -------------------------------------------------------------------------
 
   /** A client with the same options that sends `token` as `X-Vola-Unlock` (this instance is unchanged). */
   withUnlock(token: string): VolaClient {
-    return new VolaClient({ ...this.options, unlock: token });
+    return new VolaClient({
+      ...this.options,
+      ...(this.token ? { accessToken: this.token } : {}),
+      unlock: token,
+    });
   }
 
   /** `true` while the instance holds an unlock token (it may still have expired on the server). */
@@ -221,9 +290,8 @@ export class VolaClient {
     const headers = new Headers();
     for (const [name, value] of Object.entries(this.options.headers ?? {}))
       headers.set(name, value);
-    if (this.options.apiKey && !options.anonymous) {
-      headers.set("authorization", `Bearer ${this.options.apiKey}`);
-    }
+    const credential = this.options.apiKey ?? this.token;
+    if (credential && !options.anonymous) headers.set("authorization", `Bearer ${credential}`);
     if (this.options.userId) headers.set(USER_ID_HEADER, this.options.userId);
     if (this.options.tenantSlug) headers.set(TENANT_SLUG_HEADER, this.options.tenantSlug);
     const unlock = options.unlock ?? this.unlockToken;
@@ -251,20 +319,38 @@ export class VolaClient {
    * other. Transport failures (no network, a refused connection) throw what `fetch` throws.
    */
   async request(path: string, options: RequestOptions = {}): Promise<Response> {
-    const headers = this.headers(options);
-    let body = options.body ?? null;
-    if (options.json !== undefined) {
-      headers.set("content-type", "application/json");
-      body = JSON.stringify(options.json);
-    }
-    const init: RequestInit & { duplex?: "half" } = {
-      method: options.method ?? "GET",
-      headers,
-      body,
-      ...(options.signal ? { signal: options.signal } : {}),
-      ...(options.streaming ? { duplex: "half" } : {}),
+    const refreshes = Boolean(this.options.getAccessToken) && !options.anonymous;
+    if (refreshes && this.token === null) await this.refreshAccessToken();
+    const send = (): Promise<Response> => {
+      const headers = this.headers(options);
+      let body = options.body ?? null;
+      if (options.json !== undefined) {
+        headers.set("content-type", "application/json");
+        body = JSON.stringify(options.json);
+      }
+      const init: RequestInit & { duplex?: "half" } = {
+        method: options.method ?? "GET",
+        headers,
+        body,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.streaming ? { duplex: "half" } : {}),
+      };
+      return this.fetchImpl(this.url(path, options.query), init);
     };
-    const response = await this.fetchImpl(this.url(path, options.query), init);
+    let response = await send();
+    // A token that expired or was revoked: one fresh token, one more try — only on the four
+    // routes a token reads (anywhere else the 401 is the route's answer to any token).
+    if (
+      response.status === 401 &&
+      refreshes &&
+      tokenReadable(options.method ?? "GET", path) &&
+      !options.streaming &&
+      !isStream(options.body)
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      await this.refreshAccessToken();
+      response = await send();
+    }
     const accepted = options.ok ?? ok2xx;
     if (!accepted(response.status)) throw await errorFromResponse(response);
     return response;

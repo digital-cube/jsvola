@@ -1,8 +1,9 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { VolaClient } from "@vol-a/client";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { thumbRetryDelay, VolaThumb } from "../src/index.js";
-import { error, FakeServer, fileInfo, json, keyringStatus, renderVola } from "./fake.js";
+import { BASE, error, FakeServer, fileInfo, json, keyringStatus, renderVola } from "./fake.js";
 
 const webp = () =>
   new Response(new Blob([new Uint8Array([82, 73, 70, 70])], { type: "image/webp" }), {
@@ -52,6 +53,36 @@ describe("VolaThumb", () => {
         .of("GET", "/vola/files/")
         .every((c) => c.headers.get("authorization") === "Bearer vola_test_key"),
     ).toBe(true);
+  });
+
+  it("works with a client on an ACCESS TOKEN: the token goes as Bearer, a 401 is refreshed once", async () => {
+    const server = new FakeServer();
+    const T1 = `vola_at_${"1".repeat(40)}`;
+    const T2 = `vola_at_${"2".repeat(40)}`;
+    let valid = T1;
+    server.on("GET", /\/thumb\/128$/, (req) =>
+      req.headers.get("authorization") === `Bearer ${valid}` ? webp() : error(401, "unauthorized"),
+    );
+    // What the real server answers a token anywhere else.
+    server.on("GET", "/vola/keyrings/me/status", () => error(401, "unauthorized"));
+    const client = new VolaClient({
+      baseUrl: BASE,
+      accessToken: T1,
+      getAccessToken: async () => T2,
+      fetch: server.fetch,
+    });
+    valid = T2; // T1 has expired by the time the thumbnail is asked for
+    renderVola(<VolaThumb file={fileInfo()} size={128} />, server, { client });
+    const img = (await screen.findByAltText("report.pdf", undefined, {
+      timeout: 3000,
+    })) as HTMLImageElement;
+    expect(img.src).toMatch(/^blob:vola\//);
+    const thumbs = server.of("GET", "/vola/files/");
+    expect(thumbs.map((c) => c.headers.get("authorization"))).toEqual([
+      `Bearer ${T1}`,
+      `Bearer ${T2}`,
+    ]);
+    expect(thumbs.every((c) => !c.headers.has("x-api-key"))).toBe(true);
   });
 
   it("backs off 1, 2, 4 … seconds, at most 30", () => {
