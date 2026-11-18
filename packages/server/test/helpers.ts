@@ -4,6 +4,7 @@ import { type BuildAppOptions, buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { connect, type DatabaseHandle } from "../src/db/index.js";
 import {
+  accessTokens,
   apiKeys,
   files,
   folders,
@@ -43,6 +44,7 @@ export function testDatabase(max = 3): DatabaseHandle {
 
 /** Empties the tables (files and keys cascade from tenants; admin keys explicitly). */
 export async function truncate(handle: DatabaseHandle): Promise<void> {
+  await handle.db.delete(accessTokens);
   await handle.db.delete(shareLinks);
   await handle.db.delete(tenantStats);
   await handle.db.delete(processingJobs);

@@ -5,6 +5,7 @@ import {
   type SharedFolderListing,
 } from "@vol-a/core";
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { AuditLog } from "../audit/log.js";
 import type { Database } from "../db/index.js";
 import type { FileRow, ShareLinkRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
@@ -23,11 +24,16 @@ import {
   sharedFolder,
   startsDownload,
 } from "../services/shares.js";
+import { findTenantById } from "../services/tenants.js";
 import type { StorageBackend } from "../storage/index.js";
-import { type DownloadQuery, sendFile } from "./send-file.js";
+import { type DownloadAudit, type DownloadQuery, downloadAudit, sendFile } from "./send-file.js";
 
 export interface SharePublicRoutesDeps {
   db: Database;
+  /** With `auditDownloads`: `VOLA_FILE_DOWNLOADED` (`via: share`) for every download that starts. */
+  audit?: AuditLog | undefined;
+  /** `VOLA_AUDIT_DOWNLOADS`. */
+  auditDownloads?: boolean | undefined;
   storage: StorageBackend;
   /** Wrong-password counter; default: in memory, per process. */
   limiter?: SharePasswordLimiter | undefined;
@@ -126,7 +132,11 @@ export const sharePublicRoutes: FastifyPluginAsync<SharePublicRoutesDeps> = asyn
       opened = openSharedEncryptedFile(share, file, requestShareSecret(request));
     }
     try {
+      let audit: DownloadAudit | undefined;
       if (startsDownload(request.method, request.headers.range)) {
+        // No request context here: the tenant of the event comes from the share.
+        audit = downloadAudit(deps, "share", { share_id: share.id });
+        if (audit) audit.extra.tenant = (await findTenantById(deps.db, share.tenantId))?.slug;
         const count = await consumeDownload(shares, share);
         request.log.info(
           {
@@ -142,6 +152,7 @@ export const sharePublicRoutes: FastifyPluginAsync<SharePublicRoutesDeps> = asyn
         cacheControl: SHARE_CACHE_CONTROL,
         userId: null,
         opened,
+        audit,
       });
     } finally {
       opened?.fk.fill(0);

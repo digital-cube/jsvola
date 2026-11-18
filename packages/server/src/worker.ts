@@ -63,6 +63,7 @@ const worker = new ProcessingWorker({
   ocr: config.ocr,
   stats: { ttlMs: config.stats.ttlMin * 60_000 },
   audit: createAuditSink(config.memento, log),
+  auditDownloads: config.auditDownloads,
   // The `tenant` provider on VOLA_KEY_FILE: thumbnails and OCR of tenant-encrypted files
   // (docs/CRYPTO.md § 11). A missing key file skips those jobs, nothing else.
   crypto: createEncryptionService({ db: database.db, keyFile: config.keyFile }),

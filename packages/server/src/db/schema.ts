@@ -12,6 +12,7 @@ import * as pg from "./schema-postgres.js";
 import * as sqlite from "./schema-sqlite.js";
 
 export type {
+  AccessTokenRow,
   ApiKeyRow,
   FileMetadataRow,
   FileRow,
@@ -34,6 +35,7 @@ export let uploads = pg.uploads;
 export let processingJobs = pg.processingJobs;
 export let fileMetadata = pg.fileMetadata;
 export let shareLinks = pg.shareLinks;
+export let accessTokens = pg.accessTokens;
 export let tenantStats = pg.tenantStats;
 export let keyrings = pg.keyrings;
 
@@ -52,6 +54,7 @@ export function useSchemaOf(dialect: "postgres" | "sqlite"): void {
   processingJobs = s.processingJobs;
   fileMetadata = s.fileMetadata;
   shareLinks = s.shareLinks;
+  accessTokens = s.accessTokens;
   tenantStats = s.tenantStats;
   keyrings = s.keyrings;
   current = dialect;

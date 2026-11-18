@@ -23,6 +23,7 @@ import { type JobDispatcher, QueuedJobDispatcher } from "./jobs/dispatcher.js";
 import { ProcessingQueue } from "./jobs/queue.js";
 import { emptyLookups, initLookups, type Lookups } from "./lookups.js";
 import type { RedisLike } from "./redis.js";
+import { accessTokenRoutes } from "./routes/access-tokens.js";
 import { adminRoutes } from "./routes/admin.js";
 import { fileRoutes } from "./routes/files.js";
 import { folderRoutes } from "./routes/folders.js";
@@ -439,6 +440,10 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
       : new MemorySharePasswordLimiter());
   await app.register(healthRoutes, { db: options.db, redis: options.redis });
   await app.register(keyRoutes, { db: options.db, audit });
+  await app.register(accessTokenRoutes, {
+    db: options.db,
+    maxTtlS: options.config.accessTokenMaxTtlS,
+  });
   let keyringsDeps: KeyringsDeps | null = null;
   if (options.keyrings !== false && crypto) {
     keyringsDeps = {
@@ -464,6 +469,7 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
     events,
     jobs: jobs?.dispatcher,
     audit,
+    auditDownloads: options.config.auditDownloads,
     crypto,
   });
   await app.register(thumbnailRoutes, {
@@ -500,6 +506,8 @@ export const volaPlugin: FastifyPluginAsync<VolaPluginOptions> = async (app, opt
   });
   await app.register(sharePublicRoutes, {
     db: options.db,
+    audit,
+    auditDownloads: options.config.auditDownloads,
     storage,
     limiter: sharePasswordLimiter,
     accessThrottle: options.accessThrottle,

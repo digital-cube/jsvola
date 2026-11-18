@@ -49,6 +49,12 @@ export async function createTenant(db: Database, input: CreateTenantInput): Prom
   return serializeTenant(row);
 }
 
+/** The tenant `id`, or `null`. */
+export async function findTenantById(db: Database, id: string): Promise<TenantRow | null> {
+  const [row] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+  return row ?? null;
+}
+
 /** The tenant row with `slug`, or `null`. */
 export async function findTenantBySlug(db: Database, slug: string): Promise<TenantRow | null> {
   const [row] = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);

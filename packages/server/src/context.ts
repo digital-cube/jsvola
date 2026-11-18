@@ -3,6 +3,19 @@ import type { Scope } from "@vol-a/core";
 import { VolaError } from "./errors.js";
 
 /**
+ * What a request authenticated with an ACCESS TOKEN (1.2) may read: the rows it names, or the
+ * rows of one instance (as they are at the time of the request).
+ */
+export interface AccessGrant {
+  /** The token's id (never its plaintext or hash): the audit's `access_token_id`. */
+  id: string;
+  /** Lowercase file ids; `null` for an instance token. */
+  fileIds: readonly string[] | null;
+  /** The instance of an instance token; `null` for a token of rows. */
+  instance: { instanceType: string; instanceId: string } | null;
+}
+
+/**
  * Who is calling: the key that authenticated and the tenant the request works in.
  * A tenant key always has its tenant; an admin key has the one `X-Tenant-Slug` selected,
  * or none (`tenantId: null`) — then only routes with `config.tenant = "optional"` answer.
@@ -33,6 +46,12 @@ export interface TenantContext {
    * refuses such a request (`400 caller_key_from_browser`): the content key is server-to-server.
    */
   browserOrigin: string | null;
+  /**
+   * Set when the request carried an access token instead of an API key: `apiKeyId` and
+   * `apiKeyLabel` are then the issuing key's, `userId` the token's principal, `scopes`
+   * `files:read` alone, and only the routes with `config.accessToken` answer.
+   */
+  accessToken?: AccessGrant | null | undefined;
 }
 
 /** A context with a tenant selected: what `requireTenant()` returns. */

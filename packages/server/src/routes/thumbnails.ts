@@ -14,6 +14,7 @@ import type { Database } from "../db/index.js";
 import type { FileRow } from "../db/schema.js";
 import { VolaError } from "../errors.js";
 import { type JobDispatcher, thumbnailable } from "../jobs/dispatcher.js";
+import { findGrantedFile } from "../services/access-tokens.js";
 import {
   type DerivativesDeps,
   DerivativeTooLargeError,
@@ -238,13 +239,17 @@ export const thumbnailRoutes: FastifyPluginAsync<ThumbnailRoutesDeps> = async (a
   app.route<{ Params: ThumbParams; Querystring: ThumbQuery }>({
     method: ["GET", "HEAD"],
     url: "/files/:type/:id/:fileId/thumb/:size",
-    config: READ,
+    // An access token reads the thumbnail of a row it covers (`findGrantedFile`), as the file.
+    config: { ...READ, accessToken: true },
     handler: async (request, reply) => {
       const isHead = request.method === "HEAD";
       const size = parseThumbnailSize(request.params.size);
       const crop = parseThumbnailCrop(request.query[THUMBNAIL_CROP_QUERY]);
-      const scope = parseInstance(requireTenant().tenantId, request.params.type, request.params.id);
-      const row = await findReadableFile(service, scope, request.params.fileId);
+      const tenant = requireTenant();
+      const scope = parseInstance(tenant.tenantId, request.params.type, request.params.id);
+      const row = tenant.accessToken
+        ? await findGrantedFile(deps.db, tenant.accessToken, scope, request.params.fileId)
+        : await findReadableFile(service, scope, request.params.fileId);
       if (row.encryption === "client") {
         throw noThumbnail("a client-encrypted file has no thumbnail: the server has no key");
       }

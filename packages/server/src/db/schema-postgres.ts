@@ -421,6 +421,48 @@ export const shareLinks = pgTable(
 );
 
 /**
+ * An access token (1.2): a short-lived, read-only credential the host application issues to
+ * its user (`principal`) for named ROWS of `vola_file` (`file_ids`) or for one instance
+ * (`instance_type` + `instance_id`: its rows as they are at each request) — never for a blob.
+ * Only the SHA-256 of the plaintext (`vola_at_<40 base62>`) is stored. `api_key_id` is the key
+ * that issued it: a revoked or expired issuer takes its tokens with it. Expired rows are
+ * deleted lazily, when the tenant issues the next token.
+ */
+export const accessTokens = pgTable(
+  "vola_access_token",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    apiKeyId: uuid("api_key_id")
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: "cascade" }),
+    /** SHA-256 of the plaintext token, lowercase hex. */
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    /** The host's user the token was issued to: `last_accessed_by` and the audit actor. */
+    principal: varchar("principal", { length: 255 }).notNull(),
+    /** The rows the token reads (lowercase UUIDs); NULL for an instance token. */
+    fileIds: jsonb("file_ids").$type<string[]>(),
+    /** The instance an instance token reads; NULL for a token of rows. */
+    instanceType: varchar("instance_type", { length: 100 }),
+    instanceId: uuid("instance_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    /** `DELETE /access-tokens/:id`: the token answers `401` from then on. */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("vola_access_token_tenant_expires_idx").on(t.tenantId, t.expiresAt),
+    index("vola_access_token_apikey_idx").on(t.apiKeyId),
+    check(
+      "vola_access_token_target_check",
+      sql`(${t.fileIds} is null) <> (${t.instanceType} is null) and (${t.instanceType} is null) = (${t.instanceId} is null)`,
+    ),
+  ],
+);
+
+/**
  * A statistics snapshot (plan 5.1): the live files of a tenant (`scope = tenant`) or of one
  * of its instances (`scope = instance`, `instance_type` + `instance_id` set) — how many, how
  * many bytes (the sum of `size`, before deduplication), how many of each `kind`, the oldest
@@ -529,5 +571,6 @@ export type UploadRow = typeof uploads.$inferSelect;
 export type ProcessingJobRow = typeof processingJobs.$inferSelect;
 export type FileMetadataRow = typeof fileMetadata.$inferSelect;
 export type ShareLinkRow = typeof shareLinks.$inferSelect;
+export type AccessTokenRow = typeof accessTokens.$inferSelect;
 export type TenantStatsRow = typeof tenantStats.$inferSelect;
 export type KeyringRow = typeof keyrings.$inferSelect;

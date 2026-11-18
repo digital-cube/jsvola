@@ -1,9 +1,9 @@
 import { errKind } from "@jsudc/core";
 import { MESSAGE_ID_HEADER } from "@jsudc/core/client";
 import { type CollectionRegistry, createDispatcher, udcPlugin } from "@jsudc/server";
-import { missingScopes, type Scope } from "@vol-a/core";
+import { errorResponse, isAccessToken, missingScopes, type Scope } from "@vol-a/core";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
-import { authenticateRequest } from "../auth.js";
+import { authenticateRequest, requestApiKey, unauthorized } from "../auth.js";
 import { hasTenant, tenantRequired } from "../context.js";
 import type { Database } from "../db/index.js";
 import { VolaError } from "../errors.js";
@@ -77,6 +77,14 @@ export const udcRoutes: FastifyPluginAsync<UdcRoutesOptions> = async (app, optio
   app.addHook("preValidation", async (request, reply) => {
     const action = actionOf(request.url);
     if (action === null) return; // the plugin's GET /healthz stays open
+    // An access token (1.2) reads four routes and nothing else: a plain HTTP 401, not an
+    // in-protocol refusal, so a token client fails here exactly as on every other route.
+    const credential = requestApiKey(request);
+    // Sent here, not thrown: jsudc's error handler would turn a throw into an in-protocol 200.
+    if (credential && isAccessToken(credential)) {
+      const error = unauthorized();
+      return reply.code(error.status).send(errorResponse(error.code, error.message));
+    }
     try {
       const now = clock();
       const context = await authenticateRequest(request, options.db, now);

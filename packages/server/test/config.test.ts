@@ -55,6 +55,18 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ VOLA_PUBLIC_URL: "files.example.com" })).toThrow(/VOLA_PUBLIC_URL/);
   });
 
+  it("reads the download audit switch and the access token TTL ceiling", () => {
+    expect(loadConfig({}).auditDownloads).toBe(false);
+    expect(loadConfig({}).accessTokenMaxTtlS).toBe(3600);
+    const config = loadConfig({ VOLA_AUDIT_DOWNLOADS: "on", VOLA_ACCESS_TOKEN_MAX_TTL_S: "600" });
+    expect(config.auditDownloads).toBe(true);
+    expect(config.accessTokenMaxTtlS).toBe(600);
+    expect(() => loadConfig({ VOLA_ACCESS_TOKEN_MAX_TTL_S: "0" })).toThrow(
+      /VOLA_ACCESS_TOKEN_MAX_TTL_S/,
+    );
+    expect(() => loadConfig({ VOLA_AUDIT_DOWNLOADS: "maybe" })).toThrow(/VOLA_AUDIT_DOWNLOADS/);
+  });
+
   it("rejects a bad database URL with one clear message", () => {
     const attempt = () => loadConfig({ VOLA_DATABASE_URL: "mysql://nope" });
     expect(attempt).toThrow(ConfigError);

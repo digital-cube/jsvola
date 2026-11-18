@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import {
+  DEFAULT_ACCESS_TOKEN_MAX_TTL_S,
   DEFAULT_ENC_INLINE_DERIVE_MAX_BYTES,
   DEFAULT_OCR_LANGS,
   DEFAULT_OCR_MAX_PAGES,
@@ -138,6 +139,13 @@ const ConfigSchema = z
       .regex(/^https?:\/\/[^\s/]+(\/[^\s]*)?$/, "must be an http(s) URL")
       .optional(),
     VOLA_MEMENTO_API_KEY: z.string().min(1).optional(),
+    VOLA_AUDIT_DOWNLOADS: boolean(false),
+    VOLA_ACCESS_TOKEN_MAX_TTL_S: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(7 * 24 * 3600)
+      .default(DEFAULT_ACCESS_TOKEN_MAX_TTL_S),
     VOLA_KEY_FILE: z.string().min(1).default(DEFAULT_KEY_FILE),
     VOLA_PEPPER_FILE: z.string().min(1).default(DEFAULT_PEPPER_FILE),
     VOLA_UNLOCK_TTL_S: z.coerce
@@ -267,6 +275,17 @@ export interface Config {
    * scope). `null`: no audit events are written — a supported configuration, logged once at INFO.
    */
   memento: MementoConfig | null;
+  /**
+   * `VOLA_AUDIT_DOWNLOADS` (default `false`): a `VOLA_FILE_DOWNLOADED` audit event for every
+   * download that starts (API key, access token, share link). Set it on the server AND the
+   * worker: a worker with it off drops queued download events.
+   */
+  auditDownloads: boolean;
+  /**
+   * `VOLA_ACCESS_TOKEN_MAX_TTL_S` (default 3600): the longest `expires_in` `POST
+   * /access-tokens` grants; more is `422`.
+   */
+  accessTokenMaxTtlS: number;
   /**
    * `VOLA_KEY_FILE` (default `/run/secrets/vola.key`): the key file of the `tenant`
    * encryption provider — one base64 32-byte key per line, the first one active
@@ -447,6 +466,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       c.VOLA_MEMENTO_URL && c.VOLA_MEMENTO_API_KEY
         ? { url: c.VOLA_MEMENTO_URL.replace(/\/+$/, ""), apiKey: c.VOLA_MEMENTO_API_KEY }
         : null,
+    auditDownloads: c.VOLA_AUDIT_DOWNLOADS,
+    accessTokenMaxTtlS: c.VOLA_ACCESS_TOKEN_MAX_TTL_S,
     keyFile: resolve(c.VOLA_KEY_FILE),
     pepperFile: resolve(c.VOLA_PEPPER_FILE),
     unlockTtlS: c.VOLA_UNLOCK_TTL_S,

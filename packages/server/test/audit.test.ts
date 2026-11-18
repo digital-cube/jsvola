@@ -446,6 +446,60 @@ describe("audit → memento (through the queue and the worker)", () => {
     expect(own.received.filter((r) => r.body.instance_id === info.id)).toHaveLength(3);
   });
 
+  it("drops queued VOLA_FILE_DOWNLOADED events in a worker with VOLA_AUDIT_DOWNLOADS off", async () => {
+    const quietPrefix = `vola-audit-dl-${randomUUID().slice(0, 8)}`;
+    const quietQueue = new ProcessingQueue({ redisUrl, prefix: quietPrefix, backoffMs: 20 });
+    const quietWorker = new ProcessingWorker({
+      redisUrl,
+      prefix: quietPrefix,
+      db: handle.db,
+      storage: new FilesystemBackend(root),
+      audit: new MementoSink({ url: own.url, apiKey: API_KEY, timeoutMs: 500 }),
+      auditDownloads: false,
+      jobTimeoutMs: 5000,
+    });
+    try {
+      await quietWorker.ready();
+      const base = {
+        instance_type: "vola_file" as const,
+        actor_type: "user" as const,
+        actor_id: "dl-user",
+        payload: { via: "access_token" },
+        occurred_at: new Date().toISOString(),
+      };
+      const downloaded = randomUUID();
+      const deleted = randomUUID();
+      await quietQueue.enqueueAudit({
+        ...base,
+        event_type: "VOLA_FILE_DOWNLOADED",
+        instance_id: downloaded,
+      });
+      await quietQueue.enqueueAudit({
+        ...base,
+        event_type: "VOLA_FILE_DELETED",
+        instance_id: deleted,
+      });
+      await waitFor(
+        async () => (own.received.some((r) => r.body.instance_id === deleted) ? true : null),
+        { label: "the delete event", timeoutMs: 5000 },
+      );
+      expect(own.received.some((r) => r.body.instance_id === downloaded)).toBe(false);
+      // The default worker (no setting) delivers it.
+      await queue.enqueueAudit({
+        ...base,
+        event_type: "VOLA_FILE_DOWNLOADED",
+        instance_id: downloaded,
+      });
+      await waitFor(
+        async () => (own.received.some((r) => r.body.instance_id === downloaded) ? true : null),
+        { label: "the download event", timeoutMs: 5000 },
+      );
+    } finally {
+      await quietWorker.close();
+      await quietQueue.close();
+    }
+  });
+
   it("drops an event memento refuses for good (4xx) after one try", async () => {
     own.answers = [422];
     const instanceId = randomUUID();
